@@ -1,0 +1,9 @@
+{
+  "tool": "Windows bsdtar 3.8.9",
+  "snapshot_id": "1aa1428c-96d6-4262-ac56-94eeca1e68a3",
+  "files": 4261,
+  "logical_bytes": 4217490891,
+  "sha256_match": true,
+  "extraction_seconds": 13.937,
+  "hash_seconds": 21.568
+}

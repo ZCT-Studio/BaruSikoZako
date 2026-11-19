@@ -1,0 +1,41 @@
+[
+  {
+    "product": "chronos",
+    "seconds": 0.20110319997183979,
+    "receipt": "[13:42:44] [Chronos-Backup-Worker/INFO]: Chronos backup completed in 0.10 s: D:\\Projects\\wanjiangzhi\\IDEAProjects\\BaruSikoZako\\.gradle\\competitors\\compare-chronos-4qcua9ld\\backups\\world\\world-2026-11-19_13-42-44.836.zip",
+    "bytes": 908295,
+    "files": [
+      "backups\\world\\world-2026-11-19_13-42-44.836.zip"
+    ],
+    "fixture": "D:\\Projects\\wanjiangzhi\\IDEAProjects\\BaruSikoZako\\.gradle\\competitors\\compare-chronos-4qcua9ld"
+  },
+  {
+    "product": "baru",
+    "seconds": 0.4159716001013294,
+    "receipt": "[13:42:58] [Server thread/INFO]: System chat: Task 8dc8ae08-b5b3-4ac1-b5ca-b86aac4c42fb:1 · Backup committed c718d728-6da4-4e45-99d2-de620348d92d.",
+    "bytes": 787589,
+    "files": [
+      "config\\barusikozako\\repository\\.lock",
+      "config\\barusikozako\\repository\\snapshots\\c718d728-6da4-4e45-99d2-de620348d92d\\commit",
+      "config\\barusikozako\\repository\\snapshots\\c718d728-6da4-4e45-99d2-de620348d92d\\data.tar.zst",
+      "config\\barusikozako\\repository\\snapshots\\c718d728-6da4-4e45-99d2-de620348d92d\\manifest.jsonl"
+    ],
+    "fixture": "D:\\Projects\\wanjiangzhi\\IDEAProjects\\BaruSikoZako\\.gradle\\competitors\\compare-baru-fq3vz53q"
+  },
+  {
+    "chronos_file_count": 27,
+    "baru_file_count": 27,
+    "only_chronos": [],
+    "only_baru": [],
+    "same_sha256": 21,
+    "different_sha256": [
+      "data/minecraft/weather.dat",
+      "level.dat",
+      "dimensions/minecraft/overworld/region/r.0.0.mca",
+      "dimensions/minecraft/overworld/poi/r.0.0.mca",
+      "level.dat_old",
+      "data/minecraft/world_clocks.dat"
+    ],
+    "note": "Chronos zip decompressed and hashed; Baru hashes read from manifest without independent full verification."
+  }
+]

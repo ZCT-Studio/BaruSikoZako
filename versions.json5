@@ -1,0 +1,85 @@
+{
+  policy: {
+    maxShiftVersions: 5,
+    excludeUpstreamAlpha: true,
+    requireUpstreamBuild: true,
+  },
+  platformGroups: {
+    mod: [
+      "fabric",
+      "quilt",
+      "forge",
+      "neoforge"
+    ],
+    typical_bukkit: [
+      "craftbukkit",
+      "spigot",
+      "paper",
+      "purpur"
+    ],
+    bukkit: [
+      "typical_bukkit",
+      "folia"
+    ],
+    plugin: [
+      "spongevanilla",
+      "bukkit"
+    ],
+    all: [
+      "mod",
+      "plugin"
+    ],
+  },
+  versions: {
+    "1.20.1": {
+      lts: [
+        "forge",
+        "fabric",
+        "quilt",
+        "plugin"
+      ]
+    },
+    "1.21.1": {
+      lts: [
+        "neoforge",
+        "fabric",
+        "quilt"
+      ],
+      nlts: [
+        "forge",
+        "plugin"
+      ]
+    },
+    "1.21.10": {
+      shift: [
+        "all"
+      ]
+    }, // TODO 1.21.10优先滚动淘汰
+    "1.21.11": {
+      nlts: [
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ],
+      shift: [
+        "plugin"
+      ] // 1.21.11喘口气，别优先滚动淘汰
+    },
+    "26.1.2": {
+      shift: [
+        "all"
+      ]
+    },
+    "26.2": {
+      shift: [
+        "all"
+      ]
+    },
+    "26.3": {
+      latest: [
+        "all"
+      ]
+    },
+  },
+}

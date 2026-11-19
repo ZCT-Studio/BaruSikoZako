@@ -1,0 +1,11 @@
+name: ZakoBukkitWorldSaveProbe
+main: barusikozako.probe.WorldSaveProbe
+version: '1'
+api-version: '1.20'
+commands:
+  zakobukkitsaveprobe:
+    usage: /zakobukkitsaveprobe <read|save value>
+    permission: zakobukkitsaveprobe.run
+permissions:
+  zakobukkitsaveprobe.run:
+    default: op

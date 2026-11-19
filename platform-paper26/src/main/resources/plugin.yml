@@ -1,0 +1,11 @@
+name: BaruSikoZakoCompatibilityPreview
+main: barusikozako.paper.CompatibilityPreview
+version: '${productVersion}'
+api-version: '1.20'
+commands:
+  barusikozako:
+    usage: /barusikozako <status|backup|restore>
+    permission: barusikozako.admin
+permissions:
+  barusikozako.admin:
+    default: op

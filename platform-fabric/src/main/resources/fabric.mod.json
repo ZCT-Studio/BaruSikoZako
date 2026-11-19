@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "barusikozako",
+  "version": "${productVersion}",
+  "name": "BaruSikoZako",
+  "description": "${modDescription}",
+  "environment": "server",
+  "entrypoints": {
+    "server": ["barusikozako.fabric.FabricEntrypoint"]
+  },
+  "mixins": ["barusikozako.mixins.json"],
+  "depends": {
+    "zakobak_api": "${productVersion}",
+    "fabricloader": "${loaderRequirement}",
+    "minecraft": ["${minecraftVersions}"],
+    "java": ">=25",
+    "fabric-command-api-v2": "*",
+    "fabric-lifecycle-events-v1": "*"
+  },
+  "license": "MPL-2.0"
+}

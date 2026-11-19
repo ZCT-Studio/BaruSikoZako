@@ -1,0 +1,49 @@
+[
+  {
+    "project": "fastback",
+    "release": "0.35.0+26.3.0",
+    "status": "booted",
+    "game": "26.3",
+    "loader": "Fabric",
+    "scope": "startup_and_console_probe",
+    "exit_code": 0,
+    "console_excerpt": [
+      "Done (0.994s)! For help, type \"help\"",
+      "System chat: Available subcommands:",
+      "System chat: ",
+      "System chat: Stopping the server"
+    ]
+  },
+  {
+    "project": "justenoughbackups-jeb",
+    "release": "1.2.0.10+26.3",
+    "status": "booted",
+    "game": "26.3",
+    "loader": "Fabric",
+    "scope": "startup_and_console_probe",
+    "exit_code": 0,
+    "console_excerpt": [
+      "Done (1.785s)! For help, type \"help\"",
+      "System chat: [Just Enough Backups] No backups found.",
+      "System chat: Stopping the server"
+    ]
+  },
+  {
+    "project": "chronos-backups",
+    "release": "1.1.3+26.x+fabric",
+    "status": "booted",
+    "game": "26.3",
+    "loader": "Fabric",
+    "scope": "startup_and_console_probe",
+    "exit_code": 0,
+    "console_excerpt": [
+      "Done (1.265s)! For help, type \"help\"",
+      "System chat: [Chronos] Usage: /chronos backup | /chronos cancel | /chronos speedtest <s>",
+      "System chat: Stopping the server"
+    ]
+  },
+  {
+    "project": "textile_backup",
+    "status": "no_release_for_fabric_26_3"
+  }
+]

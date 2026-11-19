@@ -1,0 +1,27 @@
+[
+  {
+    "product": "baru",
+    "game": "26.3",
+    "player": "real client online",
+    "status": "committed",
+    "baseline_tick_query": "[17:39:29] [Server thread/INFO]: System chat: Percentiles: P50: 4.0ms P95: 7.2ms P99: 8.1ms. Sample: 100",
+    "player_exit_sent": true,
+    "duration_seconds": 34.49,
+    "cpu_seconds": 31.718,
+    "process_read_bytes": 16871028021,
+    "process_write_bytes": 7110570703,
+    "jvm_lifetime_peak_working_set_bytes": 887377920,
+    "tick_queries_during": [
+      "[17:39:34] [Server thread/INFO]: System chat: Percentiles: P50: 4.6ms P95: 9.3ms P99: 36.1ms. Sample: 100",
+      "[17:39:39] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.2ms P99: 0.2ms. Sample: 100",
+      "[17:39:45] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.2ms P99: 0.3ms. Sample: 100",
+      "[17:39:50] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.3ms P99: 1.0ms. Sample: 100",
+      "[17:39:55] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.2ms P99: 0.2ms. Sample: 100",
+      "[17:40:00] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.2ms P99: 2.1ms. Sample: 100"
+    ],
+    "outcome": "[17:40:04] [Server thread/INFO]: System chat: Task 54f7842a-dc68-46a0-bdc3-c1781069477b:1 · Backup committed c04d7e71-a773-4def-884b-1a200f54f9eb.",
+    "after_tick_query": "[17:40:04] [Server thread/INFO]: System chat: Percentiles: P50: 0.1ms P95: 0.2ms P99: 2.1ms. Sample: 100",
+    "archive_logical_bytes": 2891164180,
+    "verification": "[17:40:09] [Server thread/INFO]: System chat: Task 54f7842a-dc68-46a0-bdc3-c1781069477b:2 · Full verification passed for c04d7e71-a773-4def-884b-1a200f54f9eb (4312 entries, 4217490887 bytes)."
+  }
+]

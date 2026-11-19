@@ -1,0 +1,80 @@
+name: Server acceptance
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Space-separated installed targets, or all-installed
+        default: fabric-26.3
+        required: true
+      release_check:
+        description: Check the full acceptance matrix after the selected installed smoke runs
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - run: ./gradlew check --no-daemon
+      - run: python3 -m compileall -q benchmarks/server-acceptance
+
+  installed:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch
+    runs-on: [self-hosted, Windows, X64, baru-acceptance]
+    needs: core
+    timeout-minutes: 60
+    env:
+      ACCEPTANCE_TARGETS: ${{ inputs.targets }}
+      ACCEPTANCE_RELEASE_CHECK: ${{ inputs.release_check }}
+      ACCEPTANCE_RUNTIME: ${{ vars.ZAKO_RUNTIME_CACHE }}
+      ACCEPTANCE_FIXTURE: ${{ vars.ZAKO_FIXTURE_GIT }}
+      ACCEPTANCE_REVISION: ${{ vars.ZAKO_FIXTURE_REVISION }}
+      ACCEPTANCE_JAVA: ${{ vars.ZAKO_JAVA25 }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Run the installed server targets
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath $env:ACCEPTANCE_JAVA -PathType Leaf)) {
+            throw 'ZAKO_JAVA25 must point to the runner Java executable.'
+          }
+          $env:JAVA_HOME = Split-Path (Split-Path $env:ACCEPTANCE_JAVA -Parent) -Parent
+          $targets = $env:ACCEPTANCE_TARGETS.Trim() -split '\s+'
+          if ($targets -contains 'all-installed' -or $env:ACCEPTANCE_RELEASE_CHECK -eq 'true') {
+            $games = @('26.1.2', '26.2', '26.3')
+            $targets = foreach ($game in $games) {
+              foreach ($loader in @('fabric', 'quilt', 'forge', 'neoforge')) { "$loader-$game" }
+            }
+            $targets += foreach ($game in @('1.20.1', '1.21.1', '1.21.10', '1.21.11')) {
+              foreach ($loader in @('fabric', 'quilt', 'forge')) { "$loader-$game" }
+            }
+            $targets += @('neoforge-1.21.1', 'neoforge-1.21.10', 'neoforge-1.21.11')
+          }
+          & ./benchmarks/server-acceptance/build-installed.ps1 -RuntimeCache $env:ACCEPTANCE_RUNTIME -Targets $targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = "build/server-acceptance/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          python benchmarks/server-acceptance/run-installed.py --runtime-cache $env:ACCEPTANCE_RUNTIME --java $env:ACCEPTANCE_JAVA --fixture-repo $env:ACCEPTANCE_FIXTURE --fixture-revision $env:ACCEPTANCE_REVISION --output "$output/runs" @targets
+          $trialExit = $LASTEXITCODE
+          $flags = @()
+          if ($env:ACCEPTANCE_RELEASE_CHECK -eq 'true') { $flags += '--release-check' }
+          python benchmarks/server-acceptance/catalog.py --runs "$output/runs" --output "$output/matrix" @flags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit $trialExit
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: server-acceptance
+          path: build/server-acceptance/*/matrix/

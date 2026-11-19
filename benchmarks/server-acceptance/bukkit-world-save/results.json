@@ -1,0 +1,380 @@
+[
+  {
+    "platform": "craftbukkit",
+    "minecraft": "1.20.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "54bfa81c59ed47400e648401c226831f830d85e324ade4b6e117e840052da393",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamStart": "PASS",
+    "fixtureTree": "fb678af2c9517af04eaac800dbb7d5570cc61d91",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.20.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.20.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.20.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "craftbukkit",
+    "minecraft": "1.21.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "ebf1a14c609d41a36b3e7f164f47192a15d3b82d2607cc8a23aa1019a19673da",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "minecraft": "1.21.1",
+      "build": "BuildTools #201",
+      "source": "https://hub.spigotmc.org/jenkins/job/BuildTools/201/",
+      "refs": [
+        "BuildData=533b02cd6ba8dbf8c8607250b02bf2d8c36421e8",
+        "Bukkit=bb4e97c60d2978a1d008f21295a5234228341e14",
+        "CraftBukkit=19bf846569f71fa9b64bf50b43154945124e44bc",
+        "Spigot=a759b629cbf86401aab56b8c3f21a635e9e76c15"
+      ]
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "997a82980af4a543c0c883829bbeb5f3ad48b07c",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "craftbukkit",
+    "minecraft": "1.21.10",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "78241520945cb2f4e536b29641962e590abd88c15e90504d2ffe48e506b65f0e",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "source": "https://hub.spigotmc.org/jenkins/job/BuildTools/201/",
+      "build": "BuildTools #201",
+      "refs": [
+        "BuildData=6cf716da198f9d94f9c36e36d9be6417c5c24824",
+        "Bukkit=54dd32b56af7278dc8128a0b2fb54f91dca6b433",
+        "CraftBukkit=5c73aaf1ef20a463bc6b0079bcb585b14e1968b5",
+        "Spigot=6e369ba56125a52a628785448c15afa062a76932"
+      ],
+      "minecraft": "1.21.10"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "833558e1c39f51b72d16c9b92ee287cda8e21f52",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.10/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.10/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/craftbukkit-1.21.10/reopen.log"
+    ]
+  },
+  {
+    "platform": "paper",
+    "minecraft": "1.20.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "platform": "paper",
+      "minecraft": "1.20.1",
+      "build": "196",
+      "url": "https://fill-data.papermc.io/v1/objects/234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea/paper-1.20.1-196.jar",
+      "sha256": "234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea",
+      "serverSha256": "234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "cd0d101f1d92bbfb382ca665d4fbd6d46bf78740",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.20.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.20.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.20.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "paper",
+    "minecraft": "1.21.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "platform": "paper",
+      "minecraft": "1.21.1",
+      "build": "133",
+      "url": "https://fill-data.papermc.io/v1/objects/39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9/paper-1.21.1-133.jar",
+      "sha256": "39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9",
+      "serverSha256": "39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "08457ba42f887505cf8f31ac686a320bdb131d7c",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "paper",
+    "minecraft": "1.21.10",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "158703f75a26f842ea656b3dc6d75bf3d1ec176b97a2c36384d0b80b3871af53",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "platform": "paper",
+      "minecraft": "1.21.10",
+      "build": "130",
+      "url": "https://fill-data.papermc.io/v1/objects/158703f75a26f842ea656b3dc6d75bf3d1ec176b97a2c36384d0b80b3871af53/paper-1.21.10-130.jar",
+      "sha256": "158703f75a26f842ea656b3dc6d75bf3d1ec176b97a2c36384d0b80b3871af53",
+      "serverSha256": "158703f75a26f842ea656b3dc6d75bf3d1ec176b97a2c36384d0b80b3871af53"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "195981aa9f47cfefcf56281036862a75ce57c2fe",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.10/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.10/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/paper-1.21.10/reopen.log"
+    ]
+  },
+  {
+    "platform": "purpur",
+    "minecraft": "1.20.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "238e64b33e5c7c9b87506cf1a23f239e6ce7fb71edd9d31837f229c94f4dfa1a",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "url": "https://api.purpurmc.org/v2/purpur/1.20.1/2062/download",
+      "minecraft": "1.20.1",
+      "build": "2062",
+      "md5": "59bbff70cc394c053a71baccc428063b",
+      "platform": "purpur"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "d10dac5973e5f0660aa974d9f466247618421f6f",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.20.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.20.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.20.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "purpur",
+    "minecraft": "1.21.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "minecraft": "1.21.1",
+      "md5": "dc0026462cac76c869335feb43388a76",
+      "platform": "purpur",
+      "build": "2329",
+      "url": "https://api.purpurmc.org/v2/purpur/1.21.1/2329/download"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "a7720c4dae5bc78c3cf380345800b8e2d5247bf6",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "purpur",
+    "minecraft": "1.21.10",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "4159783677b08b6395782e6150cb28646c70ed988b7948c09e01aa5a5e90f548",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "md5": "d48ae0c35eee5dca1e476dd5dc2ce2ea",
+      "url": "https://api.purpurmc.org/v2/purpur/1.21.10/2535/download",
+      "build": "2535",
+      "minecraft": "1.21.10",
+      "platform": "purpur"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "71d8c77d31252ea9210fcfbaa6fa166a6b0bcaeb",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.10/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.10/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/purpur-1.21.10/reopen.log"
+    ]
+  },
+  {
+    "platform": "spigot",
+    "minecraft": "1.20.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "da2f3a3383e2fe88a5a70ca972578c30bcbe8c056aa60d32a0943da4be288bd5",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamStart": "PASS",
+    "fixtureTree": "a24886d713fb6a8c529fa5e7421c170e97246d07",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.20.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.20.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.20.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "spigot",
+    "minecraft": "1.21.1",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "7a5d4a7be612652312ae9b4f4e619f73bc43ee65c82dfd1f19dbd796f2533692",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamArtifact": {
+      "refs": [
+        "BuildData=533b02cd6ba8dbf8c8607250b02bf2d8c36421e8",
+        "Bukkit=bb4e97c60d2978a1d008f21295a5234228341e14",
+        "CraftBukkit=19bf846569f71fa9b64bf50b43154945124e44bc",
+        "Spigot=a759b629cbf86401aab56b8c3f21a635e9e76c15"
+      ],
+      "minecraft": "1.21.1",
+      "source": "https://hub.spigotmc.org/jenkins/job/BuildTools/201/",
+      "build": "BuildTools #201"
+    },
+    "upstreamStart": "PASS",
+    "fixtureTree": "4dad69e53f3956d16c0f6561810ad2305c7300a0",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.1/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.1/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.1/reopen.log"
+    ]
+  },
+  {
+    "platform": "spigot",
+    "minecraft": "1.21.10",
+    "previewLoad": "PASS",
+    "backup": "UNSUPPORTED",
+    "restore": "UNSUPPORTED",
+    "serverSha256": "016372b162a5da63eae6218c875dab1e6a46868b7b4899b33a845bea9f8e09b8",
+    "fault": {
+      "file": "fixture/world/level.dat",
+      "saveResult": "World.save returned normally",
+      "observedWriteError": true,
+      "unchangedSha256": true,
+      "reopenedMarker": 41,
+      "confirmed": true
+    },
+    "previewSha256": "d700bb3a838a88493277dae9bb80a7ebb8386c2f614724cd400da351c822d132",
+    "worldSaveProbeSha256": "3214c64cab176fe3815221f772d4bfecac877f0705b9e05150d1237659f5127f",
+    "upstreamStart": "PASS",
+    "fixtureTree": "5d802a3ee61bf8135d1b9127eaf794880fe06264",
+    "logs": [
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.10/seed.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.10/save-fault.log",
+      ".gradle/acceptance-upstream/bukkit-world-save-runs/spigot-1.21.10/reopen.log"
+    ]
+  }
+]

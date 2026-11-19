@@ -1,0 +1,8 @@
+{
+  "tool": "Python tarfile and hashlib with zstd-jni decoder",
+  "snapshot_id": "513ee1cf-3824-47ff-abf6-1d4e1ce918dd",
+  "files": 4261,
+  "logical_bytes": 4217490859,
+  "sha256_match": true,
+  "extract_and_hash_seconds": 46.42
+}

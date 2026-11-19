@@ -1,0 +1,18 @@
+[versions]
+zstd-jni = "1.5.7-28"
+commons-compress = "1.28.0"
+jackson-core = "3.3.0"
+loom = "1.19.4"
+fabric-loader = "0.20.1"
+fabric-api = "0.166.2+26.3"
+
+[libraries]
+snakeyaml = { module = "org.yaml:snakeyaml", version = "2.6" }
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd-jni" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
+jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "jackson-core" }
+
+[plugins]
+fabric-loom = { id = "net.fabricmc.fabric-loom", version.ref = "loom" }
+fabric-remapping = { id = "net.fabricmc.fabric-loom-remap", version.ref = "loom" }
+shadow = { id = "com.gradleup.shadow", version = "9.5.0" }

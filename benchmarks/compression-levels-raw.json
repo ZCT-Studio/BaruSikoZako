@@ -1,0 +1,560 @@
+{
+  "source_bytes": 3350435052,
+  "tar_bytes": 4634250752,
+  "tar_sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+  "memory_limit_mib": 2048,
+  "timeout_seconds": 900,
+  "samples": [
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 1,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 149430272,
+        "bytes": "3256158816",
+        "ms": "17635"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 147558400,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "5541"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 1,
+      "compress": {
+        "status": "error",
+        "error": "va:108)\n\tat java.base/sun.nio.fs.WindowsFileAttributeViews$Basic.readAttributes(WindowsFileAttributeViews.java:52)\n\tat java.base/sun.nio.fs.WindowsFileAttributeViews$Basic.readAttributes(WindowsFileAttributeViews.java:38)\n\tat java.base/sun.nio.fs.WindowsFileSystemProvider.readAttributes(WindowsFileSystemProvider.java:195)\n\tat java.base/java.nio.file.Files.readAttributes(Files.java:1702)\n\tat java.base/java.nio.file.Files.size(Files.java:2242)\n\tat CompressionLevels.main(CompressionLevels.java:18)\n",
+        "peak_bytes": 120819712
+      },
+      "verified": false
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 1,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 161054720,
+        "bytes": "3213173647",
+        "ms": "34549"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 150188032,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3888"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 1,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 125124608,
+        "bytes": "3309956421",
+        "ms": "92001"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 125825024,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25500"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 1,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 124260352,
+        "bytes": "3308960756",
+        "ms": "102301"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 125317120,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25318"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 2,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123154432,
+        "bytes": "3308960756",
+        "ms": "102268"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 126459904,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25255"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 2,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123662336,
+        "bytes": "3309956421",
+        "ms": "92610"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 126930944,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "26778"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 2,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 160059392,
+        "bytes": "3213173647",
+        "ms": "38661"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 149368832,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3908"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 2,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 125710336,
+        "bytes": "3318919403",
+        "ms": "85203"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 125120512,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "24615"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 2,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 151330816,
+        "bytes": "3256158816",
+        "ms": "12247"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 147189760,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3715"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 3,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 149737472,
+        "bytes": "3256158816",
+        "ms": "12232"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 148529152,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3688"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 3,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 126095360,
+        "bytes": "3318919403",
+        "ms": "85072"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 126803968,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "24693"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 3,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 160157696,
+        "bytes": "3213173647",
+        "ms": "34776"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 148672512,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3923"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 3,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 125706240,
+        "bytes": "3309956421",
+        "ms": "93108"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 122679296,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25447"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 3,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123695104,
+        "bytes": "3308960756",
+        "ms": "102256"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 128020480,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25478"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 4,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 120651776,
+        "bytes": "3308960756",
+        "ms": "102219"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 123822080,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25543"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 4,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 125718528,
+        "bytes": "3309956421",
+        "ms": "92414"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 124444672,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25474"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 4,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 161165312,
+        "bytes": "3213173647",
+        "ms": "38951"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 149573632,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "4071"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 4,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 125304832,
+        "bytes": "3318919403",
+        "ms": "85893"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 124100608,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "24875"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 4,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 152059904,
+        "bytes": "3256158816",
+        "ms": "17169"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 146350080,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3763"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 5,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 150339584,
+        "bytes": "3256158816",
+        "ms": "15202"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 147234816,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3735"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 5,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 126144512,
+        "bytes": "3318919403",
+        "ms": "85308"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 126631936,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "24641"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 5,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 161484800,
+        "bytes": "3213173647",
+        "ms": "35649"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 150278144,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "3928"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 5,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 124301312,
+        "bytes": "3309956421",
+        "ms": "95573"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 125431808,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25339"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 5,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 124211200,
+        "bytes": "3308960756",
+        "ms": "119092"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 123244544,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "37674"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 9,
+      "round": 6,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123166720,
+        "bytes": "3308960756",
+        "ms": "102307"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 123387904,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "25445"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 6,
+      "round": 6,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123817984,
+        "bytes": "3309956421",
+        "ms": "92061"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 125841408,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "38021"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 9,
+      "round": 6,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 161902592,
+        "bytes": "3213173647",
+        "ms": "47990"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 153513984,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "5561"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 6,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 123543552,
+        "bytes": "3318919403",
+        "ms": "136230"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 124772352,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "36178"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zstd",
+      "level": 3,
+      "round": 6,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 148475904,
+        "bytes": "3256158816",
+        "ms": "19401"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 146808832,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "5389"
+      },
+      "verified": true
+    },
+    {
+      "mode": "zip",
+      "level": 1,
+      "round": 1,
+      "compress": {
+        "status": "ok",
+        "peak_bytes": 124698624,
+        "bytes": "3318919403",
+        "ms": "132963"
+      },
+      "decompress": {
+        "status": "ok",
+        "peak_bytes": 123011072,
+        "sha256": "dd24172eb77c992a50c990053fa24da8a655c41dee1b8ed3e0513835677fd023",
+        "ms": "38846"
+      },
+      "verified": true
+    }
+  ]
+}

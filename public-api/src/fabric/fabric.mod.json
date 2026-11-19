@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "zakobak_api",
+  "version": "${productVersion}",
+  "name": "ZakoBak API",
+  "description": "Public API contracts for BaruSikoZako integrations.",
+  "environment": "server",
+  "depends": {"fabricloader": ">=0.19.5", "java": ">=17"},
+  "license": "MPL-2.0"
+}

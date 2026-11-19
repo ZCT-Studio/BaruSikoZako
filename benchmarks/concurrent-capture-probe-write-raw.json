@@ -1,0 +1,20 @@
+[
+  {
+    "product": "baru",
+    "game": "26.3",
+    "player": "real client online",
+    "status": "failed_or_timeout",
+    "baseline_tick_query": "[17:13:53] [Server thread/INFO]: System chat: Percentiles: P50: 4.4ms P95: 8.6ms P99: 10.6ms. Sample: 100",
+    "forced_save_sent": true,
+    "concurrent_probe": "信息: Concurrent capture diagnostic: java.io.InterruptedIOException: Concurrent probe observed a write; elapsed 3,341 ms; world tick 653 to 719; no snapshot published",
+    "duration_seconds": 3.686,
+    "cpu_seconds": 4.843,
+    "process_read_bytes": 256730172,
+    "process_write_bytes": 258528350,
+    "jvm_lifetime_peak_working_set_bytes": 867545088,
+    "tick_queries_during": [],
+    "outcome": "[17:13:57] [Server thread/INFO]: System chat: Task d8fd1499-0436-40d4-b8db-2ffe500df323:1 · Backup operation failed (SOURCE_UNAVAILABLE). See server log.",
+    "after_tick_query": "[17:13:57] [Server thread/INFO]: System chat: Percentiles: P50: 5.3ms P95: 9.4ms P99: 114.5ms. Sample: 100",
+    "archive_logical_bytes": 0
+  }
+]

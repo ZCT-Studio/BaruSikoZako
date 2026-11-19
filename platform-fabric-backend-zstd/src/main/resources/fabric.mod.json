@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "zakobak_zstd",
+  "version": "${productVersion}",
+  "name": "ZakoBak Zstd",
+  "environment": "server",
+  "entrypoints": {
+    "barusikozako:backend": ["barusikozako.zstd.ZstdProvider"]
+  },
+  "depends": {
+    "barusikozako": "*",
+    "minecraft": ["${minecraftVersions}"],
+    "java": ">=25"
+  },
+  "license": "MPL-2.0"
+}

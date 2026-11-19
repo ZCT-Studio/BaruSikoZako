@@ -1,0 +1,75 @@
+[
+  {
+    "product": "chronos",
+    "game": "26.3",
+    "player": "real client online",
+    "status": "committed",
+    "baseline_tick_query": "[15:56:22] [Server thread/INFO]: System chat: Percentiles: P50: 5.1ms P95: 8.0ms P99: 10.9ms. Sample: 100",
+    "duration_seconds": 107.589,
+    "cpu_seconds": 117.891,
+    "process_read_bytes": 8435597821,
+    "process_write_bytes": 7157076949,
+    "jvm_lifetime_peak_working_set_bytes": 892928000,
+    "tick_queries_during": [
+      "[15:56:27] [Server thread/INFO]: System chat: Percentiles: P50: 7.3ms P95: 13.6ms P99: 22.2ms. Sample: 100",
+      "[15:56:32] [Server thread/INFO]: System chat: Percentiles: P50: 5.3ms P95: 7.3ms P99: 12.7ms. Sample: 100",
+      "[15:56:37] [Server thread/INFO]: System chat: Percentiles: P50: 3.8ms P95: 6.1ms P99: 6.9ms. Sample: 100",
+      "[15:56:42] [Server thread/INFO]: System chat: Percentiles: P50: 3.9ms P95: 6.1ms P99: 9.1ms. Sample: 100",
+      "[15:56:48] [Server thread/INFO]: System chat: Percentiles: P50: 4.1ms P95: 6.6ms P99: 8.1ms. Sample: 100",
+      "[15:56:53] [Server thread/INFO]: System chat: Percentiles: P50: 3.5ms P95: 6.0ms P99: 8.0ms. Sample: 100",
+      "[15:56:58] [Server thread/INFO]: System chat: Percentiles: P50: 3.0ms P95: 5.3ms P99: 5.9ms. Sample: 100",
+      "[15:57:03] [Server thread/INFO]: System chat: Percentiles: P50: 3.3ms P95: 5.6ms P99: 6.3ms. Sample: 100",
+      "[15:57:08] [Server thread/INFO]: System chat: Percentiles: P50: 3.1ms P95: 5.9ms P99: 11.9ms. Sample: 100",
+      "[15:57:14] [Server thread/INFO]: System chat: Percentiles: P50: 2.8ms P95: 5.3ms P99: 7.5ms. Sample: 100",
+      "[15:57:19] [Server thread/INFO]: System chat: Percentiles: P50: 2.6ms P95: 5.0ms P99: 5.6ms. Sample: 100",
+      "[15:57:24] [Server thread/INFO]: System chat: Percentiles: P50: 2.6ms P95: 4.9ms P99: 5.5ms. Sample: 100",
+      "[15:57:29] [Server thread/INFO]: System chat: Percentiles: P50: 2.7ms P95: 5.0ms P99: 5.2ms. Sample: 100",
+      "[15:57:35] [Server thread/INFO]: System chat: Percentiles: P50: 3.0ms P95: 5.2ms P99: 5.9ms. Sample: 100",
+      "[15:57:40] [Server thread/INFO]: System chat: Percentiles: P50: 3.3ms P95: 5.5ms P99: 7.0ms. Sample: 100",
+      "[15:57:45] [Server thread/INFO]: System chat: Percentiles: P50: 3.1ms P95: 5.7ms P99: 6.4ms. Sample: 100",
+      "[15:57:50] [Server thread/INFO]: System chat: Percentiles: P50: 2.8ms P95: 5.2ms P99: 9.7ms. Sample: 100",
+      "[15:57:55] [Server thread/INFO]: System chat: Percentiles: P50: 2.6ms P95: 5.2ms P99: 6.0ms. Sample: 100",
+      "[15:58:00] [Server thread/INFO]: System chat: Percentiles: P50: 3.5ms P95: 5.9ms P99: 6.6ms. Sample: 100",
+      "[15:58:05] [Server thread/INFO]: System chat: Percentiles: P50: 2.8ms P95: 5.1ms P99: 8.8ms. Sample: 100"
+    ],
+    "outcome": "[15:58:09] [Chronos-Backup-Worker/INFO]: Chronos backup completed in 1 min 47.4 s: D:\\Projects\\wanjiangzhi\\IDEAProjects\\BaruSikoZako\\.gradle\\competitors\\live-large-rerun\\chronos\\backups\\world\\world-2026-11-19_15-56-22.488.zip",
+    "after_tick_query": "[15:58:09] [Server thread/INFO]: System chat: Percentiles: P50: 2.9ms P95: 5.0ms P99: 5.7ms. Sample: 100",
+    "archive_logical_bytes": 2937906236,
+    "zip_crc_check": {
+      "status": "passed",
+      "entry_count": 4260,
+      "uncompressed_bytes": 4217490195,
+      "duration_seconds": 15.637
+    },
+    "measurement_error": "Published ZIP was counted after cache cleanup; initial recursive count raced cache deletion.",
+    "tick_query_samples": 20,
+    "window_p95_range_ms": [
+      4.9,
+      13.6
+    ],
+    "window_p99_range_ms": [
+      5.2,
+      22.2
+    ],
+    "archive_allocated_bytes": 2937909248,
+    "archive_allocation_method": "Windows FileStandardInfo AllocationSize"
+  },
+  {
+    "product": "baru",
+    "game": "26.3",
+    "player": "real client online",
+    "status": "failed_or_timeout",
+    "baseline_tick_query": "[15:59:02] [Server thread/INFO]: System chat: Percentiles: P50: 4.5ms P95: 8.6ms P99: 9.9ms. Sample: 100",
+    "duration_seconds": 0.45,
+    "cpu_seconds": 1.078,
+    "process_read_bytes": 23370186,
+    "process_write_bytes": 24769833,
+    "jvm_lifetime_peak_working_set_bytes": 867315712,
+    "tick_queries_during": [],
+    "outcome": "[15:59:03] [Server thread/INFO]: System chat: Task 4aa5a185-873d-4f88-9ae6-0b6242de8ca2:1 · Backup operation failed (SOURCE_UNAVAILABLE). See server log.",
+    "after_tick_query": "[15:59:03] [Server thread/INFO]: System chat: Percentiles: P50: 4.5ms P95: 8.8ms P99: 159.0ms. Sample: 100",
+    "archive_logical_bytes": 0,
+    "failure_reason": "Write isolation exceeded 150 ms",
+    "tick_query_samples": 0
+  }
+]
