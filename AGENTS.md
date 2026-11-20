@@ -1,14 +1,45 @@
 # BaruSikoZako · Agent 入口
 
+## 开始工作
+
+1. **优先读取** [私有文档索引](private/index.md)列出的文档（如有访问权限）
+2. 再读取 `public/agents/` 下的内容（如有）
+
+
 ## Agent 共享数据目录
 
 - `private/` 存放仅限项目协作者访问的 Agent 共享数据。
 - `public/` 存放可公开共享的 Agent 数据。
 - 两个目录用于持久保存操作文档、设计决策、验证结论、进度和交接记录。大型测试存档、大体积测试结果、构建产物、运行时缓存和临时数据放在各自的测试或构建工作目录。
 
-## 文档读取顺序
-1. **优先读取** `private/agents/docs/` 下的所有文档
-2. 再读取 `public/agents/` 下的内容（如有）
+
+## 开发与决策
+
+- Phase 0–4 已确认。用户批准 Phase 5 平台适配研究与依据既有决策的工程骨架、Core、公共接口及 Zstd 静态文件开发并行推进。
+- 在已确认的产品定位、架构、安全、性能和兼容性要求内，自主完成设计、选型、实现和验收，记录关键取舍。
+- 改变核心架构或产品定位、重大兼容性破坏或不可逆格式变更、降低数据安全保证、引入重大外部依赖或更改许可证，以及无法自主解决的实质性阻碍，才暂停并请求确认。
+- 技术信息核对官方文档、上游源码或发行记录，清楚区分候选范围、上游可用与本项目实际验收。不得用跳过测试或关闭检查掩盖问题。
+- 决策和验收结果同步更新设计主文档与进度页。Git 操作按「共享数据仓库的对话收尾」执行。
+- 项目采用 [MPL-2.0](LICENSE)。新增或迁入的原创源码使用 私有文档索引中列出的版权头规范；保留第三方原有声明。
+
+
+## 子代理委派
+
+- 当独立子任务可以并行开展且能显著提高效率时，委派子代理。适合并行的工作包括独立平台验证、源码调查和不同模块的修改。
+- 主代理明确每项任务的范围、交付物和文件归属。涉及同一文件、共享测试环境或前置依赖的工作应先隔离或按顺序执行。
+- 主代理负责整合结果、验证证据、处理冲突及统一交付。子代理的 Git 操作遵循本文件的授权范围。
+
+
+## 测试存档
+
+- **严禁**直接复制测试存档文件/目录进行测试
+- **必须**通过 Git 进行版本控制和反复运用：
+  - 使用 `git stash` / `git checkout` / `git restore` 管理测试状态
+  - 测试前创建临时分支或提交，测试后通过 Git 恢复
+  - 利用 `git worktree` 实现并行测试环境隔离
+  - 所有测试数据变更必须可追溯、可回滚、可复现
+- 这适用于所有测试场景：单元测试、集成测试、基准测试、手动验证
+
 
 ## 共享数据仓库的对话收尾
 
@@ -17,31 +48,6 @@
 - 用户要求「暂存」或「暂存数据」时，本轮仍在本地提交并将最终回复写入提交正文，推送暂缓至用户授权。如果没有远程跟踪分支或推送失败，在最终回复中说明实际状态。
 - 上述提交和推送授权仅适用于独立的 Agent 共享数据仓库。项目主仓库的提交、标签和推送须单独授权。
 
-## 核心文档索引（private/agents/docs/）
-- [项目进度与交接](private/agents/docs/status.md)
-- [产品范围](private/agents/docs/requirements.md)
-- [总体架构](private/agents/docs/architecture.md)
-- [技术决策记录](private/agents/docs/decisions.md)
-- [开发验证](private/agents/docs/development.md)
-- [在线捕获](private/agents/docs/online-capture.md)
-- [构建文档](private/agents/docs/build.md)
-- [Zstd 基准](private/agents/docs/benchmarks/zstd/README.md)
-- [公共接口](private/agents/docs/public-api.md)
-- [接口与格式](private/agents/docs/interfaces-and-formats.md)
-- [平台适配](private/agents/docs/platform-adaptation.md)
-- [旧版服务端适配](private/agents/docs/legacy-server.md)
-- [Zstd 模式](private/agents/docs/zstd-modes.md)
-- [恢复机制](private/agents/docs/recovery.md)
-- [捕获策略](private/agents/docs/capture-strategies.md)
-- [依赖审计](private/agents/docs/dependency-audit.md)
-
-## 项目状态
-- Phase 0–4 已确认。用户批准 Phase 5 平台适配研究与依据既有决策的工程骨架、Core、公共接口及 Zstd 静态文件开发并行推进。
-- 在已确认的产品定位、架构、安全、性能和兼容性要求内，自主完成设计、选型、实现和验收，记录关键取舍。
-- 改变核心架构或产品定位、重大兼容性破坏或不可逆格式变更、降低数据安全保证、引入重大外部依赖或更改许可证，以及无法自主解决的实质性阻碍，才暂停并请求确认。
-- 技术信息核对官方文档、上游源码或发行记录，清楚区分候选范围、上游可用与本项目实际验收。不得用跳过测试或关闭检查掩盖问题。
-- 决策和验收结果同步更新设计主文档与进度页。Git 操作按「共享数据仓库的对话收尾」执行。
-- 项目采用 [MPL-2.0](../LICENSE)。新增或迁入的原创源码使用 [构建文档](private/agents/docs/build.md#许可证与第三方声明) 中指定的版权头；保留第三方原有声明。
 
 ## Changelog 规则
 
@@ -110,12 +116,3 @@
 - 归档保留原版本号、发布日期、双语条目
 - 不在 `CHANGELOG.md` 重复归档条目
 - 归档不得破坏 CI 的发布说明提取
-
-## AI 约束：测试存档项目
-- **严禁**直接复制测试存档文件/目录进行测试
-- **必须**通过 Git 进行版本控制和反复运用：
-  - 使用 `git stash` / `git checkout` / `git restore` 管理测试状态
-  - 测试前创建临时分支或提交，测试后通过 Git 恢复
-  - 利用 `git worktree` 实现并行测试环境隔离
-  - 所有测试数据变更必须可追溯、可回滚、可复现
-- 这适用于所有测试场景：单元测试、集成测试、基准测试、手动验证
