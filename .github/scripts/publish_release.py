@@ -67,8 +67,9 @@ def request(url, method="GET", *, auth, fields=None, files=(), allow_missing=Fal
                 args.extend(("--header", "Content-Type: application/json", "--data-binary", f"@{data}"))
             else:
                 args.extend(("--form", f"{field}=<{data};type=application/json"))
-        for field, path in files:
-            args.extend(("--form", f"{field}=@{path};type=application/java-archive"))
+        for field, path, *name in files:
+            filename = f";filename={name[0]}" if name else ""
+            args.extend(("--form", f"{field}=@{path};type=application/java-archive{filename}"))
         raw = invoke([*args, url])
     body, code = raw.rsplit("\n", 1)
     if code == "404" and allow_missing:
@@ -125,7 +126,7 @@ def project_ids(prefix, auth):
     return projects, slugs
 
 
-def modrinth(job, entry, files, ids):
+def modrinth(job, entry, files, ids, *, force_run=None):
     component = entry["component"]
     project = ids[component]
     auth = ("Authorization", env("MODRINTH_TOKEN"))
@@ -134,6 +135,12 @@ def modrinth(job, entry, files, ids):
                     for required in REQUIRED_PROJECTS[component]]
     version = entry["version"] + ("." if "+" in entry["version"] else "+") + job["target"]
     old = request(f"{MODRINTH}/project/{project}/version/{quote(version, safe='')}", auth=auth, allow_missing=True)
+    if old is not None and force_run:
+        hashes = {f["filename"]: f["hashes"]["sha512"] for f in old["files"]}
+        if hashes != {file.name: digest(file, "sha512") for file in files}:
+            version += f".build.{force_run}"
+            old = request(f"{MODRINTH}/project/{project}/version/{quote(version, safe='')}",
+                          auth=auth, allow_missing=True)
     if old is not None:
         expected = {f.name: digest(f, "sha512") for f in files}
         existing = {f["filename"]: f["hashes"]["sha512"] for f in old["files"]}
@@ -162,18 +169,12 @@ def modrinth(job, entry, files, ids):
     request(f"{MODRINTH}/version", "POST", auth=auth, fields=("data", metadata), files=parts)
 
 
-def curseforge_versions(job, version_catalog):
-    names = [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job))]
-    version_ids = []
-    for name in names:
-        matches = {value["id"] for value in version_catalog if value["name"].casefold() == name.casefold()}
-        if len(matches) != 1:
-            raise ValueError(f"CurseForge has no unique game or loader ID for {name}")
-        version_ids.extend(matches)
-    return version_ids
+def curseforge_versions(job):
+    # 由上传 API 在项目上下文中解析标签名称
+    return [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job))]
 
 
-def curseforge(job, entry, files, ids, version_ids, slugs):
+def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
     component = entry["component"]
     project = ids[component]
     auth = ("X-Api-Token", env("CURSEFORGE_TOKEN"))
@@ -189,10 +190,16 @@ def curseforge(job, entry, files, ids, version_ids, slugs):
     required = REQUIRED_PROJECTS[component]
     relations = [{"projectID": ids[key], "slug": slugs[key], "type": "requiredDependency"} for key in required]
     for file in reversed(files):
-        if old := existing.get(file.name):
+        name = file.name
+        old = existing.get(name)
+        if old:
             expected = digest(file, "sha1")
-            if not any(item["algo"] == 1 and item["value"].lower() == expected for item in old["hashes"]):
-                raise ValueError(f"CurseForge already has a different file named {file.name}")
+            if not curseforge_has_hash(old, expected) and force_run:
+                name = f"{file.stem}.build.{force_run}{file.suffix}"
+                old = existing.get(name)
+            if old and not curseforge_has_hash(old, expected):
+                raise ValueError(f"CurseForge already has a different file named {name}")
+        if old:
             desired = {(int(ids[key]), 3) for key in required}
             old_deps = old.get("dependencies", [])
             our_ids = {int(value) for value in ids.values()}
@@ -201,7 +208,7 @@ def curseforge(job, entry, files, ids, version_ids, slugs):
             old_types = {name.casefold() for name in old["gameVersions"]}
             old_loaders = old_types & LOADERS.keys()
             if old_loaders != set(job["platforms"]) or job["game"].casefold() not in old_types:
-                update["gameVersions"] = version_ids
+                update["gameVersionNames"] = version_names
             if managed != desired:
                 extras = [dep for dep in old_deps if dep["modId"] not in our_ids]
                 relation_types = {1: "embeddedLibrary", 2: "optionalDependency", 3: "requiredDependency",
@@ -220,12 +227,16 @@ def curseforge(job, entry, files, ids, version_ids, slugs):
                 request(f"{CURSEFORGE}/projects/{project}/update-file", "POST", auth=auth,
                         fields=("metadata", update))
             continue
-        metadata = {"displayName": file.stem, "changelog": entry["notes"], "changelogType": "markdown",
-                    "gameVersions": version_ids, "releaseType": TYPES[entry["channel"]]}
+        metadata = {"displayName": Path(name).stem, "changelog": entry["notes"], "changelogType": "markdown",
+                    "gameVersionNames": version_names, "releaseType": TYPES[entry["channel"]]}
         if relations:
             metadata["relations"] = {"projects": relations}
         request(f"{CURSEFORGE}/projects/{project}/upload-file", "POST", auth=auth,
-                fields=("metadata", metadata), files=[("file", file)])
+                fields=("metadata", metadata), files=[("file", file, name)])
+
+
+def curseforge_has_hash(old, expected):
+    return any(item["algo"] == 1 and item["value"].lower() == expected for item in old["hashes"])
 
 
 def github_destination(repository, planned_tag, commit_sha, marker):
@@ -285,16 +296,16 @@ def github_release(repository, tag, existing, prerelease, notes, files, commit_s
         return existing["draft"]
 
 
-def publish_modrinth(storefront, ids):
+def publish_modrinth(storefront, ids, *, force_run=None):
     """发布至 Modrinth，操作具有幂等性，可安全重试"""
     for job, entry, files in sorted(storefront, key=lambda row: ("mod", "api", "zstd").index(row[1]["component"])):
-        modrinth(job, entry, files, ids)
+        modrinth(job, entry, files, ids, force_run=force_run)
 
 
-def publish_curseforge(storefront, ids, versions, slugs):
+def publish_curseforge(storefront, ids, versions, slugs, *, force_run=None):
     """发布至 CurseForge，操作具有幂等性，可安全重试"""
     for job, entry, files in sorted(storefront, key=lambda row: ("mod", "api", "zstd").index(row[1]["component"])):
-        curseforge(job, entry, files, ids, versions[job["target"]], slugs)
+        curseforge(job, entry, files, ids, versions[job["target"]], slugs, force_run=force_run)
 
 
 def main():
@@ -352,12 +363,13 @@ def main():
     if storefront:
         mr, _ = project_ids("MODRINTH", ("Authorization", env("MODRINTH_TOKEN")))
         cf, slugs = project_ids("CURSEFORGE", ("x-api-key", env("CURSEFORGE_API_KEY")))
-        catalog = request(f"{CURSEFORGE}/game/versions", auth=("X-Api-Token", env("CURSEFORGE_TOKEN")))
-        versions = {job["target"]: curseforge_versions(job, catalog) for job, _, _ in storefront}
+        env("CURSEFORGE_TOKEN")
+        versions = {job["target"]: curseforge_versions(job) for job, _, _ in storefront}
 
     # 准备发行说明
     repository = env("GITHUB_REPOSITORY", r"[\w.-]+/[\w.-]+")
     run_id = env("GITHUB_RUN_ID", r"\d+")
+    force_run = run_id if plan.get("force_release") else None
     marker = f"<!-- barusikozako-release-run:{run_id} -->"
     tag, existing = github_destination(repository, tag, commit_sha, marker)
     with tempfile.TemporaryDirectory() as temp:
@@ -372,12 +384,12 @@ def main():
     # 第2步：发布到Modrinth（独立，可以单独重试）
     if storefront:
         print("Publishing to Modrinth...")
-        publish_modrinth(storefront, mr)
+        publish_modrinth(storefront, mr, force_run=force_run)
         print("Modrinth: done")
         
         # 步骤3：发布到CurseForge（独立，可以单独重试）
         print("Publishing to CurseForge...")
-        publish_curseforge(storefront, cf, versions, slugs)
+        publish_curseforge(storefront, cf, versions, slugs, force_run=force_run)
         print("CurseForge: done")
         
     if draft:

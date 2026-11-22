@@ -56,28 +56,26 @@ class StorefrontTests(unittest.TestCase):
 
     @patch.object(publish, "request")
     def test_curseforge_all_loader_labels_and_dependencies(self, request):
-        catalog = [{"id": 26, "name": "26.3"}] + [
-            {"id": number, "name": label} for number, label in enumerate(publish.LOADERS.values(), 1)]
-        for number, loader in enumerate(publish.LOADERS, 1):
+        for loader, label in publish.LOADERS.items():
             for component in self.ids:
                 with self.subTest(loader=loader, component=component):
                     request.side_effect = [{"data": [], "pagination": {"totalCount": 0}}, {"id": 100}]
                     job = self.job(loader)
-                    version_ids = publish.curseforge_versions(job, catalog)
-                    publish.curseforge(job, self.entry(component), [self.file], self.ids, version_ids, self.slugs)
+                    version_names = publish.curseforge_versions(job)
+                    publish.curseforge(job, self.entry(component), [self.file], self.ids, version_names, self.slugs)
                     kind, payload = request.call_args.kwargs["fields"]
                     self.assertEqual(kind, "metadata")
-                    self.assertEqual(payload["gameVersions"], [26, number])
+                    self.assertEqual(payload["gameVersionNames"], ["26.3", label])
                     if component == "mod":
                         self.assertNotIn("relations", payload)
                     else:
                         self.assertEqual(payload["relations"], {"projects": [
                             {"projectID": "11", "slug": "barusikozako", "type": "requiredDependency"}]})
-        self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt"), catalog), [26, 1, 2])
-        with self.assertRaisesRegex(ValueError, "no unique"):
-            publish.curseforge_versions(self.job("quilt"), catalog[:2])
+        self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt")), ["26.3", "Fabric", "Quilt"])
+        legacy = {"game": "1.20.1", "loader": "forge", "platforms": ["forge"], "target": "forge1.20.1"}
+        self.assertEqual(publish.curseforge_versions(legacy), ["1.20.1", "Forge"])
         with self.assertRaisesRegex(ValueError, "Invalid storefront loader"):
-            publish.curseforge_versions(self.job("forge", "neoforge"), catalog)
+            publish.curseforge_versions(self.job("forge", "neoforge"))
 
     @patch.object(publish, "request")
     def test_curseforge_retry_updates_matched_bytes(self, request):
@@ -85,10 +83,21 @@ class StorefrontTests(unittest.TestCase):
                                          "gameVersions": ["26.3", "Forge"], "dependencies": [],
                                          "hashes": [{"algo": 1, "value": publish.digest(self.file, "sha1")}] }],
                                 "pagination": {"totalCount": 1}}, {"id": 12}]
-        publish.curseforge(self.job("neoforge"), self.entry("zstd"), [self.file], self.ids, [26, 4], self.slugs)
+        publish.curseforge(self.job("neoforge"), self.entry("zstd"), [self.file], self.ids, ["26.3", "NeoForge"], self.slugs)
         self.assertEqual(request.call_args.args, (publish.CURSEFORGE + "/projects/33/update-file", "POST"))
         self.assertEqual(request.call_args.kwargs["fields"][1]["fileID"], 12)
-        self.assertEqual(request.call_args.kwargs["fields"][1]["gameVersions"], [26, 4])
+        self.assertEqual(request.call_args.kwargs["fields"][1]["gameVersionNames"], ["26.3", "NeoForge"])
+
+    @patch.object(publish, "request")
+    def test_force_release_uses_distinct_storefront_keys_for_different_bytes(self, request):
+        request.side_effect = [{"files": [{"filename": self.file.name, "hashes": {"sha512": "different"}}]}, None, {}]
+        publish.modrinth(self.job("fabric"), self.entry("api"), [self.file], self.ids, force_run="12345")
+        self.assertEqual(request.call_args.kwargs["fields"][1]["version_number"], "0.5.0+fabric26.3.build.12345")
+        request.side_effect = [{"data": [{"fileName": self.file.name, "hashes": [{"algo": 1, "value": "different"}]}],
+                                "pagination": {"totalCount": 1}}, {}]
+        publish.curseforge(self.job("forge"), self.entry("api"), [self.file], self.ids, ["26.3", "Forge"], self.slugs,
+                          force_run="12345")
+        self.assertEqual(request.call_args.kwargs["files"], [("file", self.file, "product.build.12345.jar")])
 
     @patch.object(publish, "request")
     def test_resolves_exact_main_project(self, request):

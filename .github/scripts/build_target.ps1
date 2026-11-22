@@ -69,8 +69,23 @@ $wrapper = if ($IsWindows) { './gradlew.bat' } else { './gradlew' }
 if (!$IsWindows) { chmod +x $wrapper }
 $tasks = @('buildProducts', ':engine:core:check', ':engine:gitignore:check', ':backends:zstd:check', ':api:host:check')
 if ($loader -eq 'agent') { $tasks += ':platforms:javaagent:check' }
-& $wrapper @flags @tasks
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# 仅对仓库限流重试，普通编译和测试失败直接返回
+$PSNativeCommandUseErrorActionPreference = $false
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $rateLimited = $false
+    & $wrapper @flags @tasks 2>&1 | ForEach-Object {
+        if ("$_" -match 'Received status code 429 from server|HTTP(?: status)?[ :]+429\b') {
+            $rateLimited = $true
+        }
+        Write-Output $_
+    }
+    $buildExit = $LASTEXITCODE
+    if ($buildExit -eq 0) { break }
+    if (!$rateLimited -or $attempt -eq 3) { exit $buildExit }
+    $delay = 20 * $attempt + (Get-Random -Minimum 0 -Maximum 11)
+    Write-Warning "Gradle dependency download was rate limited. Retrying in $delay seconds."
+    Start-Sleep -Seconds $delay
+}
 
 foreach ($asset in $job.assets) {
     foreach ($name in $asset.paths) {

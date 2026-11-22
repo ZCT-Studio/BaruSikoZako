@@ -15,6 +15,7 @@ from unittest.mock import patch, MagicMock
 # 将脚本目录添加到路径
 sys.path.insert(0, str(Path(__file__).parent))
 
+import release_plan
 from release_plan import (
     read_table, rules, channel, resolve, targets, code_changed,
     changelogs, asset_names, plan, previous_catalog,
@@ -487,6 +488,82 @@ class TestReleasePlan(unittest.TestCase):
         forced = plan(*args, "Bump alpha [release-all]", changed)
         self.assertIn("forge1.20.1", {job["target"] for job in forced["jobs"]})
 
+    def test_force_release_bypasses_version_check(self):
+        """[force-release] should trigger release even without version changes."""
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "Rerelease [force-release]", ["platforms/fabric/src/main/java/Foo.java"])
+        self.assertTrue(result["should_release"])
+        # fabric and quilt share a release job (loader_group="fabric"), so only 2 release jobs
+        self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
+        # All components should be emitted despite no version change
+        for job in result["jobs"]:
+            self.assertEqual(len(job["assets"]), 3)  # mod, api, zstd
+        # But build jobs should include both fabric and quilt
+        self.assertEqual({job["target"] for job in result["build_jobs"]},
+                         {"fabric1.20.1", "quilt1.20.1", "forge1.20.1"})
+
+    def test_force_release_with_no_code_change(self):
+        """[force-release] should work even with only non-code changes."""
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "Manual rerelease [force-release]", ["README.md"])
+        self.assertTrue(result["should_release"])
+        self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
+        self.assertEqual({job["target"] for job in result["build_jobs"]},
+                         {"fabric1.20.1", "forge1.20.1"})
+
+    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
+    def test_force_release_and_release_all(self, _tag):
+        self.sample_versions["mod"]["version"] = "1.0.0-alpha"
+        args = (self.sample_versions, self.sample_releases, self.sample_versions)
+        ordinary = plan(*args, "Retry [force-release]", [])
+        combined = plan(*args, "Retry\n\n[FORCE-RELEASE] [release-all]", [])
+        keys = lambda result: {(job["target"], asset["component"])
+                               for job in result["jobs"] for asset in job["assets"]}
+        self.assertNotIn(("forge1.20.1", "mod"), keys(ordinary))
+        self.assertIn(("forge1.20.1", "mod"), keys(combined))
+        self.assertTrue(combined["force_release"])
+        for flag in ("[no-release]", "[no-build]"):
+            self.assertFalse(plan(*args, f"Retry [force-release] {flag}", [])["should_release"])
+        self.assertFalse(plan(*args, "Retry [force-release]", [], build_only=True)["should_release"])
+
+    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
+    def test_release_title_alias_can_trigger_release(self, _tag):
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "chore(release): Release v1.0.0 [force-relaese]", [])
+        self.assertTrue(result["force_release"])
+
+    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
+    def test_cli_missing_push_base_after_force_push(self, _tag):
+        cases = [
+            ("chore(release): Release v1.0.0 [force-relaese]", [], True),
+            ("Retry [force-release]", [], True),
+            ("Ordinary change", [], False),
+            ("Retry [force-release] [no-release]", [], False),
+            ("Retry [force-release]", ["--build-only"], False),
+            ("Retry [force-release]", ["--force-build"], False),
+        ]
+        for message, options, publishes in cases:
+            with self.subTest(message=message, options=options), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "plan.json"
+                files = {"versions.json5": json.dumps(self.sample_versions),
+                         "releases.json5": json.dumps(self.sample_releases), "CHANGELOG.md": ""}
+
+                def git_missing_base(*args, **_):
+                    if args[0] == "log":
+                        return message
+                    self.assertEqual(args[0], "rev-parse")
+                    return None
+
+                args = ["release_plan.py", "--base", "f" * 40, "--output", str(output), *options]
+                with patch.object(sys, "argv", args), patch.object(Path, "read_text", autospec=True,
+                        side_effect=lambda path, **_: files[path.name]), patch("release_plan.git", git_missing_base):
+                    release_plan.main()
+                result = json.loads(output.read_text(encoding="utf-8"))
+                self.assertEqual(publishes, result["should_release"])
+                if publishes:
+                    self.assertTrue(result["force_release"])
+                    self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
+
     def test_version_table_edit_without_effective_version_change_is_a_no_op(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
                       "Reformat version tables", ["versions.json5", "releases.json5"])
@@ -502,17 +579,32 @@ class TestReleasePlan(unittest.TestCase):
         self.assertTrue(code_changed([".github/scripts/build_target.ps1"]))
 
     @patch("release_plan.git")
-    def test_get_today_batch_number(self, mock_git):
+    @patch("release_plan.datetime")
+    def test_get_today_batch_number(self, mock_datetime, mock_git):
+        mock_datetime.now.return_value = datetime(2026, 11, 22, 12, 0, tzinfo=BEIJING_TZ)
+
         mock_git.return_value = ""
         batch = get_today_batch_number()
         self.assertEqual(batch, 1)
-        
+
         # 使用现有标签进行测试
         mock_git.return_value = "abc123\trefs/tags/release/2026.11.22.1\n" \
                                 "def456\trefs/tags/release/2026.11.22.3\n" \
                                 "ghi789\trefs/tags/release/2026.11.21.1"
         batch = get_today_batch_number()
         self.assertEqual(batch, 4)  # Next after 3
+        mock_datetime.now.assert_called_with(BEIJING_TZ)
+
+    @patch("release_plan.git")
+    @patch("release_plan.datetime")
+    def test_get_today_batch_number_resets_on_new_day(self, mock_datetime, mock_git):
+        mock_datetime.now.return_value = datetime(2026, 11, 23, 0, 30, tzinfo=BEIJING_TZ)
+        mock_git.return_value = "abc123\trefs/tags/release/2026.11.22.1\n" \
+                                "def456\trefs/tags/release/2026.11.22.3\n" \
+                                "ghi789\trefs/tags/release/2026.11.21.4"
+
+        self.assertEqual(get_today_batch_number(), 1)
+        mock_datetime.now.assert_called_with(BEIJING_TZ)
 
 
 if __name__ == "__main__":

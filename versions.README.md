@@ -10,6 +10,7 @@
 - 所有产物构建使用 GitHub 托管的 Ubuntu runner。Forge 和 NeoForge 构建根据 `gradle/compatibility-targets.properties` 下载并校验对应的官方安装器，在该任务的临时目录准备编译输入。
 - 推送到主分支时，CI 比较推送前后的有效组件版本。有版本变化且提交标题没有 `[no-release]` 时，符合维护渠道的产物才进入发布计划。发布由流水线生成批次标签。
 - 默认渠道为 `lts` 允许 RC 和正式版，`nlts` 再允许 Beta，`shift` 再允许 Alpha，`latest` 再允许 Snapshot。`[release-all]` 跳过渠道限制，`[release-temp]` 只选 `nlts` 和 `shift`，`[release-latest]` 只选 `latest`。`[no-build]` 同时跳过构建和发布。
+- `[force-release]` 即使版本表未改也生成发布计划。和 `[release-all]` 组合时，发布矩阵中的全部有效目标都进入计划。若平台已有同版本但内容不同的文件，使用当前工作流 ID 区分补发批次。`[no-release]`、`[no-build]` 和仅构建的工作流仍会阻止发布。
 - 当前发布工作流运行构建与自动化检查。实际服务端验收需单独进行。
 - Modrinth 使用主项目 slug `barusikozako` 查找项目 ID。CurseForge 使用 `CURSEFORGE_MOD_ID`，并核对其 slug 同为 `barusikozako`。API 和后端分别使用各自的项目变量。
 - 两个平台上，独立 API 和 Zstd 文件都将主模组标记为必需依赖。加载器标签来自发布目标，只有实际共用同一产物的 Fabric 和 Quilt 才共用两个标签。主模组可独立安装，调用公开接口的外部模组需额外安装对应的独立 API JAR。

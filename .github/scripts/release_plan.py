@@ -188,12 +188,22 @@ def asset_names(component, version, target):
     return [f"{folder}/{IDS[component]}-v{version}{variant}+{target}.jar" for variant in variants]
 
 
+def commit_flags(message):
+    return {flag.lower() for flag in re.findall(
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|no-release|no-build)\]",
+        message, re.IGNORECASE)}
+
+
+def requests_forced_release(flags):
+    return bool(flags & {"force-release", "force-relaese"})
+
+
 def plan(current, release_table, previous, message, changed, markdown="", *, build_only=False, force_build=False):
     selected = targets(release_table)
-    subject = message.split("\n", 1)[0].lower()
-    flags = set(re.findall(r"\[(release-all|release-temp|release-latest|no-release|no-build)\]", subject))
+    flags = commit_flags(message)
+    force_release = requests_forced_release(flags)
     catalog_changed = any(path in ("versions.json5", "releases.json5") for path in changed)
-    allow_release = not build_only and not force_build and "no-release" not in flags and catalog_changed
+    allow_release = not build_only and not force_build and "no-release" not in flags and (catalog_changed or force_release)
     validate_code = force_build or code_changed(changed) or (build_only and catalog_changed)
     build_jobs = {}
     release_jobs = []
@@ -231,7 +241,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
             if not allow_release or (not bypass_tier and narrowed and tier not in narrowed):
                 continue
             emitted = tuple(component for component, value in versions.items()
-                            if before.get(component) != value and
+                            if (force_release or before.get(component) != value) and
                             (bypass_tier or channel(value) in TIERS[tier]))
             if emitted:
                 loader_group = "fabric" if platform in ("fabric", "quilt") else platform
@@ -255,6 +265,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         "build_jobs": list(build_jobs.values()),
         "should_build": bool(build_jobs),
         "should_release": bool(release_jobs),
+        "force_release": force_release and bool(release_jobs),
         "release_title": get_release_title(tag) if tag else None,
     }
 
@@ -283,15 +294,20 @@ def main():
     args = parser.parse_args()
     base = args.base
     force_build = args.force_build
-    if not force_build and (not base or not git("rev-parse", "--verify", base + "^{commit}", missing=True)):
-        print("Comparison commit unavailable. Building latest targets without publishing.", file=sys.stderr)
-        force_build = True
+    message = "" if args.build_only or force_build else git("log", "-1", "--format=%B")
+    available = not force_build and base and git("rev-parse", "--verify", base + "^{commit}", missing=True)
+    if not force_build and not available:
+        if requests_forced_release(commit_flags(message)):
+            print("Comparison commit unavailable. Planning the explicitly requested release.", file=sys.stderr)
+        else:
+            print("Comparison commit unavailable. Building latest targets without publishing.", file=sys.stderr)
+            force_build = True
     build_only = args.build_only or force_build
-    changed = [] if force_build else git("diff", "--name-only", "-z", base, "HEAD").split("\0")
-    old = None if build_only else previous_catalog(base)
+    changed = git("diff", "--name-only", "-z", base, "HEAD").split("\0") if available else []
+    old = previous_catalog(base) if available and not build_only else None
     result = plan(read_table(Path("versions.json5").read_text(encoding="utf-8")),
                   read_table(Path("releases.json5").read_text(encoding="utf-8")), old,
-                  "" if build_only else git("log", "-1", "--format=%B"), changed,
+                  message, changed,
                   Path("CHANGELOG.md").read_text(encoding="utf-8"),
                   build_only=build_only, force_build=force_build)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
