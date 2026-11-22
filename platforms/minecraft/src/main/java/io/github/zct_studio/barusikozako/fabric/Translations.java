@@ -41,7 +41,7 @@ final class Translations {
             if (stream == null) return Map.of();
             var json = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
             var messages = new java.util.HashMap<String, String>();
-            for (var entry : json.entrySet()) messages.put(entry.getKey(), entry.getValue().getAsString());
+            for (var key : json.keySet()) messages.put(key, json.get(key).getAsString());
             return Map.copyOf(messages);
         } catch (Exception failure) {
             System.getLogger(Translations.class.getName()).log(System.Logger.Level.WARNING,
