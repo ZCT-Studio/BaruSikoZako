@@ -1,0 +1,53 @@
+name: Sync project descriptions
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ Modrinth.md, CurseForge.md ]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Description to synchronize
+        type: choice
+        options: [ both, modrinth, curseforge ]
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: sync-project-descriptions
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Sync changed Markdown
+        env:
+          BEFORE: ${{ github.event.before }}
+          TARGET: ${{ inputs.platform }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_MOD_ID: ${{ vars.CURSEFORGE_MOD_ID }}
+        run: |
+          set -euo pipefail
+          changed=""
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              changed="$(git diff --name-only "$BEFORE" HEAD -- Modrinth.md CurseForge.md)"
+            else
+              changed="$(printf 'Modrinth.md\nCurseForge.md')"
+            fi
+          fi
+          if [[ "$TARGET" == modrinth || "$TARGET" == both ]] || grep -qx Modrinth.md <<< "$changed"; then
+            python3 .github/scripts/publish_release.py --sync modrinth
+          fi
+          if [[ "$TARGET" == curseforge || "$TARGET" == both ]] || grep -qx CurseForge.md <<< "$changed"; then
+            python3 .github/scripts/publish_release.py --sync curseforge
+          fi

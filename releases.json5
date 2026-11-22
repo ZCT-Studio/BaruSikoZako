@@ -1,0 +1,96 @@
+{
+  policy: {
+    maxShiftVersions: 5,
+    excludeUpstreamAlpha: true,
+    requireUpstreamBuild: true,
+  },
+  platformGroups: {
+    mod: [
+      "fabric",
+      "quilt",
+      "forge",
+      "neoforge"
+    ],
+    classic_bukkit: [
+      "craftbukkit",
+      "spigot",
+      "paper",
+      "purpur"
+    ],
+    bukkit: [
+      "classic_bukkit",
+      "folia"
+    ],
+    plugin: [
+      "spongevanilla",
+      "bukkit"
+    ],
+    agent: [
+      "vanilla"
+    ],
+    all: [
+      "mod",
+      "plugin",
+      /* "agent", 暂停构建和发布。 */
+    ],
+  },
+  versions: {
+    "1.20.1": {
+      lts: [
+        "forge",
+        "fabric",
+        "quilt"
+      ]
+    },
+    "1.21.1": {
+      lts: [
+        "neoforge",
+        "fabric",
+        "quilt"
+      ],
+      nlts: [
+        "forge"
+      ]
+    },
+    "1.21.10": {
+      shift: [
+        "mod",
+        /* "plugin", 暂停发布，待独立插件或 Agent + Bukkit 桥完成验收。 */
+      ]
+    }, // TODO 1.21.10优先滚动淘汰
+    "1.21.11": {
+      nlts: [
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ],
+      /* 暂停构建和发布。恢复后不优先滚动淘汰。
+      shift: [
+        "agent"
+      ],
+      */
+    },
+    "26.1.2": {
+      shift: [
+        "mod",
+        /* "agent", 暂停构建和发布。 */
+        /* "plugin", 待插件服发布验收。 */
+      ]
+    },
+    "26.2": {
+      shift: [
+        "mod",
+        /* "agent", 暂停构建和发布。 */
+        /* "plugin", 待插件服发布验收。 */
+      ]
+    },
+    "26.3": {
+      latest: [
+        "mod",
+        /* "agent", 暂停构建和发布。 */
+        /* "plugin", 待插件服发布验收。 */
+      ]
+    },
+  },
+}

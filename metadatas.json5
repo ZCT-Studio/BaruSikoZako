@@ -1,0 +1,32 @@
+{
+  "mod": {
+    "description": "A simple backup MOD, but it added a lot of extensibility",
+    "authors": [
+      "WJiangzhi",
+      "zichuan-az"
+    ],
+    "homepage": "https://github.com/ZCT-Studio/BaruSikoZako",
+    "sources": "https://github.com/ZCT-Studio/BaruSikoZako",
+    "issues": "https://github.com/ZCT-Studio/BaruSikoZako/issues"
+  },
+  "api": {
+    "description": "Public API for integrating with BaruSikoZako",
+    "authors": [
+      "WJiangzhi"
+    ],
+    "homepage": "https://github.com/ZCT-Studio/BaruSikoZako",
+    "sources": "https://github.com/ZCT-Studio/BaruSikoZako",
+    "issues": "https://github.com/ZCT-Studio/BaruSikoZako/issues"
+  },
+  "backend": {
+    "zstd": {
+      "description": "Zstandard backup backend for BaruSikoZako",
+      "authors": [
+        "WJiangzhi"
+      ],
+      "homepage": "https://github.com/ZCT-Studio/BaruSikoZako",
+      "sources": "https://github.com/ZCT-Studio/BaruSikoZako",
+      "issues": "https://github.com/ZCT-Studio/BaruSikoZako/issues"
+    }
+  }
+}

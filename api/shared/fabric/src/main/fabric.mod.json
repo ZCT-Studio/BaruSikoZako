@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "barusikozako_api",
+  "version": "${productVersion}",
+  "name": "ZakoBak API",
+  "authors": ["${authorsJson}"],
+  "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},
+  "icon": "icon.png",
+  "description": "${descriptionJson}",
+  "environment": "server",
+  "depends": {"barusikozako": "*", "fabricloader": ">=0.19.5", "java": ">=17"},
+  "license": "MPL-2.0"
+}

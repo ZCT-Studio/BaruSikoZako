@@ -1,0 +1,14 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :platforms:javaagent:dependencies --write-locks
+com.github.luben:zstd-jni:1.5.7-28=bundledBackend
+commons-codec:commons-codec:1.19.0=bundledBackend
+commons-io:commons-io:2.20.0=bundledBackend
+org.apache.commons:commons-compress:1.28.0=bundledBackend
+org.apache.commons:commons-lang3:3.18.0=bundledBackend
+org.ow2.asm:asm:9.10.1=compileClasspath,runtimeClasspath
+org.yaml:snakeyaml:2.6=compileClasspath,runtimeClasspath
+tools.jackson.core:jackson-core:3.3.0=bundledBackend
+tools.jackson:jackson-bom:3.3.0=bundledBackend
+empty=annotationProcessor,publicApiContract,sharedContracts

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "barusikozako_backendzstd",
+  "version": "${productVersion}",
+  "name": "ZakoBak Zstd",
+  "description": "${descriptionJson}",
+  "authors": ["${authorsJson}"],
+  "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},
+  "icon": "icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "barusikozako:backend": ["io.github.zct_studio.barusikozako.zstd.ZstdProvider"]
+  },
+  "depends": {
+    "barusikozako": "*",
+    "minecraft": ["${minecraftVersions}"],
+    "java": ">=25"
+  },
+  "license": "MPL-2.0"
+}

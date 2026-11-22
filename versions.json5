@@ -1,0 +1,19 @@
+{
+  mod: {
+    version: "0.5.0",
+    overrides: {
+    },
+  },
+  api: {
+    version: "0.5.0",
+    overrides: {
+    },
+  },
+  backend: {
+    zstd: {
+      version: "0.5.0",
+      overrides: {
+      },
+    },
+  },
+}

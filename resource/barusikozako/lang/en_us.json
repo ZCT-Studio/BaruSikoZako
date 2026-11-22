@@ -1,0 +1,10 @@
+{
+  "command.invalid_task": "Invalid task ID.",
+  "command.task_unavailable": "Task is unavailable or no longer retained.",
+  "command.service_unavailable": "Backup services are unavailable. See server log.",
+  "command.invalid_snapshot": "Provide a canonical snapshot UUID.",
+  "command.repository_accepted": "Repository request accepted.",
+  "command.snapshots_empty": "No committed snapshots on this page.",
+  "command.query_failed": "Snapshot query failed. See server log.",
+  "command.config_saved": "Configuration saved. Restart the server to apply it."
+}

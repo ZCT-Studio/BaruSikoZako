@@ -1,0 +1,10 @@
+{
+  "command.invalid_task": "无效的任务 ID",
+  "command.task_unavailable": "任务不可用或记录已过期",
+  "command.service_unavailable": "备份服务不可用，请查看服务器日志",
+  "command.invalid_snapshot": "请输入标准格式的快照 UUID",
+  "command.repository_accepted": "仓库查询请求已受理",
+  "command.snapshots_empty": "此页没有已提交的快照",
+  "command.query_failed": "快照查询失败，请查看服务器日志",
+  "command.config_saved": "配置已保存，重启服务器后生效"
+}

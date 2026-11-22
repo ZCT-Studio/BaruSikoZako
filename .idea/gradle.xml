@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/build-logic" name="barusikozako-build-logic">
+                <projects>
+                  <project path="$PROJECT_DIR$/build-logic" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="gradleJvm" value="17" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/1.20.1" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/1.21.1" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/1.21.10" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/1.21.11" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/26.1.2" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/26.2" />
+            <option value="$PROJECT_DIR$/.gradle/build-targets/26.3" />
+            <option value="$PROJECT_DIR$/api" />
+            <option value="$PROJECT_DIR$/api/common" />
+            <option value="$PROJECT_DIR$/api/host" />
+            <option value="$PROJECT_DIR$/backends" />
+            <option value="$PROJECT_DIR$/backends/compression-zstd" />
+            <option value="$PROJECT_DIR$/backends/spi" />
+            <option value="$PROJECT_DIR$/backends/zstd" />
+            <option value="$PROJECT_DIR$/build-logic" />
+            <option value="$PROJECT_DIR$/engine" />
+            <option value="$PROJECT_DIR$/engine/core" />
+            <option value="$PROJECT_DIR$/engine/gitignore" />
+            <option value="$PROJECT_DIR$/engine/mod-runtime" />
+            <option value="$PROJECT_DIR$/platforms" />
+            <option value="$PROJECT_DIR$/platforms/spi" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>

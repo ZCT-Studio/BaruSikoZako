@@ -1,0 +1,7 @@
+name: barusikozako
+main: io.github.zct_studio.barusikozako.bukkit.bridge.AgentBridgePlugin
+version: '${productVersion}'
+api-version: '1.20'
+load: STARTUP
+folia-supported: true
+description: Bukkit registration and communication bridge for the BaruSikoZako JavaAgent.

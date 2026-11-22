@@ -1,0 +1,21 @@
+This component includes a relocated subset of Eclipse JGit 7.8.1.202611041320-r.
+See LICENSE-jgit.txt for the Eclipse Distribution License v1.0 (BSD-3-Clause).
+
+Copyright (C) 2008, Florian Köberle <florianskarten@web.de>
+Copyright (C) 2009, Vasyl' Vavrychuk <vvavrychuk@gmail.com> and others
+Copyright (C) 2014, Andrey Loskutov <loskutov@gmx.de> and others
+Copyright (C) 2014, 2020 Andrey Loskutov <loskutov@gmx.de> and others
+Copyright (C) 2014, 2025 Andrey Loskutov <loskutov@gmx.de> and others
+Copyright (C) 2015, Andrey Loskutov <loskutov@gmx.de> and others
+
+Upstream source tag:
+https://github.com/eclipse-jgit/jgit/tree/v7.8.1.202611041320-r
+
+Upstream Maven source archive:
+https://repo.maven.apache.org/maven2/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r-sources.jar
+SHA-256: 301fd403d8b4cc236267da3f990543fd5fe30d2d282b9b0e7cb20c2ae8eec137
+
+BaruSikoZako relocates the selected packages and removes the SLF4J
+and localized diagnostics dependencies from the matcher.
+Compatibility changes cover literal ampersands in character classes, trailing
+whitespace on directory rules and runs of recursive wildcards.

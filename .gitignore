@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+*.class
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+private/
+logs/
+build_product/
+release-plan.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Gradle verification metadata (generated)
+gradle/verification-metadata.xml
+
+# Third-party JARs (downloaded dependencies)
+**/third-party/
+!/platforms/fabric/third-party/
+!/platforms/javaagent/third-party/
+
+# IntelliJ IDEA run configurations
+.idea/runConfigurations/
+
+# Build scan / enterprise
+.gradle/enterprise/

@@ -1,0 +1,20 @@
+# BaruSikoZako Bukkit 尽力配置
+# 这是默认配置。复制到 config/barusikozako/server.yml 并修改
+
+schema: 1
+verify.contentBytes: 1073741824
+verify.archiveBytes: 1073741824
+verify.entries: 100000
+query.manifestBytes: 134217728
+schedule.intervalSeconds: 0
+capture.enabled: false
+capture.preparationMillis: 10000
+capture.mainThreadBudgetMillis: 0
+capture.fileRetries: 2
+capture.fileRetryDelayMillis: 10
+capture.fileClone: auto
+backup.readBytesPerSecond: 0
+backend: barusikozako_backendzstd
+api.integrations:
+api.maintenanceIntegrations:
+api.lifecycleIntegrations:

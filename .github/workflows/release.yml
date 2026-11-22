@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has_jobs: ${{ steps.plan.outputs.has_jobs }}
+      should_build: ${{ steps.plan.outputs.should_build }}
+      should_release: ${{ steps.plan.outputs.should_release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      release_title: ${{ steps.plan.outputs.release_title }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      build_matrix: ${{ steps.plan.outputs.build_matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: |
+          python -m pip install --require-hashes --only-binary=:all: -r .github/scripts/requirements.txt
+      - run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Plan build and release targets
+        id: plan
+        env:
+          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          args=(--output release-plan.json)
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) args+=(--build-only --base "$BEFORE") ;;
+            workflow_dispatch) args+=(--force-build) ;;
+            push) args+=(--base "$BEFORE") ;;
+          esac
+          python .github/scripts/release_plan.py "${args[@]}"
+      - uses: actions/upload-artifact@v6
+        if: steps.plan.outputs.has_jobs == 'true' || steps.plan.outputs.should_build == 'true'
+        with:
+          name: release-plan
+          path: release-plan.json
+          retention-days: 7
+
+  build:
+    name: build for ${{ matrix.target }}
+    needs: plan
+    if: needs.plan.outputs.should_build == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.build_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            25
+          cache: gradle
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-plan
+          path: release-input
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build one target
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: ./.github/scripts/build_target.ps1 -Target $env:TARGET -Plan release-input/release-plan.json -Output release-output
+      - name: Verify mod and API packages
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python .github/scripts/verify_mod_artifacts.py --plan release-input/release-plan.json --target "$TARGET" --artifacts release-output
+      - uses: actions/upload-artifact@v6
+        with:
+          name: target-${{ matrix.target }}
+          path: release-output/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [ plan, build ]
+    if: github.event_name == 'push' && needs.plan.outputs.should_release == 'true' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: publish-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-plan
+          path: release-input
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: target-*
+          path: release-artifacts
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_API_ID: ${{ vars.MODRINTH_API_ID }}
+          MODRINTH_ZSTD_ID: ${{ vars.MODRINTH_ZSTD_ID }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          CURSEFORGE_MOD_ID: ${{ vars.CURSEFORGE_MOD_ID }}
+          CURSEFORGE_API_ID: ${{ vars.CURSEFORGE_API_ID }}
+          CURSEFORGE_ZSTD_ID: ${{ vars.CURSEFORGE_ZSTD_ID }}
+        run: |
+          python3 .github/scripts/publish_release.py --plan release-input/release-plan.json --artifacts release-artifacts
