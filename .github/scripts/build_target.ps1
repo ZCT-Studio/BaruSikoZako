@@ -17,7 +17,7 @@ $game = $job.game
 $loader = $job.loader
 if ($env:JAVA_HOME_17_X64) { $env:JAVA17_HOME = $env:JAVA_HOME_17_X64 }
 if ($env:JAVA_HOME_25_X64) { $env:JAVA25_HOME = $env:JAVA_HOME_25_X64 }
-$flags = @('--console=plain', '--dependency-verification=strict', '-PstrictReleaseNotices=true', '-Porg.gradle.java.installations.fromEnv=JAVA17_HOME,JAVA21_HOME,JAVA25_HOME', "-PgameVersion=$game")
+$flags = @('--console=plain', '-PstrictReleaseNotices=true', '-Porg.gradle.java.installations.fromEnv=JAVA17_HOME,JAVA21_HOME,JAVA25_HOME', "-PgameVersion=$game")
 switch ($loader) {
     'agent' { $flags += @('-PjavaAgent=true', '-Ploaders=agent') }
     { $_ -in 'fabric','quilt' } { $flags += @("-Ploaders=$loader", "-PdistributionLoader=$loader") }

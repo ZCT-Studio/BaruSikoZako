@@ -28,9 +28,6 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Gradle verification metadata (generated)
-gradle/verification-metadata.xml
-
 # Third-party JARs (downloaded dependencies)
 **/third-party/
 !/platforms/fabric/third-party/

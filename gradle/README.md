@@ -2,8 +2,6 @@
 
 在 IDEA 中打开仓库根目录，使用仓库的 Gradle Wrapper。Gradle 构建需要 Java 17 和 Java 25 toolchain，Gradle JVM 选 Java 25。Gradle 会自动发现标准目录中的 JDK，也可用 `JAVA17_HOME` 和 `JAVA25_HOME` 指定本机路径。
 
-CI 构建显式使用 `--dependency-verification=strict`。本地使用同一参数可按 CI 的方式执行依赖校验。
-
 在本地创建 `gradle/local-target.properties`。下面的配置会在 Gradle 工具窗口显示 Minecraft 26.3 的 Fabric、Forge、NeoForge 本体与 API 项目。
 
 ```properties
