@@ -10,9 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import javax.inject.Inject;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
@@ -31,7 +28,6 @@ import org.gradle.work.DisableCachingByDefault;
 @DisableCachingByDefault(because = "The installer produces a local server distribution")
 public abstract class PrepareFmlRuntime extends DefaultTask {
     @Input public abstract Property<String> getInstallerUrl();
-    @Input public abstract Property<String> getInstallerSha256();
     @Input public abstract Property<String> getPatchedJarPath();
     @Input public abstract Property<String> getOverrideProperty();
     @Internal public abstract Property<Boolean> getOffline();
@@ -41,7 +37,7 @@ public abstract class PrepareFmlRuntime extends DefaultTask {
     @Inject protected abstract ExecOperations getExecOperations();
 
     @TaskAction
-    public void prepare() throws IOException, NoSuchAlgorithmException {
+    public void prepare() throws IOException {
         var directory = getRuntimeDirectory().get().getAsFile().toPath();
         var url = URI.create(getInstallerUrl().get());
         if (getOffline().get()) {
@@ -53,7 +49,7 @@ public abstract class PrepareFmlRuntime extends DefaultTask {
         try (var channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 var lock = channel.lock()) {
             var installer = directory.resolve(url.getPath().substring(url.getPath().lastIndexOf('/') + 1));
-            if (!Files.isRegularFile(installer) || !checksum(installer).equals(getInstallerSha256().get())) {
+            if (!Files.isRegularFile(installer)) {
                 downloadInstaller(url, installer);
             }
             var patchedJar = directory.resolve(getPatchedJarPath().get());
@@ -77,7 +73,7 @@ public abstract class PrepareFmlRuntime extends DefaultTask {
         }
     }
 
-    private void downloadInstaller(URI url, Path installer) throws IOException, NoSuchAlgorithmException {
+    private void downloadInstaller(URI url, Path installer) throws IOException {
         var staging = Files.createTempFile(installer.getParent(), "installer-", ".tmp");
         try {
             var connection = url.toURL().openConnection();
@@ -87,23 +83,10 @@ public abstract class PrepareFmlRuntime extends DefaultTask {
             try (var stream = connection.getInputStream()) {
                 Files.copy(stream, staging, StandardCopyOption.REPLACE_EXISTING);
             }
-            if (!checksum(staging).equals(getInstallerSha256().get())) {
-                throw new GradleException("SHA-256 mismatch for " + url);
-            }
             Files.move(staging, installer, StandardCopyOption.REPLACE_EXISTING);
         } finally {
             Files.deleteIfExists(staging);
         }
     }
 
-    private static String checksum(Path file) throws IOException, NoSuchAlgorithmException {
-        var digest = MessageDigest.getInstance("SHA-256");
-        try (var stream = Files.newInputStream(file)) {
-            byte[] buffer = new byte[8192];
-            for (int count; (count = stream.read(buffer)) != -1;) {
-                digest.update(buffer, 0, count);
-            }
-        }
-        return HexFormat.of().formatHex(digest.digest());
-    }
 }

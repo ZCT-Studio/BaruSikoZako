@@ -208,12 +208,10 @@ for ((loader, version) in versions) {
         if (apiOnly) {
             val repository = if (loader == "neoforge") "https://maven.neoforged.net/releases/net/neoforged/neoforge"
                 else "https://maven.minecraftforge.net/net/minecraftforge/forge"
-            val checksum = requireNotNull(compatibility.getProperty("fml.installer.sha256.$loader.$minecraft"))
             val offlineBuild = gradle.startParameter.isOffline
             val runtimeDirectory = rootProject.layout.projectDirectory.dir(runtimePath)
             tasks.register<PrepareFmlRuntime>("prepareFmlRuntime") {
                 installerUrl.set("$repository/$version/$loader-$version-installer.jar")
-                installerSha256.set(checksum)
                 patchedJarPath.set("libraries/$patchedJar")
                 overrideProperty.set(runtimeProperty)
                 offline.set(offlineBuild)
