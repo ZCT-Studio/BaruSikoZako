@@ -22,16 +22,6 @@ BaruSikoZako 为 Minecraft Java 版保存世界备份。更新整合包前可以
 2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
 3. 首次安装选默认版，内含 Zstd。选 `_L` 版时需另装兼容的备份后端。其他模组调用公开接口时，才需要加装匹配的 `barusikozako_api`。
 
-### 单人游戏实测组合
-
-以下是已实测单人备份与恢复的组合。下载时请按文件标注的 Minecraft 版本和加载器选择。
-
-| 加载器 | 已验证的 Minecraft 版本 |
-| --- | --- |
-| Fabric、Quilt | 1.21.11、26.3 |
-| Forge | 1.20.1、1.21.10、1.21.11、26.1.2、26.2、26.3 |
-| NeoForge | 1.21.1、26.3 |
-
 ## 第一次备份和恢复
 
 1. 运行 `/barusikozako backup`，等备份完成后用 `/barusikozako list` 找到快照 ID。
@@ -82,16 +72,6 @@ Select a file from the project's download page, or download the artifact for you
 2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** Place the JAR in your client instance's `mods` folder and enable commands in the world.
 3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
 
-### Tested singleplayer combinations
-
-These combinations have been tested for singleplayer backup and recovery. Select the file that matches your Minecraft version and loader.
-
-| Loader | Tested Minecraft versions |
-| --- | --- |
-| Fabric and Quilt | 1.21.11, 26.3 |
-| Forge | 1.20.1, 1.21.10, 1.21.11, 26.1.2, 26.2, 26.3 |
-| NeoForge | 1.21.1, 26.3 |
-
 ## Your first backup and restore
 
 1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
@@ -119,4 +99,4 @@ Run server commands as an administrator or from the console. Omit the leading `/
 
 Restart the server or client after editing the YAML settings.
 
-[Changelog](CHANGELOG.md) · [Report an issue](https://github.com/ZCT-Studio/BaruSikoZako/issues) · [MPL-2.0 license](LICENSE)
+[Changelog](CHANGELOG.md) · [MPL-2.0 License](LICENSE)

@@ -1,25 +1,4 @@
-BaruSikoZako backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
-
-## What you can do
-
-- Create full, incremental, and differential backups with the included Zstd backend.
-- Schedule backups in `config/barusikozako/server.yml` or take a snapshot on demand.
-- Keep snapshots locally under `barusikozako/<world>/<backend>/` and verify them before restoring.
-- Exclude selected files with `world.gitignore` or directory-specific `local.gitignore` files.
-
-## Install
-
-1. In **Versions**, select the build for your Minecraft version and Fabric, Quilt, Forge, or NeoForge loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
-2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** Place the JAR in your client instance's `mods` folder and enable commands in the world.
-3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
-
-## Back up and restore
-
-1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
-2. Run `/barusikozako verify <snapshot ID>` and wait for verification to pass.
-3. To roll back, run `/barusikozako restore <snapshot ID>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
-
-Run server commands as an administrator or from the console. Omit the leading `/` in the console.
+<p align="center"><img src="https://raw.githubusercontent.com/ZCT-Studio/BaruSikoZako/refs/heads/main/resource/.public/banner.jpg" alt="BaruSikoZako 项目横幅 / Project banner" width="100%"></p>
 
 <details>
 <summary>简体中文</summary>
@@ -46,4 +25,29 @@ BaruSikoZako 为 Minecraft Java 版保存世界备份。更新整合包前可以
 
 </details>
 
-[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako#readme) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+BaruSikoZako backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
+
+## What you can do
+
+- Create full, incremental, and differential backups with the included Zstd backend.
+- Schedule backups in `config/barusikozako/server.yml` or take a snapshot on demand.
+- Keep snapshots locally under `barusikozako/<world>/<backend>/` and verify them before restoring.
+- Exclude selected files with `world.gitignore` or directory-specific `local.gitignore` files.
+
+## Install
+
+1. In **Versions**, select the build for your Minecraft version and Fabric, Quilt, Forge, or NeoForge loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
+2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** Place the JAR in your client instance's `mods` folder and enable commands in the world.
+3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
+
+## Back up and restore
+
+1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
+2. Run `/barusikozako verify <snapshot ID>` and wait for verification to pass.
+3. To roll back, run `/barusikozako restore <snapshot ID>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
+
+Run server commands as an administrator or from the console. Omit the leading `/` in the console.
+
+---
+
+[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako/blob/main/README.md) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues/new)
