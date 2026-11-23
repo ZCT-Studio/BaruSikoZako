@@ -244,11 +244,21 @@ def main():
     build_only = args.build_only or force_build
     changed = git("diff", "--name-only", "-z", base, "HEAD").split("\0") if available else []
     old = previous_catalog(base) if available and not build_only else None
+    try:
+        markdown = Path("CHANGELOG.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        markdown = ""
     result = plan(read_table(Path("versions.json5").read_text(encoding="utf-8")),
                   read_table(Path("releases.json5").read_text(encoding="utf-8")), old,
-                  message, changed,
-                  Path("CHANGELOG.md").read_text(encoding="utf-8"),
+                  message, changed, markdown,
                   build_only=build_only, force_build=force_build)
+    if result["should_release"]:
+        commit = git("rev-parse", "HEAD").strip()
+        footer = ("\n\n---\n\nFull changelog / 完整更新日志:\n\n"
+                  f"[CHANGELOG.md](https://github.com/ZCT-Studio/BaruSikoZako/blob/{commit}/CHANGELOG.md)")
+        for job in result["jobs"]:
+            for asset in job["assets"]:
+                asset["notes"] += footer
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if output := os.environ.get("GITHUB_OUTPUT"):
         with Path(output).open("a", encoding="utf-8") as stream:

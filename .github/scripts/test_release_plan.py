@@ -495,12 +495,16 @@ class TestReleasePlan(unittest.TestCase):
         for message, options, publishes in cases:
             with self.subTest(message=message, options=options), tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / "plan.json"
+                commit = "a" * 40
+                changelog = "## [1.0.0]\n\nInitial release." if "force-relaese" in message else ""
                 files = {"versions.json5": json.dumps(self.sample_versions),
-                         "releases.json5": json.dumps(self.sample_releases), "CHANGELOG.md": ""}
+                         "releases.json5": json.dumps(self.sample_releases), "CHANGELOG.md": changelog}
 
                 def git_missing_base(*args, **_):
                     if args[0] == "log":
                         return message
+                    if args == ("rev-parse", "HEAD"):
+                        return commit + "\n"
                     self.assertEqual(args[0], "rev-parse")
                     return None
 
@@ -513,6 +517,13 @@ class TestReleasePlan(unittest.TestCase):
                 if publishes:
                     self.assertTrue(result["force_release"])
                     self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
+                    body = ("Initial release." if changelog else
+                            "_No changelog for this release_\n\n_本次发布未找到更新日志_")
+                    expected = (f"{body}\n\n---\n\nFull changelog / 完整更新日志:\n\n"
+                                f"[CHANGELOG.md](https://github.com/ZCT-Studio/BaruSikoZako/blob/{commit}/CHANGELOG.md)")
+                    for job in result["jobs"]:
+                        for asset in job["assets"]:
+                            self.assertEqual(asset["notes"], expected)
 
     def test_version_table_edit_without_effective_version_change_is_a_no_op(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
