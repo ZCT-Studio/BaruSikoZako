@@ -59,7 +59,7 @@ BaruSikoZako（杂鱼备份） 为 Minecraft Java 版保存世界备份。更新
 
 ## About
 
-BaruSikoZako(ZakoBackup) backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
+BaruSikoZako(ZakoBak) backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
 
 ## Features
 

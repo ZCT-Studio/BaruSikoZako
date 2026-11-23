@@ -1,6 +1,6 @@
 <p align="center"><img src="https://raw.githubusercontent.com/ZCT-Studio/BaruSikoZako/refs/heads/main/resource/.public/banner.jpg" alt="BaruSikoZako 项目横幅 / Project banner" width="100%"></p>
 
-BaruSikoZako(ZakoBackup) backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
+BaruSikoZako(ZakoBak) backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
 
 ## What you can do
 

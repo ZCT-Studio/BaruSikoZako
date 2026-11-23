@@ -25,7 +25,7 @@
   "command.snapshots_empty": "No committed snapshots on this page.",
   "command.query_failed": "Snapshot query failed. See server log.",
   "command.config_saved": "Configuration saved. Restart the server to apply it.",
-  "notice.world_restored": "[BaruSikoZako] World %s was rolled back. Backup time: %s(UTC)",
+  "notice.world_restored": "[ZakoBak] World %s was rolled back. Backup time: %s(UTC)",
   "notice.snapshot_time_unavailable": "unavailable",
   "command.config_rejected": "Configuration change rejected. See server log.",
   "command.config_path": "Configuration: config/barusikozako/%s.yml (restart to apply)",
