@@ -253,9 +253,11 @@ def main():
                   message, changed, markdown,
                   build_only=build_only, force_build=force_build)
     if result["should_release"]:
+        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+        repository = os.environ.get("GITHUB_REPOSITORY", "ZCT-Studio/BaruSikoZako")
         commit = git("rev-parse", "HEAD").strip()
         footer = ("\n\n---\n\nFull changelog / 完整更新日志:\n\n"
-                  f"[CHANGELOG.md](https://github.com/ZCT-Studio/BaruSikoZako/blob/{commit}/CHANGELOG.md)")
+                  f"[CHANGELOG.md]({server}/{repository}/blob/{commit}/CHANGELOG.md)\n")
         for job in result["jobs"]:
             for asset in job["assets"]:
                 asset["notes"] += footer

@@ -509,8 +509,14 @@ class TestReleasePlan(unittest.TestCase):
                     return None
 
                 args = ["release_plan.py", "--base", "f" * 40, "--output", str(output), *options]
-                with patch.object(sys, "argv", args), patch.object(Path, "read_text", autospec=True,
-                        side_effect=lambda path, **_: files[path.name]), patch("release_plan.git", git_missing_base):
+                github_env = {"GITHUB_SERVER_URL": "https://github.example",
+                              "GITHUB_REPOSITORY": "Example/BaruSikoZako"}
+                with (
+                    patch.dict(os.environ, github_env),
+                    patch.object(sys, "argv", args),
+                    patch.object(Path, "read_text", autospec=True, side_effect=lambda path, **_: files[path.name]),
+                    patch("release_plan.git", git_missing_base),
+                ):
                     release_plan.main()
                 result = json.loads(output.read_text(encoding="utf-8"))
                 self.assertEqual(publishes, result["should_release"])
@@ -520,7 +526,7 @@ class TestReleasePlan(unittest.TestCase):
                     body = ("Initial release." if changelog else
                             "_No changelog for this release_\n\n_本次发布未找到更新日志_")
                     expected = (f"{body}\n\n---\n\nFull changelog / 完整更新日志:\n\n"
-                                f"[CHANGELOG.md](https://github.com/ZCT-Studio/BaruSikoZako/blob/{commit}/CHANGELOG.md)")
+                                f"[CHANGELOG.md](https://github.example/Example/BaruSikoZako/blob/{commit}/CHANGELOG.md)\n")
                     for job in result["jobs"]:
                         for asset in job["assets"]:
                             self.assertEqual(asset["notes"], expected)
