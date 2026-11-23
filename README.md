@@ -19,12 +19,12 @@ BaruSikoZako 为 Minecraft Java 版保存世界备份。更新整合包前可以
 在项目平台的版本列表选择下载项，也可以从 GitHub 的成功构建中下载对应加载器和 Minecraft 版本的产物。 [GitHub 构建产物](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml)
 
 1. 选择与你的 Minecraft 版本和加载器匹配的文件。可用组合以下载项为准。Minecraft 1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。
-2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**在支持的组合上，将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
+2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
 3. 首次安装选默认版，内含 Zstd。选 `_L` 版时需另装兼容的备份后端。其他模组调用公开接口时，才需要加装匹配的 `barusikozako_api`。
 
-### 单人游戏兼容性
+### 单人游戏实测组合
 
-以下是已验证单人备份与恢复的组合。独立服务器请按下载文件的标签选择。
+以下是已实测单人备份与恢复的组合。下载时请按文件标注的 Minecraft 版本和加载器选择。
 
 | 加载器 | 已验证的 Minecraft 版本 |
 | --- | --- |
@@ -79,12 +79,12 @@ BaruSikoZako backs up Minecraft: Java Edition worlds. Take a snapshot before upd
 Select a file from the project's download page, or download the artifact for your Minecraft version and loader from a successful GitHub build. [GitHub build artifacts](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml)
 
 1. Select a file for your Minecraft version and loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
-2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** On a supported build, place the JAR in your client instance's `mods` folder and enable commands in the world.
+2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** Place the JAR in your client instance's `mods` folder and enable commands in the world.
 3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
 
-### Singleplayer compatibility
+### Tested singleplayer combinations
 
-These combinations have been tested for singleplayer backup and recovery. For dedicated servers, use the Minecraft and loader labels on the download.
+These combinations have been tested for singleplayer backup and recovery. Select the file that matches your Minecraft version and loader.
 
 | Loader | Tested Minecraft versions |
 | --- | --- |

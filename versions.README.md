@@ -15,6 +15,7 @@
 - `[no-modrinth]` 跳过 Modrinth 文件发布，`[no-curseforge]` 跳过 CurseForge 文件发布。可以和 `[force-release]` 组合。同时使用两个标记时，仍按常规规则构建。
 - CurseForge 先提交主模组文件。若平台返回 1018 并拒绝关联必需的主项目，工作流会告警并暂缓受影响的 API 或 Zstd 文件。主项目可被关联后，可重跑发布作业补发。
 - 当前发布工作流运行构建与自动化检查。实际服务端验收需单独进行。
+- 所有模组发布目标均标记为可用于独立服务器和单人游戏。Modrinth 使用 `server_only`，CurseForge 同时使用 `Client` 和 `Server`。
 - Modrinth 使用主项目 slug `barusikozako` 查找项目 ID。CurseForge 使用 `CURSEFORGE_MOD_ID`，并核对其 slug 同为 `barusikozako`。API 和后端分别使用各自的项目变量。
 - 两个平台上，独立 API 和 Zstd 文件都将主模组标记为必需依赖。加载器标签来自发布目标，只有实际共用同一产物的 Fabric 和 Quilt 才共用两个标签。主模组可独立安装，调用公开接口的外部模组需额外安装对应的独立 API JAR。
 

@@ -12,7 +12,7 @@ Back up your Minecraft: Java Edition world before a modpack update or a big buil
 ## Installation
 
 1. Under **Files**, choose the build for your Minecraft version and Fabric, Quilt, Forge, or NeoForge loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
-2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** On a supported build, place the JAR in your client instance's `mods` folder and enable commands in the world.
+2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** Place the JAR in your client instance's `mods` folder and enable commands in the world.
 3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
 
 ## Back up and restore
@@ -32,7 +32,7 @@ Run server commands as an administrator or from the console. Omit the leading `/
 ### 安装
 
 1. 在 **Files** 中选择与你的 Minecraft 版本及 Fabric、Quilt、Forge 或 NeoForge 加载器匹配的文件。Minecraft 1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。
-2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**在支持的组合上，将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
+2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
 3. 首次安装选默认版，内含 Zstd。选 `_L` 版时需另装兼容的备份后端。其他模组调用公开接口时，才需要加装匹配的 `barusikozako_api`。
 
 ### 备份和恢复

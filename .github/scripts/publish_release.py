@@ -22,16 +22,7 @@ FIELDS = {"mod": "MOD", "api": "API", "zstd": "ZSTD"}
 MAIN_SLUG = "barusikozako"
 REQUIRED_PROJECTS = {"api": ("mod",), "zstd": ("mod",), "mod": ()}
 LOADERS = {"fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge"}
-VERIFIED_SINGLEPLAYER_TARGETS = {
-    "forge1.20.1", "neoforge1.21.1", "forge1.21.10",
-    "fabric1.21.11", "quilt1.21.11", "forge1.21.11",
-    "forge26.1.2", "forge26.2",
-    "fabric26.3", "quilt26.3", "forge26.3", "neoforge26.3",
-}
-
-
-def supports_singleplayer(job):
-    return all(loader + job["game"] in VERIFIED_SINGLEPLAYER_TARGETS for loader in storefront_loaders(job))
+MODRINTH_ENVIRONMENT = "server_only"
 
 
 def storefront_loaders(job):
@@ -158,7 +149,6 @@ def modrinth(job, entry, files, ids, *, force_run=None):
     project = ids[component]
     auth = ("Authorization", env("MODRINTH_TOKEN"))
     loaders = storefront_loaders(job)
-    environment = "server_only" if supports_singleplayer(job) else "dedicated_server_only"
     dependencies = [{"project_id": ids[required], "dependency_type": "required"}
                     for required in REQUIRED_PROJECTS[component]]
     version = entry["version"] + ("." if "+" in entry["version"] else "+") + job["target"]
@@ -187,16 +177,16 @@ def modrinth(job, entry, files, ids, *, force_run=None):
             fields["dependencies"] = unmanaged + dependencies
         if fields:
             request(f"{MODRINTH}/version/{old['id']}", "PATCH", auth=auth, fields=("json", fields))
-        if "environment" in old and old["environment"] != environment:
+        if old.get("environment") != MODRINTH_ENVIRONMENT:
             # v2 的版本编辑接口不更新运行环境
             route = MODRINTH.removesuffix("/v2") + f"/v3/version/{old['id']}"
-            request(route, "PATCH", auth=auth, fields=("json", {"minecraft_mod": {"environment": environment}}))
+            request(route, "PATCH", auth=auth, fields=("json", {"minecraft_mod": {"environment": MODRINTH_ENVIRONMENT}}))
         return
     parts = [(f"jar{i}", file) for i, file in enumerate(files)]
     metadata = {"project_id": project, "name": f'{entry["version"]} · {job["target"]}', "version_number": version,
                 "changelog": entry["notes"], "game_versions": [job["game"]], "loaders": loaders,
                 "version_type": TYPES[entry["channel"]],
-                "environment": environment,
+                "environment": MODRINTH_ENVIRONMENT,
                 "featured": False, "file_parts": [part for part, _ in parts], "primary_file": parts[0][0],
                 "dependencies": dependencies}
     request(f"{MODRINTH}/version", "POST", auth=auth, fields=("data", metadata), files=parts)
@@ -204,8 +194,7 @@ def modrinth(job, entry, files, ids, *, force_run=None):
 
 def curseforge_versions(job):
     # 由上传 API 在项目上下文中解析标签名称
-    environments = ["Client", "Server"] if supports_singleplayer(job) else ["Server"]
-    return [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job)), *environments]
+    return [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job)), "Client", "Server"]
 
 
 def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):

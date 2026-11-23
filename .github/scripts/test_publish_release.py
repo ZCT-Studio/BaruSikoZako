@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import publish_release as publish
-from release_plan import code_changed
+from release_plan import code_changed, read_table, targets
 
 
 class StorefrontTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class StorefrontTests(unittest.TestCase):
     def test_modrinth_retry_repairs_loader_and_dependency(self, request):
         request.side_effect = [{"files": [{"filename": self.file.name,
                                            "hashes": {"sha512": publish.digest(self.file, "sha512")}}],
-                                "id": "existing", "loaders": ["fabric"], "game_versions": ["26.3"],
+                                "id": "existing", "loaders": ["fabric"], "game_versions": ["26.3"], "environment": "server_only",
                                 "dependencies": [{"project_id": "external", "dependency_type": "required"}]}, {}]
         publish.modrinth(self.job("quilt"), self.entry("api"), [self.file], self.ids)
         self.assertEqual(request.call_args.args, (publish.MODRINTH + "/version/existing", "PATCH"))
@@ -56,27 +56,31 @@ class StorefrontTests(unittest.TestCase):
                                                   {"project_id": "11", "dependency_type": "required"}]}))
 
     @patch.object(publish, "request")
-    def test_modrinth_marks_verified_singleplayer_target(self, request):
-        request.side_effect = [None, {}]
-        job = dict(self.job("forge"), game="1.20.1", target="forge1.20.1")
-        publish.modrinth(job, self.entry("mod"), [self.file], self.ids)
-        self.assertEqual(request.call_args.kwargs["fields"][1]["environment"], "server_only")
+    def test_all_storefront_targets_support_dedicated_servers_and_singleplayer(self, request):
+        catalog = Path(__file__).resolve().parents[2] / "releases.json5"
+        for game, loader in targets(read_table(catalog.read_text(encoding="utf-8"))):
+            if loader not in publish.LOADERS:
+                continue
+            for component in self.ids:
+                with self.subTest(game=game, loader=loader, component=component):
+                    job = dict(self.job(loader), game=game, target=loader + game)
+                    request.side_effect = [None, {}]
+                    publish.modrinth(job, self.entry(component), [self.file], self.ids)
+                    self.assertEqual(request.call_args.kwargs["fields"][1]["environment"], "server_only")
+                    self.assertEqual(publish.curseforge_versions(job),
+                                     [game, publish.LOADERS[loader], "Client", "Server"])
 
     @patch.object(publish, "request")
     def test_modrinth_updates_environment_of_existing_version(self, request):
-        request.side_effect = [{"id": "existing", "environment": "dedicated_server_only",
-                                "loaders": ["fabric", "quilt"], "game_versions": ["26.3"],
-                                "files": [{"filename": self.file.name,
-                                           "hashes": {"sha512": publish.digest(self.file, "sha512")}}]}, None]
-        publish.modrinth(self.job("fabric", "quilt"), self.entry("mod"), [self.file], self.ids)
-        self.assertEqual(request.call_args.args, ("https://api.modrinth.com/v3/version/existing", "PATCH"))
-        self.assertEqual(request.call_args.kwargs["fields"], ("json", {"minecraft_mod": {"environment": "server_only"}}))
-
-    def test_shared_release_requires_singleplayer_evidence_for_every_loader(self):
-        with patch.object(publish, "VERIFIED_SINGLEPLAYER_TARGETS", {"fabric26.3"}):
-            self.assertFalse(publish.supports_singleplayer(self.job("fabric", "quilt")))
-            self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt")),
-                             ["26.3", "Fabric", "Quilt", "Server"])
+        for previous in ({"environment": "dedicated_server_only"}, {}):
+            with self.subTest(previous=previous):
+                request.side_effect = [dict(previous, id="existing", loaders=["fabric", "quilt"],
+                                            game_versions=["26.3"], files=[{"filename": self.file.name,
+                                                "hashes": {"sha512": publish.digest(self.file, "sha512")}}]), None]
+                publish.modrinth(self.job("fabric", "quilt"), self.entry("mod"), [self.file], self.ids)
+                self.assertEqual(request.call_args.args, ("https://api.modrinth.com/v3/version/existing", "PATCH"))
+                self.assertEqual(request.call_args.kwargs["fields"],
+                                 ("json", {"minecraft_mod": {"environment": "server_only"}}))
 
     @patch.object(publish, "request")
     def test_curseforge_all_loader_labels_and_dependencies(self, request):
