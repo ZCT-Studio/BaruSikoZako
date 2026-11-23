@@ -47,4 +47,4 @@ BaruSikoZako 为 Minecraft Java 版保存世界备份。更新整合包前可以
 
 ---
 
-[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako/blob/main/README.md) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues/new)
+[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako/blob/main/README.md) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues/new?title=%5BMod%5D%7C)

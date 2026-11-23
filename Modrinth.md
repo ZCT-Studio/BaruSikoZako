@@ -50,4 +50,4 @@ Run server commands as an administrator or from the console. Omit the leading `/
 
 ---
 
-[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako/blob/main/README.md) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues/new)
+[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako/blob/main/README.md) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues/new?title=%5BMod%5D%7C)
