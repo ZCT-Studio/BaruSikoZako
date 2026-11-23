@@ -1,46 +1,48 @@
 # BaruSikoZako
 
-## About
-
-BaruSikoZako adds world backups to Minecraft Java Edition servers. Use it to keep regular recovery points or make a manual backup before changing mods, updating the server, or working on the world.
+Back up your Minecraft: Java Edition world before a modpack update or a big building session. BaruSikoZako can take compressed snapshots manually or on a schedule, verify a backup, and restore the world before it next loads.
 
 ## Features
 
-- **Full, incremental, and differential backups** with Zstd compression and local snapshot storage.
-- **Manual and scheduled backups** from the server console or administrator commands, with scheduling in `config/barusikozako/server.yml`.
-- **Snapshot verification and recovery**. Check the contents of an archive and queue a restore for the next server startup, before the world loads.
-- **Configurable exclusions** using `world.gitignore` and per-directory `local.gitignore` rules.
+- Full, incremental, and differential backups with the bundled Zstd backend.
+- Local snapshots under `barusikozako/<world>/<backend>/` in the server or client instance.
+- Scheduled backups through `config/barusikozako/server.yml`.
+- File exclusions through `world.gitignore` and directory-specific `local.gitignore` files.
 
 ## Installation
 
-1. In **Files**, select the build for your Minecraft version and loader. Look for the matching Fabric, Quilt, Forge, or NeoForge file.
-2. Put the standard JAR in your server's `mods` folder and use the Java runtime required by the file. The standard build includes the Zstd backend. Players do not need to install the mod on their clients.
-3. Run `/barusikozako backup` from the server console or as an administrator. Run `/barusikozako list` to find the resulting snapshot ID.
+1. Under **Files**, choose the build for your Minecraft version and Fabric, Quilt, Forge, or NeoForge loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
+2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** On a supported build, place the JAR in your client instance's `mods` folder and enable commands in the world.
+3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
 
-Choose the `_L` variant if you plan to install a compatible backend separately. Add the matching standalone API only if another mod uses the public integration API.
+## Back up and restore
 
-Singleplayer backups and restores have been tested on Forge (1.20.1, 1.21.10, 1.21.11, 26.1.2 and 26.2), NeoForge 1.21.1, Fabric and Quilt 1.21.11, and Fabric, Quilt, Forge and NeoForge 26.3. Install the matching JAR in your client instance's `mods` folder. Enable commands for the world to run backup and verification. To restore in singleplayer, queue a restore, exit the world and reopen it. The request survives a client restart.
+1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
+2. Run `/barusikozako verify <snapshot ID>` and wait for verification to pass.
+3. To roll back, run `/barusikozako restore <snapshot ID>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
 
-## Common commands
-
-- `/barusikozako backup` starts a backup using the configured mode.
-- `/barusikozako verify <snapshot ID>` verifies the selected snapshot.
-- `/barusikozako restore <snapshot ID>` queues recovery. Restart the server to apply it.
-
-Snapshots are stored in `barusikozako/<world>/<backend>/` by default.
+Run server commands as an administrator or from the console. Omit the leading `/` in the console.
 
 ---
 
 ## 简体中文
 
-BaruSikoZako 为 Minecraft Java 版服务器提供世界备份。你可以定时保留恢复点，也可以在更新服务器、更换模组或改动世界之前手动备份。
+更新整合包或大规模改造世界前，可以用 BaruSikoZako 为 Minecraft Java 版世界留一份快照。默认版内置 Zstd，支持全量、增量和差异备份。快照保存在实例根目录下的 `barusikozako/<存档名>/<后端>/`。需要定时备份时，编辑 `config/barusikozako/server.yml`。可通过 `world.gitignore` 和各目录下的 `local.gitignore` 排除文件。
 
-- **备份与校验**支持 Zstd 压缩的全量、增量和差异备份。快照默认保存在服务端的 `barusikozako/<world>/<backend>/`。
-- **定时与排除**可在 `config/barusikozako/server.yml` 中配置定时备份，并通过 `world.gitignore` 和各目录下的 `local.gitignore` 排除文件。
-- **安装**时，在 **Files** 中选择与你的 Minecraft 版本及 Fabric、Quilt、Forge 或 NeoForge 加载器匹配的文件。将默认版 JAR 放入服务器的 `mods` 目录，并使用所下载文件要求的 Java 启动。默认版已内置 Zstd，玩家客户端无需安装。选择 `_L` 版时需另装后端，外部模组调用公开接口时才需加装独立 API。
-- **使用**时，管理员可执行 `/barusikozako backup` 开始备份，执行 `/barusikozako list` 查看快照 ID，再用 `/barusikozako verify <快照 ID>` 校验。执行 `/barusikozako restore <快照 ID>` 后重启，恢复会在世界加载前执行。
-- **单人游戏**已在 Forge 1.20.1／1.21.10／1.21.11／26.1.2／26.2、NeoForge 1.21.1、Fabric／Quilt 1.21.11，以及 26.3 的 Fabric、Quilt、Forge、NeoForge 验证备份与回滚。将对应 JAR 放入客户端实例的 `mods` 目录，并在允许指令的世界里使用。单人回滚请先执行恢复指令，再退出世界并重新进入。重启客户端会保留请求。
+### 安装
+
+1. 在 **Files** 中选择与你的 Minecraft 版本及 Fabric、Quilt、Forge 或 NeoForge 加载器匹配的文件。Minecraft 1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。
+2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**在支持的组合上，将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
+3. 首次安装选默认版，内含 Zstd。选 `_L` 版时需另装兼容的备份后端。其他模组调用公开接口时，才需要加装匹配的 `barusikozako_api`。
+
+### 备份和恢复
+
+1. 运行 `/barusikozako backup`，等备份完成后用 `/barusikozako list` 找到快照 ID。
+2. 运行 `/barusikozako verify <快照 ID>`，确认快照通过完整校验。
+3. 想回滚时，运行 `/barusikozako restore <快照 ID>`。独立服务器需要重启，单人游戏需要退出并重新进入存档。恢复会在世界加载前替换当前存档。
+
+服务端命令可由管理员或服务器控制台执行。在控制台输入命令时省略开头的 `/`。
 
 ## Links / 相关链接
 
-[Documentation / 项目文档](https://github.com/ZCT-Studio/BaruSikoZako#readme) · [Issue tracker / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+[User guide / 使用说明](https://github.com/ZCT-Studio/BaruSikoZako#readme) · [Report an issue / 问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)

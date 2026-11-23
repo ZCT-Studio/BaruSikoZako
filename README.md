@@ -5,92 +5,118 @@
 
 ## 简介
 
-BaruSikoZako 是 Minecraft Java 版的服务端世界备份模组。服务器运行时可以手动或定时创建备份，并在需要恢复时校验快照。恢复请求在服务器下次启动、世界加载前执行。
+BaruSikoZako 为 Minecraft Java 版保存世界备份。更新整合包前可以手动留一份快照，平时也可以定时备份。需要回滚时，可先校验快照，再让游戏在下次打开世界前恢复。
 
 ## 功能
 
-- **世界备份**支持全量、增量和差异备份。默认版内置 Zstd 后端，将压缩快照保存到服务端本地。
-- **定时与手动备份**共用一个备份仓库。管理员可以列出快照、校验归档和查看任务状态。
-- **存档排除规则**支持全局 `world.gitignore` 和世界子目录中的 `local.gitignore`。
-- **独立 API**供外部模组接入备份服务和生命周期回调。服务端管理员通过 `server.yml` 为集成授权。
+- 全量备份保存完整世界。增量备份记录上一次备份后发生的变化，差异备份记录相对于指定全量快照的变化。
+- 默认版使用 Zstd 压缩，将快照保存在本地。
+- 可手动或定时备份，列出快照并校验归档。
+- 可用 `world.gitignore` 和存档子目录中的 `local.gitignore` 排除文件。
 
-## 安装
+## 下载与安装
 
-1. 从发布文件中选择与你的 Minecraft 版本和加载器匹配的 JAR。模组构建目标包括 Fabric、Quilt、Forge 和 NeoForge。请以下载文件标注的版本和加载器为准。
-2. 将默认版 JAR 放入服务器的 `mods` 目录。请选择与构建匹配的 Java，1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。默认版已包含 Zstd 后端，联机玩家无需安装。单人备份在客户端实例的 `mods` 目录安装，单人备份与回滚已在 Forge 1.20.1／1.21.10／1.21.11／26.1.2／26.2、NeoForge 1.21.1、Fabric／Quilt 1.21.11，以及 26.3 的 Fabric、Quilt、Forge、NeoForge 验证。
-3. 运行 `/barusikozako backup` 创建首个备份，再用 `/barusikozako list` 查看快照 ID。
+在项目平台的版本列表选择下载项，也可以从 GitHub 的成功构建中下载对应加载器和 Minecraft 版本的产物。 [GitHub 构建产物](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml)
 
-默认版和标有 `_L` 的无后端版二选一。`_L` 版需要安装兼容的后端才能备份。如有外部模组调用公开接口，再安装对应 Minecraft 版本及加载器的 `barusikozako_api`。
+1. 选择与你的 Minecraft 版本和加载器匹配的文件。可用组合以下载项为准。Minecraft 1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。
+2. **独立服务器**将 JAR 放入服务器的 `mods` 目录。联机玩家无需在客户端安装本模组。**单人游戏**在支持的组合上，将 JAR 放入客户端实例的 `mods` 目录，并在允许使用指令的世界中操作。
+3. 首次安装选默认版，内含 Zstd。选 `_L` 版时需另装兼容的备份后端。其他模组调用公开接口时，才需要加装匹配的 `barusikozako_api`。
 
-## 常用命令
+### 单人游戏兼容性
+
+以下是已验证单人备份与恢复的组合。独立服务器请按下载文件的标签选择。
+
+| 加载器 | 已验证的 Minecraft 版本 |
+| --- | --- |
+| Fabric、Quilt | 1.21.11、26.3 |
+| Forge | 1.20.1、1.21.10、1.21.11、26.1.2、26.2、26.3 |
+| NeoForge | 1.21.1、26.3 |
+
+## 第一次备份和恢复
+
+1. 运行 `/barusikozako backup`，等备份完成后用 `/barusikozako list` 找到快照 ID。
+2. 运行 `/barusikozako verify <快照 ID>`，确认快照通过完整校验。
+3. 想回滚时，运行 `/barusikozako restore <快照 ID>`。独立服务器需要重启，单人游戏需要退出并重新进入存档。恢复会在世界加载前替换当前存档。
+
+服务端命令可由管理员或服务器控制台执行。在控制台输入命令时省略开头的 `/`。
+
+### 其他常用命令
 
 | 命令 | 用途 |
 | --- | --- |
-| `/barusikozako status` | 查看备份服务状态 |
-| `/barusikozako backup` | 按后端配置创建备份 |
-| `/barusikozako full` | 使用 Zstd 后端手动创建全量备份 |
-| `/barusikozako list` | 列出已提交的快照 |
-| `/barusikozako verify <快照 ID>` | 完整校验指定快照 |
-| `/barusikozako restore <快照 ID>` | 登记恢复请求，重启时在世界加载前执行 |
+| `/barusikozako status` | 查看备份服务是否可用 |
+| `/barusikozako full` | 使用 Zstd 创建一次全量备份 |
+| `/barusikozako task <任务 ID>` | 查看备份或校验任务的状态 |
 
-这些命令需要管理员权限，也可从服务器控制台执行。恢复会替换正在使用的世界数据，请先确认快照 ID 后再重启。
-
-## 配置与数据
+## 配置与备份位置
 
 | 路径 | 用途 |
 | --- | --- |
-| `config/barusikozako/server.yml` | 定时备份、后端选择、世界捕获和 API 授权 |
-| `config/barusikozako/barusikozako_backendzstd.yml` | Zstd 压缩、备份模式和全量轮换 |
-| `config/barusikozako/world.gitignore` | 世界备份的全局排除规则 |
-| `config/barusikozako/repository/` | 默认本地快照仓库，位于世界目录之外 |
+| `config/barusikozako/server.yml` | 在 `schedule.intervalSeconds` 中设置备份间隔。填 `0` 可关闭定时备份。 |
+| `config/barusikozako/barusikozako_backendzstd.yml` | 设置压缩、备份模式和全量轮换。 |
+| `config/barusikozako/world.gitignore` | 为世界备份设置全局文件排除规则。 |
+| `barusikozako/<存档名>/<后端>/` | 保存在服务器根目录或单人游戏实例根目录下的快照。与世界目录分开存放。 |
 
-## 开发与链接
+修改 YAML 配置后，重启服务器或客户端以应用设置。
 
-使用仓库自带的 Gradle Wrapper，并为构建配置 Java 17 和 Java 25 工具链。参见[构建指南](gradle/README.md)、[发布目标](releases.README.md)、[更新记录](CHANGELOG.md)和[许可证](LICENSE)。[GitHub Actions](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml) · [问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+[更新记录](CHANGELOG.md) · [问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues) · [MPL-2.0 许可证](LICENSE)
 
 </details>
 
 ## About
 
-BaruSikoZako is a server-side world backup mod for Minecraft Java Edition. Create backups on demand or on a schedule while the server is running, and verify snapshots before you need them. A queued restore runs before the world loads on the next server startup.
+BaruSikoZako backs up Minecraft: Java Edition worlds. Take a snapshot before updating a modpack, schedule regular backups, and verify the snapshot you want to restore before opening the world again.
 
 ## Features
 
-- **World backups** support full, incremental, and differential modes. The standard build includes a Zstd backend that stores compressed snapshots on the server.
-- **Scheduled and manual backups** use the same repository. Admins can list snapshots, verify their contents, and check task status.
-- **File exclusions** use a global `world.gitignore` and per-directory `local.gitignore` files inside the world.
-- **Optional integration API** lets other mods use backup services and lifecycle hooks. Admins grant permissions in `server.yml`.
+- Full backups capture the entire world. Incremental backups store changes since the previous backup. Differential backups store changes since a selected full backup.
+- The standard build compresses snapshots with Zstd and keeps them on the same machine.
+- Run backups on demand or on a schedule, list snapshots, and verify archives.
+- Exclude files through `world.gitignore` and `local.gitignore` files inside the world.
 
-## Installation
+## Download and install
 
-1. Pick the JAR for your Minecraft version and loader. Build targets include Fabric, Quilt, Forge, and NeoForge. Check the release file for its exact compatibility.
-2. Place the standard JAR in the server's `mods` directory and use the Java version for your build (17 for Minecraft 1.20.1, 21 for 1.21.x, or 25 for 26.x). The JAR includes the Zstd backend, and multiplayer guests can join without installing it. For singleplayer backups, install it in the client instance's `mods` directory. Singleplayer backups and restores have been tested on Forge (1.20.1, 1.21.10, 1.21.11, 26.1.2 and 26.2), NeoForge 1.21.1, Fabric and Quilt 1.21.11, and Fabric, Quilt, Forge and NeoForge 26.3.
-3. Run `/barusikozako backup` to create your first snapshot, then find its ID with `/barusikozako list`.
+Select a file from the project's download page, or download the artifact for your Minecraft version and loader from a successful GitHub build. [GitHub build artifacts](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml)
 
-Install either the standard build or the `_L` build. The `_L` build needs a compatible backend to create backups. Install the matching `barusikozako_api` only when another mod uses the public integration API.
+1. Select a file for your Minecraft version and loader. Use Java 17 for Minecraft 1.20.1, Java 21 for 1.21.x, or Java 25 for 26.x.
+2. **Dedicated server:** Place the JAR in the server's `mods` folder. Players can join without this mod installed on their clients. **Singleplayer:** On a supported build, place the JAR in your client instance's `mods` folder and enable commands in the world.
+3. Start with the standard build, which includes Zstd. The `_L` variant needs a separately installed backend. Add the matching `barusikozako_api` only if another mod uses the integration API.
 
-## Common commands
+### Singleplayer compatibility
+
+These combinations have been tested for singleplayer backup and recovery. For dedicated servers, use the Minecraft and loader labels on the download.
+
+| Loader | Tested Minecraft versions |
+| --- | --- |
+| Fabric and Quilt | 1.21.11, 26.3 |
+| Forge | 1.20.1, 1.21.10, 1.21.11, 26.1.2, 26.2, 26.3 |
+| NeoForge | 1.21.1, 26.3 |
+
+## Your first backup and restore
+
+1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
+2. Run `/barusikozako verify <snapshot ID>` and wait for verification to pass.
+3. To roll back, run `/barusikozako restore <snapshot ID>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
+
+Run server commands as an administrator or from the console. Omit the leading `/` in the console.
+
+### Other useful commands
 
 | Command | Purpose |
 | --- | --- |
-| `/barusikozako status` | Show the state of the backup service |
-| `/barusikozako backup` | Create a backup using the configured mode |
-| `/barusikozako full` | Create a full backup with the Zstd backend |
-| `/barusikozako list` | List committed snapshots |
-| `/barusikozako verify <snapshot ID>` | Fully verify a snapshot |
-| `/barusikozako restore <snapshot ID>` | Queue a restore before the world loads on the next startup |
+| `/barusikozako status` | Check if the backup service is available |
+| `/barusikozako full` | Create a full backup with Zstd |
+| `/barusikozako task <task ID>` | Check the progress of a backup or verification task |
 
-Run these commands as an administrator or from the server console. A restore replaces the active world data, so confirm the snapshot ID before restarting.
-
-## Configuration and data
+## Configuration and backup location
 
 | Path | Purpose |
 | --- | --- |
-| `config/barusikozako/server.yml` | Backup schedule, backend selection, world capture, and API permissions |
-| `config/barusikozako/barusikozako_backendzstd.yml` | Zstd compression, backup mode, and full-backup rotation |
-| `config/barusikozako/world.gitignore` | Global world backup exclusions |
-| `config/barusikozako/repository/` | Default local snapshot repository, outside the world directory |
+| `config/barusikozako/server.yml` | Set the backup interval in `schedule.intervalSeconds`. Use `0` to disable scheduled backups. |
+| `config/barusikozako/barusikozako_backendzstd.yml` | Configure compression, backup mode, and full-backup rotation. |
+| `config/barusikozako/world.gitignore` | Define file exclusions for world backups. |
+| `barusikozako/<world>/<backend>/` | Local snapshots, stored separately from the world under the server or client instance root. |
 
-## Development and links
+Restart the server or client after editing the YAML settings.
 
-Use the Gradle Wrapper with Java 17 and Java 25 toolchains. See the [build guide](gradle/README.md), [release targets](releases.README.md), [changelog](CHANGELOG.md), and [MPL-2.0 license](LICENSE). [GitHub Actions](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml) · [Issue tracker](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+[Changelog](CHANGELOG.md) · [Report an issue](https://github.com/ZCT-Studio/BaruSikoZako/issues) · [MPL-2.0 license](LICENSE)
