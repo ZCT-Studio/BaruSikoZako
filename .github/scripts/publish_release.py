@@ -64,6 +64,23 @@ def invoke(args):
     return result.stdout
 
 
+class HttpError(RuntimeError):
+    def __init__(self, method, url, code, body):
+        super().__init__(f"{method} {url} returned HTTP {code}: {body[:600]}")
+        self.code = code
+        self.body = body
+
+    def rejects_curseforge_dependency(self, slug):
+        if self.code != "400":
+            return False
+        try:
+            payload = json.loads(self.body)
+        except json.JSONDecodeError:
+            return False
+        return (isinstance(payload, dict) and payload.get("errorCode") == 1018
+                and str(payload.get("errorMessage", "")).startswith(f"Invalid slug in project relations: '{slug}'"))
+
+
 def request(url, method="GET", *, auth, fields=None, files=(), allow_missing=False):
     args = ["curl", "--silent", "--show-error", "--max-time", "180", "--request", method,
             "--user-agent", f'{os.environ.get("GITHUB_REPOSITORY", "ZCT-Studio/BaruSikoZako")} release-ci',
@@ -85,7 +102,7 @@ def request(url, method="GET", *, auth, fields=None, files=(), allow_missing=Fal
     if code == "404" and allow_missing:
         return None
     if not code.startswith("2"):
-        raise RuntimeError(f"{method} {url} returned HTTP {code}: {body[:600]}")
+        raise HttpError(method, url, code, body)
     return json.loads(body) if body.strip() else {}
 
 
@@ -205,7 +222,7 @@ def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
         if not page["data"] or index >= page["pagination"]["totalCount"]:
             break
     required = REQUIRED_PROJECTS[component]
-    relations = [{"projectID": ids[key], "slug": slugs[key], "type": "requiredDependency"} for key in required]
+    relations = [{"projectID": int(ids[key]), "slug": slugs[key], "type": "requiredDependency"} for key in required]
     for file in reversed(files):
         name = file.name
         old = existing.get(name)
@@ -237,7 +254,7 @@ def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
                         raise ValueError(f"Cannot preserve CurseForge dependency type {dep['relationType']}")
                     dep_id = dep["modId"]
                     slug = request(f"{CURSEFORGE_CORE}/mods/{dep_id}", auth=core)["data"]["slug"]
-                    preserved.append({"projectID": str(dep_id), "slug": slug, "type": kind})
+                    preserved.append({"projectID": int(dep_id), "slug": slug, "type": kind})
                 update["relations"] = {"projects": preserved + relations}
             if update:
                 update["fileID"] = old["id"]
@@ -263,9 +280,23 @@ def publish_modrinth(storefront, ids, *, force_run=None):
 
 
 def publish_curseforge(storefront, ids, versions, slugs, *, force_run=None):
-    """发布至 CurseForge，操作具有幂等性，可安全重试"""
+    """发布至 CurseForge，暂缓平台拒绝关联必需主项目的组件"""
+    deferred = set()
+    main_slug = slugs["mod"]
     for job, entry, files in sorted(storefront, key=lambda row: ("mod", "api", "zstd").index(row[1]["component"])):
-        curseforge(job, entry, files, ids, versions[job["target"]], slugs, force_run=force_run)
+        component = entry["component"]
+        if component in deferred:
+            continue
+        try:
+            curseforge(job, entry, files, ids, versions[job["target"]], slugs, force_run=force_run)
+        except HttpError as error:
+            if "mod" not in REQUIRED_PROJECTS[component] or not error.rejects_curseforge_dependency(main_slug):
+                raise
+            deferred.add(component)
+            print(f"::warning title=CurseForge dependency unavailable::Deferred {component} starting at {job['target']}. "
+                  f"CurseForge rejected the required {main_slug} project relation (1018). "
+                  "Retry publishing when the main project can be linked.")
+    return deferred
 
 
 def main():
@@ -302,20 +333,30 @@ def main():
             print(*(file.name for file in files), sep="\n")
         return
     
-    # 上传前核对两个平台的项目身份、游戏版本和加载器标签
-    mr, _ = project_ids("MODRINTH", ("Authorization", env("MODRINTH_TOKEN")))
-    cf, slugs = project_ids("CURSEFORGE", ("x-api-key", env("CURSEFORGE_API_KEY")))
-    env("CURSEFORGE_TOKEN")
-    versions = {job["target"]: curseforge_versions(job) for job, _, _ in storefront}
+    destinations = plan.get("storefronts", ["modrinth", "curseforge"])
+    if not destinations or set(destinations) - {"modrinth", "curseforge"}:
+        raise ValueError(f"Invalid storefronts in release plan: {destinations}")
+
+    # 上传前核对所选平台的项目身份和凭据
+    if "modrinth" in destinations:
+        mr, _ = project_ids("MODRINTH", ("Authorization", env("MODRINTH_TOKEN")))
+    if "curseforge" in destinations:
+        cf, slugs = project_ids("CURSEFORGE", ("x-api-key", env("CURSEFORGE_API_KEY")))
+        env("CURSEFORGE_TOKEN")
+        versions = {job["target"]: curseforge_versions(job) for job, _, _ in storefront}
 
     run_id = env("GITHUB_RUN_ID", r"\d+") if plan.get("force_release") else None
-    print("Publishing to Modrinth...")
-    publish_modrinth(storefront, mr, force_run=run_id)
-    print("Modrinth: done")
-
-    print("Publishing to CurseForge...")
-    publish_curseforge(storefront, cf, versions, slugs, force_run=run_id)
-    print("CurseForge: done")
+    if "modrinth" in destinations:
+        print("Publishing to Modrinth...")
+        publish_modrinth(storefront, mr, force_run=run_id)
+        print("Modrinth: done")
+    if "curseforge" in destinations:
+        print("Publishing to CurseForge...")
+        deferred = publish_curseforge(storefront, cf, versions, slugs, force_run=run_id)
+        if deferred:
+            print("CurseForge: deferred " + ", ".join(sorted(deferred)))
+        else:
+            print("CurseForge: done")
 
 
 if __name__ == "__main__":

@@ -449,6 +449,21 @@ class TestReleasePlan(unittest.TestCase):
         self.assertEqual({job["target"] for job in result["build_jobs"]},
                          {"fabric1.20.1", "forge1.20.1"})
 
+    def test_storefront_skip_flags_preserve_only_the_selected_release_destinations(self):
+        for flags, expected in (("[no-modrinth]", ["curseforge"]),
+                                ("[NO-CURSEFORGE]", ["modrinth"]),
+                                ("[no-modrinth] [no-curseforge]", [])):
+            with self.subTest(flags=flags):
+                result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                              f"fix(ci): update publisher [force-release] {flags}",
+                              [".github/scripts/publish_release.py"])
+                self.assertEqual(result["storefronts"], expected)
+                self.assertEqual(result["should_release"], bool(expected))
+                self.assertEqual(result["force_release"], bool(expected))
+                self.assertTrue(result["should_build"])
+                if not expected:
+                    self.assertEqual(result["jobs"], [])
+
     def test_force_release_and_release_all(self):
         self.sample_versions["mod"]["version"] = "1.0.0-alpha"
         args = (self.sample_versions, self.sample_releases, self.sample_versions)

@@ -130,7 +130,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|no-release|no-build)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|no-release|no-build|no-modrinth|no-curseforge)\]",
         message, re.IGNORECASE)}
 
 
@@ -143,7 +143,9 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     flags = commit_flags(message)
     force_release = requests_forced_release(flags)
     catalog_changed = any(path in ("versions.json5", "releases.json5") for path in changed)
-    allow_release = not build_only and not force_build and "no-release" not in flags and (catalog_changed or force_release)
+    storefronts = [name for name in ("modrinth", "curseforge") if f"no-{name}" not in flags]
+    allow_release = (bool(storefronts) and not build_only and not force_build
+                     and "no-release" not in flags and (catalog_changed or force_release))
     validate_code = force_build or code_changed(changed) or (build_only and catalog_changed)
     build_jobs = {}
     release_jobs = []
@@ -199,6 +201,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
 
     return {
         "jobs": release_jobs,
+        "storefronts": storefronts,
         "build_jobs": list(build_jobs.values()),
         "should_build": bool(build_jobs),
         "should_release": bool(release_jobs),
