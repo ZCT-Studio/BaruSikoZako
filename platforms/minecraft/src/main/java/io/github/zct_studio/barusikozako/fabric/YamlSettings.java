@@ -19,6 +19,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 final class YamlSettings {
+    static final String SCHEMA = "schema";
     private static final int MAX_BYTES = 16 * 1024;
 
     interface Migration { Map<String, String> read() throws IOException; }
@@ -45,6 +46,7 @@ final class YamlSettings {
 
     static synchronized void change(Path file, Map<String, String> defaults, String key, String value,
                                     Validator validator) throws IOException {
+        if (SCHEMA.equals(key)) throw new IOException("The configuration schema is read-only");
         if (!defaults.containsKey(key)) throw new IOException("Unknown configuration key " + key);
         var settings = new LinkedHashMap<>(defaults);
         settings.putAll(parse(readText(file)));

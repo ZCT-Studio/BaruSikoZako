@@ -25,6 +25,8 @@ import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -180,6 +182,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
         TarArchiveOutputStream tar = null;
         OutputStream manifest = null;
         try {
+            migrateSnapshotDirectories(limits.checkpoint());
             boolean delta = writeMode == WriteMode.INCREMENTAL || writeMode == WriteMode.DIFFERENTIAL;
             Snapshot base = delta ? selectBase(snapshot, limits.checkpoint()) : null;
             List<Point> chain = base == null ? List.of() : checkedChain(base.id(), limits.checkpoint());
@@ -196,15 +199,15 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             var stored = new LimitedInputStream.Budget(limits.archiveBytes());
             var expanded = new LimitedInputStream.Budget(limits.archiveBytes());
             if (base != null) {
-                var folder = ordinaryDirectory(snapshots.resolve(base.id().toString()));
-                baseRecord = readCommit(folder, base.id());
+                baseRecord = chain.get(0).commit();
                 try (var reader = openReader(chain, 0, new ZstdOverlay.MemoryBudget(),
                     limits.checkpoint(), stored, expanded)) {
                     baseCatalog = ZstdOverlay.verifiedCatalog(reader, limits);
                 }
             }
-            var destination = snapshots.resolve(snapshot.id().toString());
-            if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS) ||
+            var destination = snapshots.resolve(directoryName(snapshot));
+            if (!Files.notExists(destination, LinkOption.NOFOLLOW_LINKS) ||
+                findSnapshotDirectory(snapshot.id(), limits.checkpoint()) != null ||
                 !Files.notExists(root.resolve(DELETED_PREFIX + snapshot.id()), LinkOption.NOFOLLOW_LINKS))
                 throw new IOException("snapshot identity is already used or pending removal");
             staged = Files.createTempDirectory(root, PENDING_PREFIX + operationId + "-");
@@ -302,7 +305,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
 
     private Snapshot selectBase(Snapshot current, CommitGate checkpoint) throws IOException {
         if (writeMode == WriteMode.DIFFERENTIAL) {
-            var folder = ordinaryDirectory(snapshots.resolve(baseline.toString()));
+            var folder = snapshotDirectory(baseline, checkpoint);
             var record = readCommit(folder, baseline);
             if (record.format() != Manifest.FORMAT) throw new IOException("differential baseline must be a full tar.zst");
             var base = readMetadata(folder, baseline, record, 128L << 20, checkpoint);
@@ -313,9 +316,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
         try (var folders = Files.newDirectoryStream(snapshots)) {
             for (var path : folders) {
                 checkpoint.enter();
-                var name = path.getFileName().toString();
-                if (!canonicalId(name)) throw new IOException("unexpected committed snapshot entry");
-                UUID id = UUID.fromString(name);
+                UUID id = snapshotDirectoryId(path);
                 var folder = ordinaryDirectory(path);
                 var candidate = readMetadata(folder, id, readCommit(folder, id), 128L << 20, checkpoint);
                 if (!candidate.source().equals(current.source())) continue;
@@ -338,6 +339,9 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             while (manifest.read(buffer) != -1) checkpoint.enter();
             if (!record.manifestHash().equals(hex(manifest.getMessageDigest())))
                 throw new IOException("snapshot manifest differs from its commit");
+            String name = folder.getFileName().toString();
+            if (!canonicalId(name) && !name.equals(directoryName(metadata)))
+                throw new IOException("snapshot directory time differs from its manifest");
             return metadata;
         }
     }
@@ -399,7 +403,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
         while (true) {
             checkpoint.enter();
             if (chain.size() > ZstdOverlay.MAX_DEPTH || !seen.add(id)) throw new IOException("invalid delta depth or cycle");
-            var folder = ordinaryDirectory(snapshots.resolve(id.toString()));
+            var folder = snapshotDirectory(id, checkpoint);
             var record = readCommit(folder, id);
             if (pinned != null && !pinned.equals(record.identity())) throw new IOException("baseline commit identity differs");
             if (fullRequired && record.format() != Manifest.FORMAT) throw new IOException("differential baseline is not full");
@@ -472,7 +476,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
 
     @Override
     public synchronized java.util.OptionalLong archiveBytes(UUID id) throws IOException {
-        var folder = ordinaryDirectory(snapshots.resolve(id.toString()));
+        var folder = snapshotDirectory(id, () -> {});
         var commit = readCommit(folder, id);
         if (commit.format() != Manifest.FORMAT && commit.format() != DELTA_FORMAT)
             return java.util.OptionalLong.empty();
@@ -481,9 +485,34 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
 
     public synchronized boolean isCommitted(UUID snapshotId, UUID operationId) throws IOException {
         if (closed) throw new IOException("repository is closed");
-        var folder = snapshots.resolve(snapshotId.toString());
-        if (Files.notExists(folder, LinkOption.NOFOLLOW_LINKS)) return false;
+        var folder = findSnapshotDirectory(snapshotId, () -> {});
+        if (folder == null) return false;
+        ordinaryDirectory(folder);
         return readCommit(ordinaryDirectory(folder), snapshotId).operationId().equals(operationId);
+    }
+
+    @Override
+    public Optional<Path> snapshotDirectory(UUID id, long metadataBudget) throws IOException {
+        return querySnapshot(id, metadataBudget, (folder, metadata) -> folder);
+    }
+
+    @Override
+    public Optional<Instant> snapshotCreatedAt(UUID id, long metadataBudget) throws IOException {
+        return querySnapshot(id, metadataBudget, (folder, metadata) -> metadata.createdAt());
+    }
+
+    private <T> Optional<T> querySnapshot(UUID id, long metadataBudget,
+            java.util.function.BiFunction<Path, Snapshot, T> result) throws IOException {
+        acquire();
+        try {
+            var folder = findSnapshotDirectory(id, () -> {});
+            if (folder == null) return Optional.empty();
+            ordinaryDirectory(folder);
+            var metadata = readMetadata(folder, id, readCommit(folder, id), metadataBudget, () -> {});
+            return Optional.of(result.apply(folder, metadata));
+        } finally {
+            release();
+        }
     }
 
     /** 按规范 ID 列出已提交记录的有界页面，而不将存储库索引加载到内存中 */
@@ -495,9 +524,9 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             var lower = after.map(UUID::toString).orElse("");
             try (var entries = Files.newDirectoryStream(snapshots)) {
                 for (var folder : entries) {
-                    String name = folder.getFileName().toString();
-                    if (name.compareTo(lower) <= 0 || !canonicalId(name)) continue;
-                    selected.put(name, folder);
+                    String id = snapshotDirectoryId(folder).toString();
+                    if (id.compareTo(lower) <= 0) continue;
+                    if (selected.put(id, folder) != null) throw new IOException("duplicate snapshot UUID " + id);
                     if (selected.size() > limit + 1) selected.pollLastEntry();
                 }
             } catch (java.nio.file.DirectoryIteratorException failure) {
@@ -532,17 +561,16 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             try (var folders = Files.newDirectoryStream(snapshots)) {
                 for (var folder : folders) {
                     checkpoint.enter();
-                    var name = folder.getFileName().toString();
-                    if (!canonicalId(name)) throw new IOException("unexpected snapshot directory");
-                    var record = readCommit(ordinaryDirectory(folder), UUID.fromString(name));
+                    UUID folderId = snapshotDirectoryId(folder);
+                    var record = readCommit(ordinaryDirectory(folder), folderId);
                     if (record.link() != null) {
-                        checkedChain(UUID.fromString(name), checkpoint);
+                        checkedChain(folderId, checkpoint);
                         ZstdOverlay.checkSidecars(folder, record.link().inherited(), record.link().removed(), checkpoint);
                         if (record.link().baseline().equals(id)) throw new IOException("snapshot is a live backup baseline");
                     }
                 }
             }
-            var source = ordinaryDirectory(snapshots.resolve(id.toString()));
+            var source = snapshotDirectory(id, checkpoint);
             checkArtifacts(source);
             var tombstone = root.resolve(DELETED_PREFIX + id);
             if (Files.exists(tombstone, LinkOption.NOFOLLOW_LINKS)) throw new IOException("snapshot removal is pending");
@@ -573,9 +601,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             try (var folders = Files.newDirectoryStream(snapshots)) {
                 for (var folder : folders) {
                     checkpoint.enter();
-                    String name = folder.getFileName().toString();
-                    if (!canonicalId(name)) throw new IOException("unexpected snapshot directory");
-                    UUID id = UUID.fromString(name);
+                    UUID id = snapshotDirectoryId(folder);
                     var record = readCommit(ordinaryDirectory(folder), id);
                     if (record.link() != null) {
                         checkedChain(id, checkpoint);
@@ -616,7 +642,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             for (var folder : folders) {
                 checkpoint.enter();
                 var name = folder.getFileName().toString().substring(DELETED_PREFIX.length());
-                if (!Files.notExists(snapshots.resolve(name), LinkOption.NOFOLLOW_LINKS))
+                if (findSnapshotDirectory(UUID.fromString(name), checkpoint) != null)
                     throw new IOException("ambiguous snapshot removal");
                 checkArtifacts(ordinaryDirectory(folder));
                 forceRemoval();
@@ -629,6 +655,83 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
         var info = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         if (!info.isDirectory() || info.isOther()) throw new IOException("invalid repository directory");
         return path;
+    }
+
+    static String directoryName(Snapshot snapshot) {
+        return snapshot.createdAt().toString().replace(':', '-') + "--" + snapshot.id();
+    }
+
+    private static UUID snapshotDirectoryId(Path folder) throws IOException {
+        String name = folder.getFileName().toString();
+        if (canonicalId(name)) return UUID.fromString(name);
+        int separator = name.length() - 38;
+        if (separator > 0 && name.startsWith("--", separator)) {
+            String uuid = name.substring(separator + 2);
+            if (canonicalId(uuid) && directoryTime(name.substring(0, separator)))
+                return UUID.fromString(uuid);
+        }
+        throw new IOException("unexpected snapshot directory " + name);
+    }
+
+    private static boolean directoryTime(String text) {
+        int start = text.indexOf('T');
+        if (start < 0) return false;
+        try {
+            var time = Instant.parse(text.substring(0, start) + text.substring(start).replace('-', ':'));
+            return time.toString().replace(':', '-').equals(text);
+        } catch (DateTimeParseException ignored) {
+            return false;
+        }
+    }
+
+    private Path snapshotDirectory(UUID id, CommitGate checkpoint) throws IOException {
+        var folder = findSnapshotDirectory(id, checkpoint);
+        if (folder == null) throw new java.nio.file.NoSuchFileException(id.toString());
+        return ordinaryDirectory(folder);
+    }
+
+    private Path findSnapshotDirectory(UUID id, CommitGate checkpoint) throws IOException {
+        Path found = null;
+        String suffix = id.toString();
+        try (var folders = Files.newDirectoryStream(snapshots)) {
+            for (var folder : folders) {
+                checkpoint.enter();
+                if (!folder.getFileName().toString().endsWith(suffix) || !id.equals(snapshotDirectoryId(folder))) continue;
+                if (found != null) throw new IOException("duplicate snapshot UUID " + id);
+                found = folder;
+            }
+        } catch (java.nio.file.DirectoryIteratorException failure) {
+            throw failure.getCause();
+        }
+        return found;
+    }
+
+    /** 迁移只改目录名，提交、清单及增量依赖仍使用原来的 UUID */
+    private void migrateSnapshotDirectories(CommitGate checkpoint) throws IOException {
+        while (true) {
+            var legacy = new ArrayList<Path>();
+            try (var folders = Files.newDirectoryStream(snapshots)) {
+                for (var path : folders) {
+                    checkpoint.enter();
+                    if (canonicalId(path.getFileName().toString())) legacy.add(path);
+                    if (legacy.size() == 256) break;
+                }
+            } catch (java.nio.file.DirectoryIteratorException failure) {
+                throw failure.getCause();
+            }
+            if (legacy.isEmpty()) return;
+            for (var path : legacy) {
+                checkpoint.enter();
+                UUID id = snapshotDirectoryId(path);
+                var folder = snapshotDirectory(id, checkpoint);
+                var metadata = readMetadata(folder, id, readCommit(folder, id), 128L << 20, checkpoint);
+                var destination = snapshots.resolve(directoryName(metadata));
+                if (!Files.notExists(destination, LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException("snapshot migration destination already exists " + id);
+                Files.move(folder, destination, StandardCopyOption.ATOMIC_MOVE);
+                directoryPersistence.force(snapshots);
+            }
+        }
     }
 
     private static boolean canonicalId(String name) {

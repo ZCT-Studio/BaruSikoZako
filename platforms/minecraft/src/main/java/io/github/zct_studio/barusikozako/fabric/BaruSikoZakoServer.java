@@ -3,8 +3,6 @@
 
 package io.github.zct_studio.barusikozako.fabric;
 
-import io.github.zct_studio.barusikozako.platform.windows.WindowsDirectorySync;
-
 import io.github.zct_studio.barusikozako.runtime.BackupIntegration;
 import io.github.zct_studio.barusikozako.runtime.BackupRequest;
 import io.github.zct_studio.barusikozako.runtime.BackupService;
@@ -12,18 +10,36 @@ import io.github.zct_studio.barusikozako.runtime.BackupService.PageRequest;
 import io.github.zct_studio.barusikozako.runtime.SnapshotRef;
 import io.github.zct_studio.barusikozako.runtime.TaskId;
 import io.github.zct_studio.barusikozako.runtime.TaskResult;
+import io.github.zct_studio.barusikozako.runtime.TaskState;
 import io.github.zct_studio.barusikozako.runtime.host.BackupApiHost;
+import io.github.zct_studio.barusikozako.runtime.host.BackupApiHost.TimedTask;
 import io.github.zct_studio.barusikozako.runtime.host.BoundAccess.Grant;
 import io.github.zct_studio.barusikozako.runtime.host.BoundAccess.Right;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToIntBiFunction;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -33,9 +49,18 @@ import net.minecraft.world.level.storage.LevelResource;
 public final class BaruSikoZakoServer {
     private static final System.Logger LOG = System.getLogger("BaruSikoZako");
     private static final int PAGE_SIZE = 10;
+    private static final int SNAPSHOT_LOOKUP_PAGE_SIZE = 256;
     private static final String REPOSITORY = FabricOperations.REPOSITORY_ID;
     private static final String SOURCE = FabricOperations.SOURCE_ID;
     private static final class WorldWorkers {
+        final WorldStartupGate.RestoreNotice restoreNotice;
+        final Set<UUID> restoreNoticeRecipients;
+
+        WorldWorkers(WorldStartupGate.RestoreNotice restoreNotice) {
+            this.restoreNotice = restoreNotice;
+            restoreNoticeRecipients = restoreNotice == null ? null : new java.util.HashSet<>();
+        }
+
         final java.util.concurrent.ExecutorService integrations = Executors.newSingleThreadExecutor(action ->
             worker(action, "integrations", Thread.NORM_PRIORITY));
         final java.util.concurrent.ScheduledExecutorService schedules = Executors.newSingleThreadScheduledExecutor(action ->
@@ -78,39 +103,14 @@ public final class BaruSikoZakoServer {
                 }))
                 .then(Commands.literal("backup")
                     .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty())))
-                .then(Commands.literal("list").executes(context -> list(context.getSource(), Optional.empty()))
-                    .then(Commands.argument("after", StringArgumentType.word()).executes(context ->
-                        withId(context.getSource(), StringArgumentType.getString(context, "after"),
-                            id -> list(context.getSource(), Optional.of(id))))))
-                .then(Commands.literal("verify")
-                    .then(Commands.argument("id", StringArgumentType.word()).executes(context ->
-                        withId(context.getSource(), StringArgumentType.getString(context, "id"), id ->
-                            submit(context.getSource(), new BackupRequest.Verify(new SnapshotRef(REPOSITORY, id),
-                                BackupRequest.VerificationLevel.FULL))))))
-                .then(Commands.literal("delete").then(Commands.argument("id", StringArgumentType.word()).executes(context ->
-                    withId(context.getSource(), StringArgumentType.getString(context, "id"),
-                        id -> submit(context.getSource(), new BackupRequest.Delete(new SnapshotRef(REPOSITORY, id)))))))
-                .then(Commands.literal("cancel")
-                    .then(Commands.argument("task", StringArgumentType.string()).executes(context ->
-                        cancel(context.getSource(), StringArgumentType.getString(context, "task")))))
-                .then(Commands.literal("task")
-                    .then(Commands.argument("task", StringArgumentType.string()).executes(context ->
-                        task(context.getSource(), StringArgumentType.getString(context, "task")))));
-            root.then(Commands.literal("restore").then(Commands.argument("filename", StringArgumentType.word())
-                .suggests((context, builder) -> {
-                    var current = operator;
-                    if (current == null) return builder.buildFuture();
-                    return current.snapshots(REPOSITORY, new PageRequest(PAGE_SIZE, Optional.empty()))
-                        .handle((page, failure) -> {
-                            if (failure == null) for (var item : page.items()) {
-                                var id = item.snapshot().snapshotId();
-                                if (id.startsWith(builder.getRemainingLowerCase())) builder.suggest(id);
-                            }
-                            return builder.build();
-                        }).toCompletableFuture();
-                })
-                .executes(context -> withId(context.getSource(), StringArgumentType.getString(context, "filename"),
-                    id -> submit(context.getSource(), new BackupRequest.Restore(new SnapshotRef(REPOSITORY, id), SOURCE))))));
+                .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshotId())))
+                    .executes(context -> list(context.getSource(), Optional.empty())))
+                .then(snapshotCommand("verify",
+                    snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
+                .then(snapshotCommand("delete", BackupRequest.Delete::new))
+                .then(snapshotCommand("restore", snapshot -> new BackupRequest.Restore(snapshot, SOURCE)))
+                .then(taskCommand("cancel", true))
+                .then(taskCommand("task", false).executes(context -> listTasks(context.getSource())));
             var selected = configuredBackend();
             for (var provider : BackendRegistry.registered().values()) {
                 var backendRoot = Commands.literal(provider.keyword())
@@ -121,10 +121,8 @@ public final class BaruSikoZakoServer {
                     var mode = BackupRequest.BackupMode.valueOf(command.operation());
                     var node = Commands.literal(command.keyword());
                     if (command.needsBaseline()) {
-                        node.then(Commands.argument("baseline", StringArgumentType.word()).executes(context ->
-                            withId(context.getSource(), StringArgumentType.getString(context, "baseline"),
-                                id -> backendBackup(context.getSource(), provider.keyword(), mode,
-                                    Optional.of(new SnapshotRef(REPOSITORY, id))))));
+                        node = snapshotSelection(command.keyword(), (source, baseline) ->
+                            backendBackup(source, provider.keyword(), mode, Optional.of(baseline)));
                     } else {
                         node.executes(context -> backendBackup(context.getSource(), provider.keyword(), mode, Optional.empty()));
                     }
@@ -138,9 +136,197 @@ public final class BaruSikoZakoServer {
             dispatcher.register(root);
     }
 
+    private LiteralArgumentBuilder<CommandSourceStack> snapshotCommand(
+            String name, Function<SnapshotRef, BackupRequest> request) {
+        return snapshotSelection(name, (source, snapshot) -> submit(source, request.apply(snapshot)));
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> snapshotSelection(
+            String name, ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+        return Commands.literal(name)
+            .then(snapshotUuid(action))
+            .then(Commands.literal("fullname").then(Commands.argument("folder", StringArgumentType.word())
+                .suggests((context, builder) -> suggestSnapshots(builder, BaruSikoZakoServer::snapshotFolderName))
+                .executes(context -> withSnapshotFolder(context.getSource(), StringArgumentType.getString(context, "folder"), action))))
+            .then(Commands.argument("time", StringArgumentType.greedyString())
+                .suggests((context, builder) -> suggestSnapshots(builder, item -> item.createdAt().toString()))
+                .executes(context -> withSnapshotTime(context.getSource(), StringArgumentType.getString(context, "time"), action)));
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> snapshotUuid(
+            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+        return Commands.literal("fromuuid").then(Commands.argument("uuid", StringArgumentType.word())
+            .suggests((context, builder) -> suggestSnapshots(builder, item -> item.snapshot().snapshotId()))
+            .executes(context -> withId(context.getSource(), StringArgumentType.getString(context, "uuid"),
+                id -> action.applyAsInt(context.getSource(), new SnapshotRef(REPOSITORY, id)))));
+    }
+
+    private CompletableFuture<Suggestions> suggestSnapshots(
+            SuggestionsBuilder builder, Function<BackupService.SnapshotInfo, String> value) {
+        var service = operator;
+        if (service == null) return builder.buildFuture();
+        var prefix = builder.getRemainingLowerCase();
+        var matches = new LinkedHashSet<String>();
+        return scanSnapshots(service, Optional.empty(), snapshot -> {
+            var candidate = value.apply(snapshot);
+            if (candidate.regionMatches(true, 0, prefix, 0, prefix.length())) matches.add(candidate);
+            return matches.size() >= PAGE_SIZE;
+        }).handle((result, failure) -> {
+            if (failure == null && operator == service) matches.forEach(builder::suggest);
+            return builder.build();
+        }).toCompletableFuture();
+    }
+
+    private int withSnapshotTime(CommandSourceStack source, String text,
+            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+        final Instant time;
+        try {
+            time = Instant.parse(text);
+        } catch (DateTimeParseException invalid) {
+            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot_time")));
+            return 0;
+        }
+        return resolveSnapshot(source, snapshot -> time.equals(snapshot.createdAt()),
+            "command.snapshot_time_not_found", action);
+    }
+
+    private static String snapshotFolderName(BackupService.SnapshotInfo snapshot) {
+        // 与 Zstd 快照目录的命名规则一致
+        return snapshot.createdAt().toString().replace(':', '-') + "--" + snapshot.snapshot().snapshotId();
+    }
+
+    private int withSnapshotFolder(CommandSourceStack source, String name,
+            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+        int separator = name.lastIndexOf("--");
+        int time = name.indexOf('T') + 1;
+        if (time > 0 && separator > time) {
+            try {
+                FabricOperations.parseId(name.substring(separator + 2));
+                var instant = Instant.parse(name.substring(0, time) + name.substring(time, separator).replace('-', ':'));
+                if ((instant.toString().replace(':', '-') + name.substring(separator)).equals(name)) {
+                    return resolveSnapshot(source, snapshot -> snapshotFolderName(snapshot).equals(name),
+                        "command.snapshot_folder_not_found", action);
+                }
+            } catch (IllegalArgumentException | DateTimeParseException invalid) {
+                // 格式错误统一在下面报告
+            }
+        }
+        source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot_folder")));
+        return 0;
+    }
+
+    private int resolveSnapshot(CommandSourceStack source, Predicate<BackupService.SnapshotInfo> match,
+            String notFound, ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+        var service = service(source);
+        if (service == null) return 0;
+        var matches = new ArrayList<SnapshotRef>(2);
+        scanSnapshots(service, Optional.empty(), snapshot -> {
+            if (match.test(snapshot)) matches.add(snapshot.snapshot());
+            return matches.size() == 2;
+        }).whenComplete((result, failure) -> source.getServer().executeIfPossible(() -> {
+            if (operator != service) return;
+            if (failure != null || matches.size() != 1) {
+                String key = failure != null ? "command.query_failed" : matches.isEmpty()
+                    ? notFound : "command.snapshot_time_ambiguous";
+                source.sendFailure(Component.literal(Translations.text(source, key)));
+                return;
+            }
+            action.applyAsInt(source, matches.get(0));
+        }));
+        source.sendSuccess(() -> Component.literal(Translations.text(source, "command.repository_accepted")), false);
+        return 1;
+    }
+
+    private CompletionStage<Void> scanSnapshots(BackupService service, Optional<String> after,
+            Predicate<BackupService.SnapshotInfo> stop) {
+        return service.snapshots(REPOSITORY, new PageRequest(SNAPSHOT_LOOKUP_PAGE_SIZE, after)).thenCompose(page -> {
+            for (var snapshot : page.items()) {
+                if (stop.test(snapshot)) return CompletableFuture.completedFuture(null);
+            }
+            return page.next().isEmpty() || operator != service ? CompletableFuture.completedFuture(null) :
+                scanSnapshots(service, page.next(), stop);
+        });
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> taskCommand(String name, boolean cancel) {
+        return Commands.literal(name)
+            .then(Commands.literal("fromid").then(Commands.argument("id", StringArgumentType.greedyString())
+                .suggests((context, builder) -> suggestTasks(builder, cancel, task -> task.state().id().value()))
+                .executes(context -> executeTaskCommand(context.getSource(), StringArgumentType.getString(context, "id"), cancel))))
+            .then(Commands.argument("time", StringArgumentType.greedyString())
+                .suggests((context, builder) -> suggestTasks(builder, cancel, task -> task.submittedAt().toString()))
+                .executes(context -> taskByTime(context.getSource(), StringArgumentType.getString(context, "time"), cancel)));
+    }
+
+    private CompletableFuture<Suggestions> suggestTasks(SuggestionsBuilder builder, boolean cancel,
+            Function<TimedTask, String> value) {
+        var prefix = builder.getRemainingLowerCase();
+        visibleTasks().stream()
+            .filter(task -> !cancel || (task.state().phase() != TaskState.Phase.TERMINAL &&
+                task.state().phase() != TaskState.Phase.COMMITTING))
+            .map(value).filter(candidate -> candidate.regionMatches(true, 0, prefix, 0, prefix.length()))
+            .distinct().limit(PAGE_SIZE).forEach(builder::suggest);
+        return builder.buildFuture();
+    }
+
+    private List<TimedTask> visibleTasks() {
+        var binding = commandBinding;
+        return binding == null ? List.of() : binding.tasks().stream()
+            .sorted(Comparator.comparing(TimedTask::submittedAt).reversed()).toList();
+    }
+
+    private int listTasks(CommandSourceStack source) {
+        if (service(source) == null) return 0;
+        var tasks = visibleTasks();
+        if (tasks.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(Translations.text(source, "command.tasks_empty")), false);
+            return 1;
+        }
+        var message = new StringBuilder(Translations.text(source, "command.tasks_recent"));
+        tasks.stream().limit(PAGE_SIZE).forEach(task -> message.append('\n').append(task.submittedAt())
+            .append(" · ").append(taskLabel(source, task.state())).append(" · ").append(task.state().id().value()));
+        source.sendSuccess(() -> Component.literal(message.toString()), false);
+        return 1;
+    }
+
+    private int taskByTime(CommandSourceStack source, String text, boolean cancel) {
+        final Instant time;
+        try {
+            time = Instant.parse(text);
+        } catch (DateTimeParseException invalid) {
+            // 旧版允许直接输入带引号的任务 ID
+            if (taskIdText(text).matches("[a-fA-F0-9-]{36}:[0-9]+")) return executeTaskCommand(source, text, cancel);
+            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_task_time")));
+            return 0;
+        }
+        if (service(source) == null) return 0;
+        var matches = visibleTasks().stream().filter(task -> time.equals(task.submittedAt())).limit(2).toList();
+        if (matches.size() != 1) {
+            source.sendFailure(Component.literal(Translations.text(source,
+                matches.isEmpty() ? "command.task_unavailable" : "command.task_time_ambiguous")));
+            return 0;
+        }
+        return executeTaskCommand(source, matches.get(0).state().id().value(), cancel);
+    }
+
+    private int executeTaskCommand(CommandSourceStack source, String text, boolean cancel) {
+        String id = taskIdText(text);
+        return cancel ? cancel(source, id) : task(source, id);
+    }
+
+    private static String taskIdText(String text) {
+        return text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"") ?
+            text.substring(1, text.length() - 1) : text;
+    }
+
+    private static String taskLabel(CommandSourceStack source, TaskState state) {
+        return Translations.text(source, "task.operation." + state.operation().name().toLowerCase(Locale.ROOT)) + " · " +
+            Translations.text(source, "task.phase." + state.phase().name().toLowerCase(Locale.ROOT));
+    }
+
     public synchronized void onServerStarted(MinecraftServer server) {
         if (workers != null) return;
-        var next = new WorldWorkers();
+        var next = new WorldWorkers(WorldStartupGate.takeRestoreNotice(server.getWorldPath(LevelResource.ROOT)));
         workers = next;
         empty = false;
         next.integrations.execute(() -> start(server, next));
@@ -156,14 +342,28 @@ public final class BaruSikoZakoServer {
 
     public void tickStart(MinecraftServer server) { captureTick(server, WorldCapture.Edge.TICK_START); }
 
-    public void tickEnd(MinecraftServer server) { captureTick(server, WorldCapture.Edge.TICK_END); }
+    public void tickEnd(MinecraftServer server) {
+        captureTick(server, WorldCapture.Edge.TICK_END);
+        var session = workers;
+        if (session == null || session.restoreNotice == null) return;
+        for (var player : server.getPlayerList().getPlayers()) {
+            var language = PlayerLanguage.get(player);
+            if (language == null || !session.restoreNoticeRecipients.add(player.getUUID())) continue;
+            var time = session.restoreNotice.snapshotTime().map(Instant::toString)
+                .orElseGet(() -> Translations.languageText(language, "notice.snapshot_time_unavailable"));
+            var message = String.format(Locale.ROOT, Translations.languageText(language, "notice.world_restored"),
+                server.getWorldData().getLevelName(), time);
+            player.sendSystemMessage(Component.literal(message));
+        }
+    }
 
     private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> configCommand(
         String filename, Map<String, String> defaults, YamlSettings.Validator validator) {
         return Commands.literal("config").executes(context -> configPath(context.getSource(), filename))
             .then(Commands.literal("set").then(Commands.argument("key", StringArgumentType.word())
                 .suggests((context, builder) -> {
-                    defaults.keySet().stream().sorted().filter(key -> key.startsWith(builder.getRemaining()))
+                    defaults.keySet().stream().sorted().filter(key -> !YamlSettings.SCHEMA.equals(key))
+                        .filter(key -> key.startsWith(builder.getRemaining()))
                         .forEach(builder::suggest);
                     return builder.buildFuture();
                 })
@@ -180,7 +380,8 @@ public final class BaruSikoZakoServer {
                                 YamlSettings.change(file, defaults, key, value, validator);
                                 reply(source, Translations.text(source, "command.config_saved"), false);
                             } catch (IOException | IllegalArgumentException failure) {
-                                reply(source, "Configuration rejected: " + failure.getMessage(), true);
+                                LOG.log(System.Logger.Level.WARNING, "Configuration rejected", failure);
+                                reply(source, Translations.text(source, "command.config_rejected"), true);
                             }
                         });
                         return 1;
@@ -191,7 +392,7 @@ public final class BaruSikoZakoServer {
     }
 
     private static int configPath(CommandSourceStack source, String filename) {
-        source.sendSuccess(() -> Component.literal("Configuration: config/barusikozako/" + filename + ".yml (restart to apply)"), false);
+        source.sendSuccess(() -> Component.literal(Translations.format(source, "command.config_path", filename)), false);
         return 1;
     }
 
@@ -207,7 +408,7 @@ public final class BaruSikoZakoServer {
     private int backendBackup(CommandSourceStack source, String backend, BackupRequest.BackupMode mode,
                               Optional<SnapshotRef> baseline) {
         if (!backend.equals(activeBackend)) {
-            source.sendFailure(Component.literal("Backend is not active: " + backend));
+            source.sendFailure(Component.literal(Translations.format(source, "command.backend_inactive", backend)));
             return 0;
         }
         return submitBackup(source, mode, baseline);
@@ -335,8 +536,9 @@ public final class BaruSikoZakoServer {
 
     private int status(CommandSourceStack source) {
         var product = LoaderBridge.productVersion();
-        var detail = operator == null ? "backup services unavailable. See server log."
-            : capture == null || !capture.available() ? "capture unavailable" : "best-effort capture enabled";
+        var status = operator == null ? "command.service_unavailable"
+            : capture == null || !capture.available() ? "command.capture_unavailable" : "command.capture_enabled";
+        var detail = Translations.text(source, status);
         var text = "BaruSikoZako " + product + " · " + detail;
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
@@ -349,9 +551,9 @@ public final class BaruSikoZakoServer {
         var submission = service.submit(request);
         if (submission instanceof BackupService.Submission.Accepted accepted) {
             accepted.completion().thenAccept(result ->
-                LOG.log(System.Logger.Level.INFO, "Scheduled backup {0}: {1}", accepted.id().value(), summarize(result)));
+                LOG.log(System.Logger.Level.INFO, "Scheduled backup {0}: {1}", accepted.id().value(), summarize(null, result)));
         } else {
-            LOG.log(System.Logger.Level.INFO, "Scheduled backup rejected: {0}", rejection(submission));
+            LOG.log(System.Logger.Level.INFO, "Scheduled backup rejected: {0}", rejection(null, submission));
         }
     }
 
@@ -363,10 +565,10 @@ public final class BaruSikoZakoServer {
                 reply(source, Translations.text(source, "command.query_failed"), true);
                 return;
             }
-            var message = new StringBuilder("Committed snapshots");
+            var message = new StringBuilder(Translations.text(source, "command.snapshots_list"));
             for (var entry : page.items())
                 message.append('\n').append(entry.snapshot().snapshotId()).append("  ").append(entry.createdAt());
-            page.next().ifPresent(id -> message.append("\nNext page: /barusikozako list ").append(id));
+            page.next().ifPresent(id -> message.append('\n').append(Translations.format(source, "command.snapshots_next", id)));
             reply(source, page.items().isEmpty() ? Translations.text(source, "command.snapshots_empty") : message.toString(), false);
         });
         source.sendSuccess(() -> Component.literal(Translations.text(source, "command.repository_accepted")), false);
@@ -379,74 +581,70 @@ public final class BaruSikoZakoServer {
         var binding = commandBinding;
         var submission = binding == null ? service.submit(request) : binding.submit(request, rules -> {
             if (!(source.getEntity() instanceof net.minecraft.server.level.ServerPlayer)) return;
-            reply(source, io.github.zct_studio.barusikozako.runtime.host.RuleNotice.forPlayer(rules), false);
+            reply(source, io.github.zct_studio.barusikozako.runtime.host.RuleNotice.forPlayer(rules,
+                Translations.format(source, "command.ignore_rules", rules.size()),
+                Translations.text(source, "command.ignore_rules_more")), false);
         });
         if (submission instanceof BackupService.Submission.Accepted accepted) {
             accepted.completion().whenComplete((result, failure) -> {
                 if (failure != null) {
-                    reply(source, "Unable to deliver task results for " + accepted.id().value() + ".", true);
+                    reply(source, Translations.format(source, "command.task_delivery_failed", accepted.id().value()), true);
                 } else {
                     String message = result instanceof TaskResult.VerificationComplete verified &&
-                        request instanceof BackupRequest.Verify verify ? verificationSummary(verified, " for " + verify.snapshot().snapshotId()) :
-                        summarize(result);
-                    reply(source, "Task " + accepted.id().value() + " · " + message, result instanceof TaskResult.Failed ||
+                        request instanceof BackupRequest.Verify verify ?
+                        Translations.format(source, "result.verified_snapshot", verify.snapshot().snapshotId(),
+                            verified.entries(), verified.bytes()) : summarize(source, result);
+                    reply(source, Translations.format(source, "command.task_result", accepted.id().value(), message), result instanceof TaskResult.Failed ||
                         result instanceof TaskResult.CommitUncertain);
                 }
             });
-            String message = request.kind() == BackupRequest.Kind.BACKUP ? "Backup requested: " :
-                request.kind() == BackupRequest.Kind.RESTORE ? "Offline restore request accepted: " : "Requested task ";
-            source.sendSuccess(() -> Component.literal(message + accepted.id().value()), false);
+            String key = request.kind() == BackupRequest.Kind.BACKUP ? "command.backup_requested" :
+                request.kind() == BackupRequest.Kind.RESTORE ? "command.restore_requested" : "command.task_requested";
+            source.sendSuccess(() -> Component.literal(Translations.format(source, key, accepted.id().value())), false);
             return 1;
         }
-        source.sendFailure(Component.literal("Request rejected: " + rejection(submission)));
+        source.sendFailure(Component.literal(Translations.format(source, "command.request_rejected", rejection(source, submission))));
         return 0;
     }
 
-    private static String rejection(BackupService.Submission submission) {
-        return switch (((BackupService.Submission.Rejected) submission).reason()) {
-            case UNAVAILABLE -> "operation unavailable in the current server state";
-            case NOT_AUTHORIZED -> "operation not authorized";
-            case BUSY -> "backup services or repository busy";
-            case UNSUPPORTED -> "operation unsupported";
-            case INVALID_REQUEST -> "invalid request";
-        };
+    private static String rejection(CommandSourceStack source, BackupService.Submission submission) {
+        var reason = ((BackupService.Submission.Rejected) submission).reason();
+        return Translations.text(source, "rejection." + reason.name().toLowerCase(Locale.ROOT));
     }
 
-    private static String summarize(TaskResult result) {
+    private static String summarize(CommandSourceStack source, TaskResult result) {
         if (result instanceof TaskResult.VerificationComplete verified) {
-            return verificationSummary(verified, "");
+            return Translations.format(source, "result.verified", verified.entries(), verified.bytes());
         }
         if (result instanceof TaskResult.BackupCommitted committed) {
-            return "Backup committed " + committed.snapshot().snapshotId() +
-                    committed.elapsed().map(value -> " · " + value.toMillis() + " ms").orElse("") +
-                    (committed.archiveBytes().isPresent() ? " · " + committed.archiveBytes().getAsLong() + " archive bytes" :
-                        committed.logicalBytes().isPresent() ? " · " + committed.logicalBytes().getAsLong() + " logical bytes" : "") + ".";
+            var elapsed = committed.elapsed().map(value -> " · " + Translations.format(source, "result.elapsed", value.toMillis())).orElse("");
+            var size = committed.archiveBytes().isPresent() ?
+                " · " + Translations.format(source, "result.archive_bytes", committed.archiveBytes().getAsLong()) :
+                committed.logicalBytes().isPresent() ?
+                    " · " + Translations.format(source, "result.logical_bytes", committed.logicalBytes().getAsLong()) : "";
+            return Translations.format(source, "result.backup_committed", committed.snapshot().snapshotId(), elapsed, size);
         }
         if (result instanceof TaskResult.RestoreQueued value) {
-            return "Restore queued for " + value.snapshot().snapshotId() +
-                    ". Singleplayer restore runs when you reopen this world. On a dedicated server, restart the server.";
+            return Translations.format(source, "result.restore_queued", value.snapshot().snapshotId());
         }
         if (result instanceof TaskResult.Deleted deleted) {
-            return "Snapshot deleted " + deleted.snapshot().snapshotId() + ".";
+            return Translations.format(source, "result.deleted", deleted.snapshot().snapshotId());
         }
         if (result instanceof TaskResult.Failed failed) {
             return switch (failed.reason()) {
-                case NATIVE_ACCESS_DENIED -> WindowsDirectorySync.ACCESS_HELP;
-                case DIRECTORY_SYNC_FAILED -> WindowsDirectorySync.SYNC_HELP;
-                default -> "Backup operation failed (" + failed.reason() + "). See server log.";
+                case NATIVE_ACCESS_DENIED -> Translations.text(source, "failure.native_access_denied");
+                case DIRECTORY_SYNC_FAILED -> Translations.text(source, "failure.directory_sync_failed");
+                default -> Translations.format(source, "result.failed",
+                    Translations.text(source, "failure." + failed.reason().name().toLowerCase(Locale.ROOT)));
             };
         }
         if (result instanceof TaskResult.CommitUncertain) {
-            return "Commit outcome is uncertain. Check the repository before retrying.";
+            return Translations.text(source, "result.uncertain");
         }
         if (result instanceof TaskResult.Cancelled) {
-            return "Task cancelled.";
+            return Translations.text(source, "result.cancelled");
         }
-        return "Operation completed.";
-    }
-
-    private static String verificationSummary(TaskResult.VerificationComplete verified, String target) {
-        return "Full verification passed" + target + " (" + verified.entries() + " entries, " + verified.bytes() + " bytes).";
+        return Translations.text(source, "result.completed");
     }
 
     private int cancel(CommandSourceStack source, String id) {
@@ -457,7 +655,7 @@ public final class BaruSikoZakoServer {
             return 0;
         }
         var result = service.cancel(new TaskId(id));
-        source.sendSuccess(() -> Component.literal("Cancellation: " + result), false);
+        source.sendSuccess(() -> Component.literal(Translations.text(source, "cancel." + result.name().toLowerCase(Locale.ROOT))), false);
         return result == BackupService.Cancellation.REQUESTED ? 1 : 0;
     }
 
@@ -474,9 +672,13 @@ public final class BaruSikoZakoServer {
             return 0;
         }
         var value = state.orElseThrow();
-        source.sendSuccess(() -> Component.literal("Task " + id + " · " + value.operation() + " · " + value.phase() +
-            " · " + value.processedBytes() + (value.totalBytes().isPresent() ? "/" + value.totalBytes().getAsLong() : "") +
-            " bytes · " + value.elapsed().toMillis() + " ms" + value.result().map(result -> " · " + summarize(result)).orElse("")), false);
+        var submittedAt = visibleTasks().stream().filter(task -> task.state().id().equals(value.id())).findFirst()
+            .map(task -> task.submittedAt() + " · ").orElse("");
+        var progress = Long.toString(value.processedBytes()) +
+            (value.totalBytes().isPresent() ? "/" + value.totalBytes().getAsLong() : "");
+        source.sendSuccess(() -> Component.literal(submittedAt + taskLabel(source, value) + " · " + id + " · " +
+            Translations.format(source, "command.task_progress", progress, value.elapsed().toMillis()) +
+            value.result().map(result -> " · " + summarize(source, result)).orElse("")), false);
         return 1;
     }
 

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
 
 /** 使用玩家的语言和英语后备解析命令消息 */
 final class Translations {
@@ -26,10 +27,19 @@ final class Translations {
     private Translations() {}
 
     static String text(CommandSourceStack source, String key) {
-        var player = source.getPlayer();
-        String language = player == null
-                ? "en_us"
-                : PlayerLanguage.get(player).toLowerCase(Locale.ROOT);
+        return playerText(source == null ? null : source.getPlayer(), key);
+    }
+
+    static String format(CommandSourceStack source, String key, Object... arguments) {
+        return String.format(Locale.ROOT, text(source, key), arguments);
+    }
+
+    static String playerText(ServerPlayer player, String key) {
+        return languageText(player == null ? null : PlayerLanguage.get(player), key);
+    }
+
+    static String languageText(String clientLanguage, String key) {
+        String language = clientLanguage == null ? "en_us" : clientLanguage.toLowerCase(Locale.ROOT);
         if (!language.matches("[a-z0-9_]{1,32}")) {
             language = "en_us";
         }

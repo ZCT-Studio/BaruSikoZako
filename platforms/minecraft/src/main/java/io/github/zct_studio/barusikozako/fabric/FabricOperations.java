@@ -135,6 +135,19 @@ final class FabricOperations implements BackupApiHost.Operations {
         }
     }
 
+    @Override
+    public Optional<Path> snapshotDirectory(SnapshotRef snapshot) throws IOException {
+        if (!REPOSITORY_ID.equals(snapshot.repositoryId())) throw new IllegalArgumentException("Unknown repository");
+        var id = parseId(snapshot.snapshotId());
+        if (Files.notExists(repository, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+        try (var current = open()) {
+            return current.snapshotDirectory(id, config.manifestBudget());
+        } catch (IOException | LinkageError failure) {
+            LOG.log(System.Logger.Level.WARNING, "Snapshot directory query failed", failure);
+            throw new IOException("Snapshot directory query failed");
+        }
+    }
+
     private static io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context backupContext(BackupRequest request, String principal) {
         return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
             principal.equals("server-scheduler") ? io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.AUTOMATIC_BACKUP :

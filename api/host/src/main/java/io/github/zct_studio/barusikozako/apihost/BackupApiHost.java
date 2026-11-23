@@ -11,13 +11,16 @@ import io.github.zct_studio.barusikozako.api.BackupService.Page;
 import io.github.zct_studio.barusikozako.api.BackupService.PageRequest;
 import io.github.zct_studio.barusikozako.api.BackupService.RepositoryInfo;
 import io.github.zct_studio.barusikozako.api.BackupService.SnapshotInfo;
+import io.github.zct_studio.barusikozako.api.SnapshotRef;
 import io.github.zct_studio.barusikozako.api.TaskEvent;
 import io.github.zct_studio.barusikozako.api.TaskId;
 import io.github.zct_studio.barusikozako.api.TaskResult;
 import io.github.zct_studio.barusikozako.api.TaskState;
 import io.github.zct_studio.barusikozako.api.TaskSubscription;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -35,6 +38,8 @@ import java.util.function.Consumer;
 
 /** 内部主机组件。第三方集成仅接收公共服务 */
 public final class BackupApiHost implements AutoCloseable {
+    public record TimedTask(TaskState state, Instant submittedAt) {}
+
     private final Map<BoundAccess, java.util.Set<RuleRegistration>> worldRules = new java.util.HashMap<>();
 
     private final class RuleRegistration implements AutoCloseable {
@@ -103,6 +108,11 @@ public final class BackupApiHost implements AutoCloseable {
 
         public BackupService service() {
             return service;
+        }
+
+        /** 列出命令调用方可见且仍在保留期内的任务 */
+        public List<TimedTask> tasks() {
+            return runtime.tasks(access);
         }
 
         /** 平台内部命令的通知入口，回调只能投递消息，不可阻塞 */
@@ -211,6 +221,17 @@ public final class BackupApiHost implements AutoCloseable {
             });
         }
 
+        @Override
+        public CompletionStage<Optional<Path>> snapshotDirectory(SnapshotRef snapshot) {
+            Objects.requireNonNull(snapshot);
+            return read(() -> {
+                requireView(snapshot.repositoryId());
+                var directory = operations.snapshotDirectory(snapshot);
+                requireView(snapshot.repositoryId());
+                return directory;
+            });
+        }
+
         private void requireView(String repositoryId) {
             if (!access.mayViewRepository(repositoryId)) throw new SecurityException("Repository is not authorized");
         }
@@ -311,6 +332,7 @@ public final class BackupApiHost implements AutoCloseable {
         Optional<BackupService.Rejection> evaluate(BackupRequest request);
         List<RepositoryInfo> repositories();
         Page<SnapshotInfo> snapshots(String repository, PageRequest page) throws IOException;
+        default Optional<Path> snapshotDirectory(SnapshotRef snapshot) throws IOException { return Optional.empty(); }
         default Runnable before(BackupRequest request, String principal) { return null; }
         default void after(BackupRequest request, String principal, CompletionStage<TaskResult> result) {}
         TaskResult run(BackupRequest request, TaskControl control) throws IOException;

@@ -18,6 +18,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /** 在世界加载期间保持合作锁，包括其名称可能不存在的时间间隔 */
@@ -25,6 +29,7 @@ public final class WorldStartupGate implements RestoreWindow {
     private static final System.Logger LOG = System.getLogger("BaruSikoZako");
     private static WorldStartupGate lifetime;
     private static WorldStartupGate clientLock;
+    private static final Map<Path, RestoreNotice> pendingNotices = new HashMap<>();
     private final Path target;
     private final FileChannel channel;
     private final FileLock lock;
@@ -74,6 +79,20 @@ public final class WorldStartupGate implements RestoreWindow {
         return clientLock != null && clientLock.lock.isValid() && clientLock.target.equals(world.getParent());
     }
 
+    record RestoreNotice(Optional<Instant> snapshotTime) {}
+
+    static synchronized RestoreNotice takeRestoreNotice(Path world) {
+        if (pendingNotices.isEmpty()) return null;
+        var notice = pendingNotices.remove(world.toAbsolutePath().normalize());
+        if (notice != null) return notice;
+        try {
+            return pendingNotices.remove(world.toRealPath());
+        } catch (IOException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not resolve world path for the restore notice", failure);
+            return null;
+        }
+    }
+
     private static WorldStartupGate clientWindow(Path world) throws IOException {
         if (!canRestoreClientWorld(world)) throw new IOException("Singleplayer save directory is not locked");
         return new WorldStartupGate(world, clientLock.channel, clientLock.lock);
@@ -84,12 +103,18 @@ public final class WorldStartupGate implements RestoreWindow {
         var engine = new BackupEngine();
         var request = dedicated ? RestoreRequest.read(target) : RestoreRequest.readQueued(target);
         boolean pending = engine.hasPendingRestore(this);
+        RestoreNotice notice = null;
+        UUID recoveredOperation = null;
         if (pending || request != null) {
             // Vanilla 的补充锁可以检测已经运行的未修改的进程
             // 当世界存在时。在整个操作过程中，未经修改的服务器仍必须保留在外面
             try (var session = windows() ? null : existingSessionLock(target)) {
                 if (pending) {
                     var result = engine.recoverRestore(this);
+                    if (result.status() == RestoreResult.Status.RESTORED) {
+                        notice = new RestoreNotice(Optional.empty());
+                        recoveredOperation = result.operationId().orElse(null);
+                    }
                     LOG.log(System.Logger.Level.INFO, "Startup restore recovery: {0}", result.status());
                 }
                 if (request != null) {
@@ -104,10 +129,24 @@ public final class WorldStartupGate implements RestoreWindow {
                     LifecycleHooks.beforeStartupRestore(config.lifecycleIntegrations(), hookContext);
                     try (var repository = backend.open(location, ServerRepository::forceDirectory, "FULL", null)) {
                         long restoreStarted = System.nanoTime();
+                        var prepared = new java.util.concurrent.atomic.AtomicBoolean();
                         var result = engine.restoreWorld(repository, request.snapshot, request.operation,
-                            config.readLimits(), this, false, WorldStartupGate::checkWorldStage);
+                            config.readLimits(), this, false, stage -> {
+                                checkWorldStage(stage);
+                                prepared.set(true);
+                            });
                         if (result.status() != RestoreResult.Status.RESTORED)
                             throw new IOException("Restore request was previously rolled back: " + request.operation);
+                        // 已完成的 JVM 启动参数可能在后续启动仍存在
+                        if (request.backend != null || prepared.get() || request.operation.equals(recoveredOperation)) {
+                            Optional<Instant> snapshotTime = Optional.empty();
+                            try {
+                                snapshotTime = repository.snapshotCreatedAt(request.snapshot, config.manifestBudget());
+                            } catch (IOException | RuntimeException failure) {
+                                LOG.log(System.Logger.Level.WARNING, "Could not read restored snapshot creation time", failure);
+                            }
+                            notice = new RestoreNotice(snapshotTime);
+                        }
                         if (request.backend != null) {
                             Files.delete(queuedRequest(target));
                             ServerRepository.forceDirectory(target.getParent());
@@ -122,6 +161,7 @@ public final class WorldStartupGate implements RestoreWindow {
                 }
             }
         }
+        if (notice != null) pendingNotices.put(target, notice);
         offline = false;
     }
 

@@ -13,10 +13,12 @@ import io.github.zct_studio.barusikozako.api.TaskState;
 import io.github.zct_studio.barusikozako.api.TaskState.Phase;
 import io.github.zct_studio.barusikozako.api.TaskSubscription;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -195,6 +197,24 @@ final class TaskRuntime implements AutoCloseable {
         return Optional.of(completed.state);
     }
 
+    synchronized List<BackupApiHost.TimedTask> tasks(BoundAccess access) {
+        pruneTerminal();
+        var visible = new ArrayList<BackupApiHost.TimedTask>();
+        for (var work : active.values()) {
+            var current = work.state;
+            if (access.mayViewTask(current.repositoryId(), work.access.owner(), false)) {
+                visible.add(new BackupApiHost.TimedTask(
+                    state(work, current.phase(), current.processedBytes(), current.totalBytes(), null), work.submittedAt));
+            }
+        }
+        for (var entry : terminal.values()) {
+            if (access.mayViewTask(entry.state.repositoryId(), entry.owner, false)) {
+                visible.add(new BackupApiHost.TimedTask(entry.state, entry.submittedAt));
+            }
+        }
+        return List.copyOf(visible);
+    }
+
     synchronized Cancellation cancel(BoundAccess access, TaskId id) {
         var work = active.get(id);
         synchronized (access) {
@@ -257,7 +277,7 @@ final class TaskRuntime implements AutoCloseable {
         }
         release(work);
         var state = state(work, Phase.TERMINAL, work.state.processedBytes(), work.state.totalBytes(), outcome);
-        terminal.put(work.id, new Terminal(work.access.owner(), state, clock.getAsLong()));
+        terminal.put(work.id, new Terminal(work.access.owner(), state, clock.getAsLong(), work.submittedAt));
         publish(work, new TaskEvent.StateChanged(state));
         work.receipt.result.complete(outcome);
         pruneTerminal();
@@ -370,6 +390,7 @@ final class TaskRuntime implements AutoCloseable {
         private final BackupRequest request;
         private final Operation operation;
         private final long createdAt = clock.getAsLong();
+        private final Instant submittedAt = Instant.now();
         private final Receipt receipt = new Receipt(results);
         private TaskState state;
         private boolean cancellation;
@@ -404,7 +425,7 @@ final class TaskRuntime implements AutoCloseable {
         TaskResult run(Control control) throws Exception;
     }
 
-    private record Terminal(String owner, TaskState state, long completedAt) {}
+    private record Terminal(String owner, TaskState state, long completedAt, Instant submittedAt) {}
 
     /** 只允许赋值一次，持有回执不会延长任务或其适配器的生命周期 */
     static final class Receipt {

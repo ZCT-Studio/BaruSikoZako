@@ -4,6 +4,8 @@
 package io.github.zct_studio.barusikozako.backend;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,6 +15,16 @@ public interface ManagedRepository extends Repository {
     SnapshotPage snapshots(Optional<UUID> after, int limit, long manifestBytes) throws IOException;
     boolean isCommitted(UUID snapshotId, UUID operationId) throws IOException;
     void deleteIndependentSnapshot(UUID id, CommitGate checkpoint, CommitGate gate) throws IOException;
+
+    /** 已提交快照当前的本地目录，未找到或后端没有本地目录时返回空值 */
+    default Optional<Path> snapshotDirectory(UUID id, long metadataBudget) throws IOException {
+        return Optional.empty();
+    }
+
+    /** 从已提交快照的元数据读取备份创建时间 */
+    default Optional<Instant> snapshotCreatedAt(UUID id, long metadataBudget) throws IOException {
+        return Optional.empty();
+    }
 
     default java.util.OptionalLong archiveBytes(UUID id) throws IOException {
         return java.util.OptionalLong.empty();

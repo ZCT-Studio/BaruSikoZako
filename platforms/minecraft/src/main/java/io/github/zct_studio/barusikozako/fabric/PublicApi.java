@@ -13,6 +13,7 @@ import io.github.zct_studio.barusikozako.api.TaskId;
 import io.github.zct_studio.barusikozako.api.TaskResult;
 import io.github.zct_studio.barusikozako.api.TaskState;
 import io.github.zct_studio.barusikozako.api.TaskSubscription;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +81,10 @@ public final class PublicApi {
                 .map(info -> new SnapshotInfo(snapshot(info.snapshot()), info.createdAt(), info.sourceId(),
                     info.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata()))))
                 .toList(), result.next()));
+        }
+
+        @Override public CompletionStage<Optional<Path>> snapshotDirectory(SnapshotRef snapshot) {
+            return runtime.snapshotDirectory(internalSnapshot(snapshot));
         }
 
         @Override public CompletionStage<List<CapabilityState>> capabilities() {

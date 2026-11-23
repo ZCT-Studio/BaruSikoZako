@@ -280,7 +280,7 @@ public final class StaticRoundTrip {
                 var point = new Snapshot(UUID.randomUUID(), epoch.plusSeconds(i == 2 ? seconds : i), policy);
                 engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository,
                     point, UUID.randomUUID(), LIMITS);
-                var metadata = root.resolve("snapshots").resolve(point.id().toString()).resolve(ZstdOverlay.INHERITED);
+                var metadata = root.resolve("snapshots").resolve(ZstdRepository.directoryName(point)).resolve(ZstdOverlay.INHERITED);
                 require(Files.exists(metadata) == (i == 1), "wrong archive type for " + policy + " rollover");
                 require(engine.verify(repository, point.id(), LIMITS).bytes() == contents.length, "rollover verification failed");
             }
@@ -313,13 +313,13 @@ public final class StaticRoundTrip {
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, excess,
                 operation, LIMITS);
             require(repository.isCommitted(excess.id(), operation), "independent checkpoint was not committed");
-            require(!Files.exists(root.resolve("snapshots").resolve(excess.id().toString()).resolve(ZstdOverlay.INHERITED)),
+            require(!Files.exists(root.resolve("snapshots").resolve(ZstdRepository.directoryName(excess)).resolve(ZstdOverlay.INHERITED)),
                 "chain rollover wrote another delta");
             require(engine.verify(repository, excess.id(), LIMITS).entries() == 1, "checkpoint did not verify");
             var followup = new Snapshot(UUID.randomUUID(), excess.createdAt().plusSeconds(1), full.source());
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, followup,
                 UUID.randomUUID(), LIMITS);
-            require(Files.isRegularFile(root.resolve("snapshots").resolve(followup.id().toString()).resolve(ZstdOverlay.INHERITED)),
+            require(Files.isRegularFile(root.resolve("snapshots").resolve(ZstdRepository.directoryName(followup)).resolve(ZstdOverlay.INHERITED)),
                 "incremental backup did not resume after rollover");
             require(engine.verify(repository, followup.id(), LIMITS).entries() == 1, "new chain did not verify");
         }
@@ -381,7 +381,7 @@ public final class StaticRoundTrip {
                 require(Files.readString(restored.resolve("region/edit.mca")).equals(point == first ? "BBBB" : "CCCC"),
                     "same-length file change was missed");
                 require(Files.notExists(restored.resolve("region/removed.mca")), "removed entry returned");
-                var container = repositoryPath.resolve("snapshots").resolve(point.id().toString());
+                var container = repositoryPath.resolve("snapshots").resolve(ZstdRepository.directoryName(point));
                 require(!Files.readString(container.resolve("manifest.jsonl")).contains("retained.mca"),
                     "unchanged file was added to delta payload");
             }
@@ -398,7 +398,7 @@ public final class StaticRoundTrip {
             require(Files.readString(standalone.resolve("region/edit.mca")).equals("CCCC"), "rebuilt point depended on deleted delta");
         }
         exerciseDeltaPublicationCrash(repositoryPath, source, stage, full);
-        var reference = repositoryPath.resolve("snapshots").resolve(differential.id().toString()).resolve("inherited.jsonl");
+        var reference = repositoryPath.resolve("snapshots").resolve(ZstdRepository.directoryName(differential)).resolve("inherited.jsonl");
         Files.writeString(reference, "\n", StandardOpenOption.APPEND);
         try (var repository = ZstdRepository.open(repositoryPath)) {
             expectFailure(() -> engine.verify(repository, differential.id(), LIMITS));
@@ -449,7 +449,7 @@ public final class StaticRoundTrip {
                 refused, UUID.randomUUID(), LIMITS, () -> {}, () -> { throw new IOException("commit denied"); }));
             require(blocks(repositoryPath).size() == 6, "failure injection did not leave a collectible orphan");
             expectFailure(() -> engine.verify(repository, refused.id(), LIMITS));
-            Path index = repositoryPath.resolve("snapshots").resolve(second.id().toString()).resolve("chunks.idx");
+            Path index = repositoryPath.resolve("snapshots").resolve(ZstdRepository.directoryName(second)).resolve("chunks.idx");
             byte[] validIndex = Files.readAllBytes(index);
             byte[] invalidIndex = validIndex.clone();
             invalidIndex[0] ^= 1;
@@ -584,7 +584,7 @@ public final class StaticRoundTrip {
                 "history lost original snapshot metadata");
         }
         exerciseUncertainPublication(work, source);
-        var published = snapshots.resolve("snapshots").resolve(snapshot.id().toString());
+        var published = snapshots.resolve("snapshots").resolve(ZstdRepository.directoryName(snapshot));
         var abandoned = Files.createDirectory(snapshots.resolve(".pending-" + UUID.randomUUID() + "-1"));
         Files.writeString(abandoned.resolve("manifest.jsonl"), "interrupted stage");
         try (var repository = ZstdRepository.open(snapshots)) {

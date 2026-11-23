@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako.api;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,6 +21,20 @@ public interface BackupService {
     CompletionStage<Page<RepositoryInfo>> repositories(PageRequest page);
 
     CompletionStage<Page<SnapshotInfo>> snapshots(String repositoryId, PageRequest page);
+    /**
+     * 查询已提交快照当前的绝对目录路径。快照不存在或无本地目录时返回空值。
+     * 查询使用仓库读取权限。迁移或删除可使此前返回的路径失效。
+     */
+    default CompletionStage<Optional<Path>> snapshotDirectory(SnapshotRef snapshot) {
+        Objects.requireNonNull(snapshot);
+        return java.util.concurrent.CompletableFuture.completedStage(Optional.empty());
+    }
+
+    /** 查询已提交快照当前的实际目录名，使用与目录路径查询相同的权限 */
+    default CompletionStage<Optional<String>> snapshotFolderName(SnapshotRef snapshot) {
+        return snapshotDirectory(snapshot).thenApply(directory -> directory.map(Path::getFileName).map(Path::toString));
+    }
+
 
     CompletionStage<List<CapabilityState>> capabilities();
 

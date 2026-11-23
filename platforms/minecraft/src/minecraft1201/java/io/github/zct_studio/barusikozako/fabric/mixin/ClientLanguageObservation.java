@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ServerPlayer.class)
 public abstract class ClientLanguageObservation implements ClientLanguageAccess {
-    @Unique private volatile String barusikozako$language = "en_us";
+    @Unique private volatile String barusikozako$language;
 
     @Inject(method = "updateOptions", at = @At("TAIL"))
     private void barusikozako$updateLanguage(ServerboundClientInformationPacket packet, CallbackInfo callback) {

@@ -9,15 +9,15 @@ import java.util.List;
 public final class RuleNotice {
     private RuleNotice() {}
 
-    public static String forPlayer(List<String> rules) {
-        var message = new StringBuilder("World backup ignore rules: ").append(rules.size());
+    public static String forPlayer(List<String> rules, String heading, String more) {
+        var message = new StringBuilder(heading);
         int shown = 0;
         for (String rule : rules) {
             if (message.length() + rule.length() > 3000) break;
             message.append('\n').append(rule);
             shown++;
         }
-        if (shown < rules.size()) message.append("\nSee the server log for all rules.");
+        if (shown < rules.size()) message.append('\n').append(more);
         return message.toString();
     }
 }

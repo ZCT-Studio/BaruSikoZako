@@ -3,7 +3,8 @@
     "description": "A simple backup MOD, but it added a lot of extensibility\n一条杂鱼，帮你备份",
     "authors": [
       "WJiangzhi",
-      "zichuan-az"
+      "zichuan-az",
+      "tingia-tilia"
     ],
     "homepage": "https://modrinth.com/mod/barusikozako",
     "sources": "https://github.com/ZCT-Studio/BaruSikoZako",
@@ -22,7 +23,8 @@
     "zstd": {
       "description": "Zstandard backup backend for BaruSikoZako\n杂鱼的默认后端Zstd",
       "authors": [
-        "WJiangzhi"
+        "WJiangzhi",
+        "tingia-tilia"
       ],
       "homepage": "https://modrinth.com/mod/barusikozako-zstd",
       "sources": "https://github.com/ZCT-Studio/BaruSikoZako/tree/main/backends/zstd",
