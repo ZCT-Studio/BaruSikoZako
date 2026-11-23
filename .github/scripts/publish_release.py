@@ -262,9 +262,21 @@ def curseforge_has_hash(old, expected):
     return any(item["algo"] == 1 and item["value"].lower() == expected for item in old["hashes"])
 
 
+def ordered_storefront(entries):
+    loader_order = ("forge", "fabric", "quilt", "neoforge")
+    component_order = ("mod", "api", "zstd")
+
+    def release_key(entry):
+        job, asset, _ = entry
+        game_version = tuple(map(int, job["game"].split(".")))
+        return (game_version, -loader_order.index(job["loader"]), -component_order.index(asset["component"]))
+
+    return sorted(entries, key=release_key, reverse=True)
+
+
 def publish_modrinth(storefront, ids, *, force_run=None):
     """发布至 Modrinth，操作具有幂等性，可安全重试"""
-    for job, entry, files in sorted(storefront, key=lambda row: ("mod", "api", "zstd").index(row[1]["component"])):
+    for job, entry, files in ordered_storefront(storefront):
         modrinth(job, entry, files, ids, force_run=force_run)
 
 
@@ -272,7 +284,7 @@ def publish_curseforge(storefront, ids, versions, slugs, *, force_run=None):
     """发布至 CurseForge，暂缓平台拒绝关联必需主项目的组件"""
     deferred = set()
     main_slug = slugs["mod"]
-    for job, entry, files in sorted(storefront, key=lambda row: ("mod", "api", "zstd").index(row[1]["component"])):
+    for job, entry, files in ordered_storefront(storefront):
         component = entry["component"]
         if component in deferred:
             continue
@@ -317,8 +329,9 @@ def main():
         raise ValueError("No Modrinth or CurseForge release assets")
     
     if args.dry_run:
-        print(release_notes(storefront))
-        for _, _, files in storefront:
+        ordered = ordered_storefront(storefront)
+        print(release_notes(ordered))
+        for _, _, files in ordered:
             print(*(file.name for file in files), sep="\n")
         return
     

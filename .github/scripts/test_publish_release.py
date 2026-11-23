@@ -216,6 +216,32 @@ class StorefrontTests(unittest.TestCase):
                 self.assertEqual(selected.call_args.kwargs["force_run"], "123")
                 skipped.assert_not_called()
 
+    def test_both_storefronts_publish_newest_first_then_loader_and_component(self):
+        cases = [
+            ("26.3", ("forge",), "mod"),
+            ("26.3", ("forge",), "api"),
+            ("26.3", ("forge",), "zstd"),
+            ("26.3", ("fabric", "quilt"), "mod"),
+            ("26.3", ("neoforge",), "mod"),
+            ("26.2", ("forge",), "mod"),
+            ("1.21.10", ("fabric",), "mod"),
+            ("1.21.10", ("quilt",), "mod"),
+            ("1.21.10", ("neoforge",), "api"),
+            ("1.21.9", ("forge",), "mod"),
+        ]
+        rows = [(dict(self.job(*loaders), game=game, target=loaders[0] + game),
+                 self.entry(component), [self.file]) for game, loaders, component in cases]
+        expected = [(job["target"], entry["component"]) for job, entry, _ in rows]
+        shuffled = rows[::2][::-1] + rows[1::2]
+        versions = {job["target"]: publish.curseforge_versions(job) for job, _, _ in rows}
+        with patch.object(publish, "modrinth") as modrinth, patch.object(publish, "curseforge") as curseforge:
+            publish.publish_modrinth(shuffled, self.ids)
+            publish.publish_curseforge(shuffled, self.ids, versions, self.slugs)
+        for target in (modrinth, curseforge):
+            with self.subTest(platform=target):
+                self.assertEqual([(call.args[0]["target"], call.args[1]["component"])
+                                  for call in target.call_args_list], expected)
+
     @patch.object(publish, "invoke")
     def test_curseforge_defers_rejected_main_dependency(self, invoke):
         job = self.job("forge")
