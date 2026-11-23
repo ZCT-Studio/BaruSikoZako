@@ -20,8 +20,8 @@ class StorefrontTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.dict("os.environ", MODRINTH_TOKEN="test", CURSEFORGE_TOKEN="test",
                    CURSEFORGE_API_KEY="test").start()
-        self.ids = {"mod": "11", "api": "22", "zstd": "33"}
-        self.slugs = {"mod": "barusikozako", "api": "barusikozako-api", "zstd": "barusikozako-zstd"}
+        self.ids = {"mod": "11", "api": "22"}
+        self.slugs = {"mod": "barusikozako", "api": "barusikozako-api"}
 
     def job(self, *loaders):
         return {"game": "26.3", "loader": loaders[0], "platforms": list(loaders), "target": loaders[0] + "26.3"}
@@ -114,8 +114,8 @@ class StorefrontTests(unittest.TestCase):
                                          "hashes": [{"algo": 1, "value": publish.digest(self.file, "sha1")}] }],
                                 "pagination": {"totalCount": 1}}, {"id": 12}]
         job = self.job("neoforge")
-        publish.curseforge(job, self.entry("zstd"), [self.file], self.ids, publish.curseforge_versions(job), self.slugs)
-        self.assertEqual(request.call_args.args, (publish.CURSEFORGE + "/projects/33/update-file", "POST"))
+        publish.curseforge(job, self.entry("api"), [self.file], self.ids, publish.curseforge_versions(job), self.slugs)
+        self.assertEqual(request.call_args.args, (publish.CURSEFORGE + "/projects/22/update-file", "POST"))
         self.assertEqual(request.call_args.kwargs["fields"][1]["fileID"], 12)
         self.assertEqual(request.call_args.kwargs["fields"][1]["gameVersionNames"],
                          ["26.3", "NeoForge", "Client", "Server"])
@@ -134,8 +134,8 @@ class StorefrontTests(unittest.TestCase):
 
     @patch.object(publish, "request")
     def test_resolves_exact_main_project(self, request):
-        with patch.dict("os.environ", MODRINTH_API_ID="side-api", MODRINTH_ZSTD_ID="side-zstd",
-                        CURSEFORGE_MOD_ID="11", CURSEFORGE_API_ID="22", CURSEFORGE_ZSTD_ID="33"):
+        with patch.dict("os.environ", MODRINTH_API_ID="side-api",
+                        CURSEFORGE_MOD_ID="11", CURSEFORGE_API_ID="22"):
             request.side_effect = [{"id": id_, "slug": self.slugs[key]} for key, id_ in self.ids.items()]
             self.assertEqual(publish.project_ids("MODRINTH", ("Authorization", "test"))[0], self.ids)
             self.assertEqual(request.call_args_list[0].args[0], publish.MODRINTH + "/project/barusikozako")
@@ -220,7 +220,6 @@ class StorefrontTests(unittest.TestCase):
         cases = [
             ("26.3", ("forge",), "mod"),
             ("26.3", ("forge",), "api"),
-            ("26.3", ("forge",), "zstd"),
             ("26.3", ("fabric", "quilt"), "mod"),
             ("26.3", ("neoforge",), "mod"),
             ("26.2", ("forge",), "mod"),
@@ -253,7 +252,7 @@ class StorefrontTests(unittest.TestCase):
         }) + "\n400"
         invoke.side_effect = [manifest, '{"id":100}\n200', manifest, rejected, manifest, '{"id":101}\n200']
         rows = [(job, self.entry("api"), [self.file]), (job, self.entry("mod"), [self.file]),
-                (later, self.entry("api"), [self.file]), (job, self.entry("zstd"), [self.file])]
+                (later, self.entry("mod"), [self.file])]
         with patch("builtins.print") as output:
             deferred = publish.publish_curseforge(rows, self.ids, {
                 job["target"]: publish.curseforge_versions(job),
@@ -262,7 +261,7 @@ class StorefrontTests(unittest.TestCase):
         self.assertEqual(deferred, {"api"})
         urls = [call.args[0][-1] for call in invoke.call_args_list]
         self.assertEqual(urls[1::2], [
-            publish.CURSEFORGE + f"/projects/{project}/upload-file" for project in ("11", "22", "33")
+            publish.CURSEFORGE + f"/projects/{project}/upload-file" for project in ("11", "22", "11")
         ])
         self.assertIn("::warning", str(output.call_args))
         self.assertIn("api", str(output.call_args))

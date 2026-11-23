@@ -2,7 +2,7 @@
 
 `releases.json5` 定义支持范围。每个条目由 **Minecraft 版本、平台和支持标记**组成。一个 Minecraft 版本可以同时有多种标记，每个平台在该版本下只填一种。
 
-`versions.json5` 管理主体、API 和 Zstd 后端的独立版本。覆盖项优先匹配加载器加游戏版本，其次是加载器，再匹配游戏版本，最后用组件默认版本。Quilt 在检查自己的加载器覆盖后，也会检查 Fabric 的加载器覆盖。
+`versions.json5` 管理主体、API 和内置 Zstd 后端的版本。只有主体和 API 的版本参与发布判定。Zstd 版本用于内置模组的元数据和产物匹配，随主体版本一起交付。覆盖项优先匹配加载器加游戏版本，其次是加载器，再匹配游戏版本，最后用组件默认版本。Quilt 在检查自己的加载器覆盖后，也会检查 Fabric 的加载器覆盖。
 
 ## CI 与发布
 
@@ -13,12 +13,12 @@
 - 默认渠道为 `lts` 允许 RC 和正式版，`nlts` 再允许 Beta，`shift` 再允许 Alpha，`latest` 再允许 Snapshot。`[release-all]` 跳过渠道限制，`[release-temp]` 只选 `nlts` 和 `shift`，`[release-latest]` 只选 `latest`。`[no-build]` 同时跳过构建和发布。
 - `[force-release]` 即使版本表未改也生成发布计划。和 `[release-all]` 组合时，发布矩阵中所有可上传至这两个平台的目标都进入发布计划。若平台已有同版本但内容不同的文件，使用当前工作流 ID 区分补发批次。`[no-release]`、`[no-build]` 和仅构建的工作流仍会阻止发布。
 - `[no-modrinth]` 跳过 Modrinth 文件发布，`[no-curseforge]` 跳过 CurseForge 文件发布。可以和 `[force-release]` 组合。同时使用两个标记时，仍按常规规则构建。
-- 每个平台按 Minecraft 版本号从新到旧上传。同一版本按 Forge、Fabric、Quilt、NeoForge 的顺序发布。Fabric 和 Quilt 共用产物时只上传一次。同一目标依次上传主模组、API 和 Zstd 后端。
-- CurseForge 先提交该目标的主模组文件。若平台返回 1018 并拒绝关联必需的主项目，工作流会告警并暂缓受影响的 API 或 Zstd 文件。主项目可被关联后，可重跑发布作业补发。
+- 每个平台按 Minecraft 版本号从新到旧上传。同一版本按 Forge、Fabric、Quilt、NeoForge 的顺序发布。Fabric 和 Quilt 共用产物时只上传一次。同一目标依次上传主模组和 API。
+- CurseForge 先提交该目标的主模组文件。若平台返回 1018 并拒绝关联必需的主项目，工作流会告警并暂缓受影响的 API 文件。主项目可被关联后，可重跑发布作业补发。
 - 当前发布工作流运行构建与自动化检查。实际服务端验收需单独进行。
 - 所有模组发布目标均标记为可用于独立服务器和单人游戏。Modrinth 使用 `server_only`，CurseForge 同时使用 `Client` 和 `Server`。
-- Modrinth 使用主项目 slug `barusikozako` 查找项目 ID。CurseForge 使用 `CURSEFORGE_MOD_ID`，并核对其 slug 同为 `barusikozako`。API 和后端分别使用各自的项目变量。
-- 两个平台上，独立 API 和 Zstd 文件都将主模组标记为必需依赖。加载器标签来自发布目标，只有实际共用同一产物的 Fabric 和 Quilt 才共用两个标签。主模组可独立安装，调用公开接口的外部模组需额外安装对应的独立 API JAR。
+- Modrinth 使用主项目 slug `barusikozako` 查找项目 ID。CurseForge 使用 `CURSEFORGE_MOD_ID`，并核对其 slug 同为 `barusikozako`。独立 API 使用自己的项目变量。
+- 两个平台上的独立 API 都将主模组标记为必需依赖。加载器标签来自发布目标，只有实际共用同一产物的 Fabric 和 Quilt 才共用两个标签。主模组已内置 Zstd，调用公开接口的外部模组需额外安装对应的独立 API JAR。
 
 ## 支持标记
 

@@ -43,6 +43,10 @@ val legacyAsm = configurations.create("legacyAsm") {
     isCanBeConsumed = false
     isTransitive = false
 }
+val forgeMappingTools = configurations.create("forgeMappingTools") {
+    isCanBeConsumed = false
+    isTransitive = false
+}
 
 dependencies {
     add(hostLibraries.name, libs.snakeyaml)
@@ -59,6 +63,7 @@ dependencies {
         add(backendLibraries.name, "commons-codec:commons-codec:1.19.0")
     }
     if (forgeSrg && !apiOnly) {
+        add(forgeMappingTools.name, "net.minecraftforge:srgutils:0.5.6")
         for (artifact in listOf("asm", "asm-analysis", "asm-commons", "asm-tree", "asm-util")) {
             add(legacyAsm.name, "org.ow2.asm:$artifact:9.10.1")
         }
@@ -259,12 +264,11 @@ for ((loader, version) in versions) {
         val compose = tasks.register<Exec>("composeForgeMappings") {
             dependsOn(runtimePreparation)
             inputs.files(source, official, srg)
-            val utils = libraryDir.resolve("net/minecraftforge/srgutils/0.5.6/srgutils-0.5.6.jar")
-            inputs.file(utils)
+            inputs.files(forgeMappingTools).withPropertyName("mappingToolClasspath")
             outputs.file(mappings)
             doFirst {
                 mappings.get().asFile.parentFile.mkdirs()
-                commandLine(launcher.get().executablePath.asFile, "-cp", utils, source,
+                commandLine(launcher.get().executablePath.asFile, "-cp", forgeMappingTools.asPath, source,
                     official, srg, mappings.get().asFile)
             }
         }
@@ -320,7 +324,7 @@ for ((loader, version) in versions) {
             copyComponents(listOf(":api:common"))
             loaderManifest("io.github.zct_studio.barusikozako.api")
         }
-        PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "$loader$minecraft", false,
+        PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "$loader$minecraft",
             tasks.jar.flatMap { it.archiveFile })
         continue
     }
@@ -347,7 +351,7 @@ for ((loader, version) in versions) {
             source(fileTree(sharedSources.resolve("legacyJava/java")))
             if (synchronousSavedData) {
                 source(fileTree(sharedSources.resolve("synchronousSavedData/java")) {
-                    if (neoSavedData) exclude("**/SavedDataObservation.java", "**/SavedDataBarriers.java")
+                    if (neoSavedData) exclude("**/SavedDataBarriers.java")
                     if (forgeSrg) exclude("**/SavedDataObservation.java")
                 })
                 if (neoSavedData) source(fileTree(fmlSource.resolve("src/neoforge1211/java")))
@@ -421,77 +425,69 @@ for ((loader, version) in versions) {
             } else manifest.attributes("Multi-Release" to true)
         }
     }
-    val variants = listOf(false, true).map { lean ->
-        val kind = if (lean) "NoBackend" else "Bundled"
-        val title = "BaruSikoZako" + if (lean) " <NO_BACKEND>" else ""
-        val descriptor = metadataFile("$loader${kind}Metadata", toml, metadata(loader, "barusikozako", title, true))
-        val includedBackend = if (lean) null else backendJar
-        val jarJar = jarJarMetadata("$loader$kind", hostLibraries, includedBackend)
-        tasks.register<Jar>("$loader${kind}Jar") {
-            if (forgePack != null) from(forgePack)
-            from(rootProject.file("resource/barusikozako/icon.png"))
-            from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
-            from(rootProject.file("resource/barusikozako/banner.png"))
-            archiveBaseName.set("barusikozako-$loader-$minecraft")
-            if (lean) archiveClassifier.set("no-backend")
-            if (forgeSrg) {
-                destinationDirectory.set(srgTools.map { it.dir("named") })
-                from(refmap)
-            }
-            from(main.output)
-            from(shared.resolve("resources")) {
-                if (legacyMinecraft) filesMatching("barusikozako.mixins.json") {
-                    filter { line: String ->
-                        var value = line.replace("\"minVersion\": \"0.8.7\",",
-                            "\"minVersion\": \"0.8.7\", \"injectors\": { \"defaultRequire\": 1 },")
-                        if (legacyChunkWorker) value = value
-                            .replace("\"PoiStorageAccess\"", "\"PoiStorageAccess\", \"LegacyChunkStorageAccess\"")
-                        if (legacyChunkWorker) value = value.replace("\"AuxiliaryPlayerObservation\",",
-                                "\"AuxiliaryPlayerObservation\", \"PlayerStatsObservation\",")
-                        if (synchronousSavedData) value = value.replace("\"EmptyServerCaptureMixin\",", "")
-                            .replace("\"SavedDataQueue\",", if (neoSavedData) "\"NeoForgeSaveQueue\"," else "")
-                            .replace("\"PoiStorageAccess\"", "\"LegacyPoiWrites\", \"PoiStorageAccess\"")
-                        if (forgeSrg) value = value.replace("\"0.8.7\"", "\"0.8.5\", \"refmap\": \"barusikozako.refmap.json\"")
-                            .replace("\"ServerSaveObservation\",",
-                                "\"LegacyRegionWriteFailure\", \"LegacyChunkSerializationFailure\", \"LegacyPoiSerializationFailure\",")
-                        if (forgeSrg) value = value.replace("\"PlayerFileObservation\",",
-                            "\"PlayerFileObservation\", \"ClientLanguageObservation\",")
-                        value
-                    }
-                }
-            }
-            from(descriptor) { into("META-INF") }
-            copyComponents(ownComponents)
-            loaderManifest("barusikozako", mixin = loader == "forge")
-            attachLibraries(hostLibraries, jarJar, includedBackend)
-            from(hostNotices.flatMap { it.collected }) { into("META-INF/third-party") }
+    val descriptor = metadataFile("${loader}BundledMetadata", toml, metadata(loader, "barusikozako", "BaruSikoZako", true))
+    val jarJar = jarJarMetadata("${loader}Bundled", hostLibraries, backendJar)
+    val named = tasks.register<Jar>("${loader}BundledJar") {
+        if (forgePack != null) from(forgePack)
+        from(rootProject.file("resource/barusikozako/icon.png"))
+        from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
+        from(rootProject.file("resource/barusikozako/banner.png"))
+        archiveBaseName.set("barusikozako-$loader-$minecraft")
+        if (forgeSrg) {
+            destinationDirectory.set(srgTools.map { it.dir("named") })
+            from(refmap)
         }
-    }
-    val products = variants.mapIndexed { index, named ->
-        val (source, producer) = if (forgeSrg) {
-            val output = layout.buildDirectory.dir("libs").flatMap { dir -> named.flatMap { it.archiveFileName }.map { dir.file(it) } }
-            val remap = tasks.register<JavaExec>("${named.name}Srg") {
-                javaLauncher.set(launcher)
-                classpath = fartClasspath
-                mainClass.set("net.minecraftforge.fart.Main")
-                val input = named.flatMap { it.archiveFile }
-                inputs.files(input, mappings, namedGame, mappingLibraries)
-                outputs.file(output)
-                doFirst {
-                    args("--input", input.get().asFile, "--output", output.get().asFile, "--names", mappings.get().asFile,
-                        "--lib", namedGame.get().asFile, "--threads", "2")
-                    args(mappingLibraries.map { "--lib=${it.absolutePath}" })
+        from(main.output)
+        from(shared.resolve("resources")) {
+            if (legacyMinecraft) filesMatching("barusikozako.mixins.json") {
+                filter { line: String ->
+                    var value = line.replace("\"package\":",
+                        "\"injectors\": { \"defaultRequire\": 1 }, \"package\":")
+                    if (legacyChunkWorker) value = value
+                        .replace("\"PoiStorageAccess\"", "\"PoiStorageAccess\", \"LegacyChunkStorageAccess\"")
+                    if (legacyChunkWorker) value = value.replace("\"AuxiliaryPlayerObservation\",",
+                            "\"AuxiliaryPlayerObservation\", \"PlayerStatsObservation\",")
+                    if (synchronousSavedData) value = value.replace("\"EmptyServerCaptureMixin\",", "")
+                        .replace("\"SavedDataQueue\",", "")
+                        .replace("\"PoiStorageAccess\"", "\"LegacyPoiWrites\", \"PoiStorageAccess\"")
+                    if (neoSavedData) value = value.replace("\"SavedDataObservation\",", "")
+                        .replace("\"package\":", "\"plugin\": \"io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins\", \"package\":")
+                    if (forgeSrg) value = value.replace("\"package\":",
+                            "\"refmap\": \"barusikozako.refmap.json\", \"package\":")
+                        .replace("\"ServerSaveObservation\",",
+                            "\"LegacyRegionWriteFailure\", \"LegacyChunkSerializationFailure\", \"LegacyPoiSerializationFailure\",")
+                    if (forgeSrg) value = value.replace("\"PlayerFileObservation\",",
+                        "\"PlayerFileObservation\", \"ClientLanguageObservation\",")
+                    value
                 }
             }
-            output to remap
-        } else named.flatMap { it.archiveFile } to named
-        val task = if (index == 0) "publishBundledProduct" else "publishLeanProduct"
-        PublishProductJar.register(project, task, "mod", "barusikozako", "$loader$minecraft", index != 0, source)
-            .also { it.configure { dependsOn(producer) } }
+        }
+        from(descriptor) { into("META-INF") }
+        copyComponents(ownComponents)
+        loaderManifest("barusikozako", mixin = loader == "forge")
+        attachLibraries(hostLibraries, jarJar, backendJar)
+        from(hostNotices.flatMap { it.collected }) { into("META-INF/third-party") }
     }
-    val backendProduct = PublishProductJar.register(project, "publishBackendProduct", "backend", "barusikozako_backendzstd",
-        "$loader$minecraft", false, zstdVersion, backendJar.flatMap { it.archiveFile })
-    tasks.register("${loader}Dist") { dependsOn(backendProduct, products) }
+    val (source, producer) = if (forgeSrg) {
+        val output = layout.buildDirectory.dir("libs").flatMap { dir -> named.flatMap { it.archiveFileName }.map { dir.file(it) } }
+        val remap = tasks.register<JavaExec>("${named.name}Srg") {
+            javaLauncher.set(launcher)
+            classpath = fartClasspath
+            mainClass.set("net.minecraftforge.fart.Main")
+            val input = named.flatMap { it.archiveFile }
+            inputs.files(input, mappings, namedGame, mappingLibraries)
+            outputs.file(output)
+            doFirst {
+                args("--input", input.get().asFile, "--output", output.get().asFile, "--names", mappings.get().asFile,
+                    "--lib", namedGame.get().asFile, "--threads", "2")
+                args(mappingLibraries.map { "--lib=${it.absolutePath}" })
+            }
+        }
+        output to remap
+    } else named.flatMap { it.archiveFile } to named
+    val product = PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", "$loader$minecraft", source)
+        .also { it.configure { dependsOn(producer) } }
+    tasks.register("${loader}Dist") { dependsOn(product) }
 }
 
 fun addCompileDependency(sourceSet: SourceSet, dependency: Any) {

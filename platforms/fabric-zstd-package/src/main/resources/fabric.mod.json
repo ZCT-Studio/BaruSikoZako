@@ -13,6 +13,7 @@
   },
   "depends": {
     "barusikozako": "*",
+    "fabricloader": "${loaderRequirement}",
     "minecraft": ["${minecraftVersions}"],
     "java": ">=${javaVersion}"
   },

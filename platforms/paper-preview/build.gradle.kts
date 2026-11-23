@@ -37,5 +37,5 @@ tasks.jar {
     from(rootProject.file("LICENSE")) { into("META-INF") }
 }
 
-PublishProductJar.register(project, "publishPreviewProduct", "preview", "BaruSikoZakoCompatibilityPreview", "paper26.3", false,
+PublishProductJar.register(project, "publishPreviewProduct", "preview", "BaruSikoZakoCompatibilityPreview", "paper26.3",
     tasks.jar.flatMap { it.archiveFile })

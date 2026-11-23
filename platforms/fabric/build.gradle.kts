@@ -16,9 +16,10 @@ val target = Properties().apply {
 }
 val minecraftVersion = requireNotNull(target.getProperty("fabric.development.minecraft"))
 val runtimeMinecraft = parent!!.name.removePrefix("mc").replace('_', '.')
-val fabricApiVersion = libs.versions.fabric.api.get()
-val runtimeApiVersion = if (runtimeMinecraft == minecraftVersion) fabricApiVersion else
-    requireNotNull(target.getProperty("fabric.runtime.api.$runtimeMinecraft")) { "Unsupported Fabric target: $runtimeMinecraft" }
+val fabricApiVersion = requireNotNull(target.getProperty("fabric.runtime.api.$minecraftVersion"))
+val runtimeApiVersion = requireNotNull(target.getProperty("fabric.runtime.api.$runtimeMinecraft")) {
+    "Unsupported Fabric target: $runtimeMinecraft"
+}
 val supportedMinecraft = target.getProperty("fabric.runtime.minecraft.$runtimeMinecraft", runtimeMinecraft).split(",")
 val releaseAlpha = providers.gradleProperty("releaseAlpha").map(String::toBoolean).getOrElse(false)
 if (releaseAlpha && !Regex("\\d+\\.\\d+\\.\\d+-alpha\\.\\d+").matches(project.version.toString()))
@@ -122,7 +123,7 @@ dependencies {
 tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
         "minecraftVersions" to supportedMinecraft.joinToString("\",\""),
-        "loaderRequirement" to ">=0.19.5",
+        "loaderRequirement" to project.extra["fabricLoaderRequirement"],
         "modDescription" to if (releaseAlpha) "BaruSikoZako backup engine for Fabric dedicated servers (Alpha)."
             else "BaruSikoZako server integration development build.")
     @Suppress("UNCHECKED_CAST")
@@ -158,31 +159,5 @@ tasks.jar {
 
 
 val bundledJar = tasks.jar
-val noBackendJar = tasks.register<Jar>("noBackendJar") {
-    description = "Packages BaruSikoZako without a bundled backup backend."
-    group = LifecycleBasePlugin.BUILD_GROUP
-    archiveBaseName.set(bundledJar.flatMap { it.archiveBaseName })
-    archiveClassifier.set("no-backend")
-    manifest.attributes("Implementation-Version" to project.version.toString())
-    val nested = "META-INF/jars/$backendArchive"
-    inputs.property("backendArchive", backendArchive)
-    dependsOn(bundledJar)
-    from(bundledJar.flatMap { it.archiveFile }.map { zipTree(it) }) {
-        includeEmptyDirs = false
-        exclude(nested)
-        filesMatching("fabric.mod.json") {
-            filter { line ->
-                line.replace("\"name\":\"BaruSikoZako\"", "\"name\":\"BaruSikoZako <NO_BACKEND>\"")
-                    .replace(",{\"file\":\"$nested\"}", "")
-                    .replace("{\"file\":\"$nested\"},", "")
-            }
-        }
-    }
-}
-PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", packageTarget, false,
+PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", packageTarget,
     bundledJar.flatMap { it.archiveFile })
-PublishProductJar.register(project, "publishLeanProduct", "mod", "barusikozako", packageTarget, true,
-    noBackendJar.flatMap { it.archiveFile })
-tasks.assemble {
-    dependsOn("${parent!!.path}:fabric-zstd-package:assemble")
-}

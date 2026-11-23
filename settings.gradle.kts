@@ -19,6 +19,9 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         mavenCentral()
+        maven("https://maven.minecraftforge.net/") {
+            content { includeModule("net.minecraftforge", "srgutils") }
+        }
     }
 }
 

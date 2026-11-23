@@ -21,8 +21,7 @@ TIERS = {
     "shift": {"alpha", "beta", "rc", "release"},
     "latest": {"snapshot", "alpha", "beta", "rc", "release"},
 }
-IDS = {"mod": "barusikozako", "api": "barusikozako_api", "zstd": "barusikozako_backendzstd"}
-FOLDERS = {"api": "api", "zstd": "backend"}
+IDS = {"mod": "barusikozako", "api": "barusikozako_api"}
 BUILDERS = {"fabric", "quilt", "forge", "neoforge", "agent"}
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
 SECTION = re.compile(r"^## \[([^\]]+)\].*$", re.MULTILINE)
@@ -38,28 +37,30 @@ def read_table(text):
     return json5.loads(text, allow_duplicate_keys=False)
 
 
-def rules(table):
-    return {"mod": table["mod"], "api": table["api"], "zstd": table["backend"]["zstd"]}
-
-
 def channel(value):
     match = re.search(r"-(snapshot|alpha|beta|rc)", value.split("+", 1)[0], re.IGNORECASE)
     return match[1].lower() if match else "release"
 
 
+def resolve_version(component, rule, platform, game):
+    overrides = rule["overrides"]
+    keys = [platform + game, platform]
+    if platform == "quilt":
+        keys.extend(("fabric" + game, "fabric"))
+    keys.append(game)
+    version = next((overrides[key] for key in keys if key in overrides), rule["version"])
+    if not isinstance(version, str) or not SEMVER.fullmatch(version):
+        raise ValueError(f"Invalid {component} version for {platform}{game}: {version!r}")
+    return version
+
+
 def resolve(table, platform, game):
-    result = {}
-    for component, rule in rules(table).items():
-        overrides = rule["overrides"]
-        keys = [platform + game, platform]
-        if platform == "quilt":
-            keys.extend(("fabric" + game, "fabric"))
-        keys.append(game)
-        version = next((overrides[key] for key in keys if key in overrides), rule["version"])
-        if not isinstance(version, str) or not SEMVER.fullmatch(version):
-            raise ValueError(f"Invalid {component} version for {platform}{game}: {version!r}")
-        result[component] = version
-    return result
+    return {component: resolve_version(component, table[component], platform, game) for component in IDS}
+
+
+def bundled_zstd_version(table, platform, game):
+    rule = table.get("backend", {}).get("zstd")
+    return resolve_version("backend.zstd", rule, platform, game) if rule is not None else None
 
 
 def targets(table):
@@ -123,9 +124,8 @@ def changelogs(markdown):
 
 
 def asset_names(component, version, target):
-    folder = FOLDERS.get(component, "agent" if target.startswith("agent") else "mod")
-    variants = ("", "_L") if component == "mod" else ("",)
-    return [f"{folder}/{IDS[component]}-v{version}{variant}+{target}.jar" for variant in variants]
+    folder = "api" if component == "api" else "agent" if target.startswith("agent") else "mod"
+    return [f"{folder}/{IDS[component]}-v{version}+{target}.jar"]
 
 
 def commit_flags(message):
@@ -176,7 +176,9 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         for (game, platform), tier in sorted(selected.items()):
             versions = resolve(current, platform, game)
             before = resolve(previous, platform, game) if catalog_changed and previous else {}
-            if tier == "latest" and (validate_code or (catalog_changed and versions != before)):
+            zstd = bundled_zstd_version(current, platform, game)
+            previous_zstd = bundled_zstd_version(previous, platform, game) if catalog_changed and previous else None
+            if tier == "latest" and (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd))):
                 build = job(game, [platform], versions, versions, True)
                 build_jobs[build["target"]] = build
             bypass_tier = "release-all" in flags
@@ -187,10 +189,10 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
                             (bypass_tier or channel(value) in TIERS[tier]))
             if emitted:
                 loader_group = "fabric" if platform in ("fabric", "quilt") else platform
-                key = (game, loader_group, tuple(versions.items()), emitted)
+                key = (game, loader_group, tuple(versions.items()), zstd, emitted)
                 grouped.setdefault(key, []).append(platform)
 
-    for (game, _, version_entries, emitted), platforms in grouped.items():
+    for (game, _, version_entries, _, emitted), platforms in grouped.items():
         versions = dict(version_entries)
         is_agent = platforms[0] == "agent"
         if not is_agent:
@@ -221,7 +223,7 @@ def previous_catalog(base):
     if not match:
         return None
     old = {"version": match[1], "overrides": {}}
-    return {"mod": old, "api": old, "backend": {"zstd": old}}
+    return {"mod": old, "api": old}
 
 
 def main():

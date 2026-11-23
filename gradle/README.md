@@ -36,7 +36,7 @@ loaders=fabric,forge,neoforge
 .\gradlew.bat :backends:zstd:check :engine:core:recoveryFaults
 ```
 
-本体和 API 分别导出安装包。Forge 和 NeoForge 编译可选集成入口时使用 API 项目的类型，运行时从服务器安装的 API JAR 加载这些公开类型。根任务 `buildProducts` 会导出本体、独立 API 和后端。Fabric 独立 Zstd 封装位于同一版本下的 `fabric-zstd-package`，与本体并列以隔离旧版和新版 Loom 插件。
+本体和 API 分别导出安装包。Forge 和 NeoForge 编译可选集成入口时使用 API 项目的类型，运行时从服务器安装的 API JAR 加载这些公开类型。根任务 `buildProducts` 导出内置 Zstd 的本体和独立 API。Zstd 保留独立模组 ID 和构建任务。Fabric 的 Zstd 封装位于同一版本下的 `fabric-zstd-package`，构建后的后端 JAR 随本体嵌套打包。
 
 ## 安装产物
 
@@ -45,10 +45,8 @@ loaders=fabric,forge,neoforge
 | 目录 | 文件名示例 |
 | --- | --- |
 | `mod` | `barusikozako-v0.5.0+fabric26.3.jar` |
-| `mod`（无内置 Zstd） | `barusikozako-v0.5.0_L+fabric26.3.jar` |
 | `api` | `barusikozako_api-v0.5.0+fabric26.3.jar` |
-| `backend` | `barusikozako_backendzstd-v0.5.0+fabric26.3.jar` |
-| `agent` | `barusikozako-v0.5.0+agent26.3.jar`、`barusikozako-v0.5.0_L+agent26.3.jar` |
+| `agent` | `barusikozako-v0.5.0+agent26.3.jar` |
 | `plugin` | `barusikozako-v0.5.0+bukkit26.3.jar`，用于配合 Agent 的可选桥 |
 | `preview` | 显式构建的兼容性探针，仍按验收矩阵管理 |
 

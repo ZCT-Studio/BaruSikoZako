@@ -12,7 +12,8 @@ tasks.jar {
     archiveBaseName.set("barusikozako_api-fabric")
     dependsOn(common)
     from(common.map { zipTree(it) }) { include("io/github/zct_studio/barusikozako/**") }
-    val metadata = mapOf("productVersion" to project.version.toString())
+    val metadata = mapOf("productVersion" to project.version.toString(),
+        "loaderRequirement" to project.extra["fabricLoaderRequirement"])
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["api"] as Map<String, Any?>
     val metadataFields = mapOf("descriptionJson" to groovy.json.JsonOutput.toJson(info["description"]).removeSurrounding("\""),
@@ -26,5 +27,5 @@ tasks.jar {
     from(rootProject.file("LICENSE")) { into("META-INF") }
 }
 val game = parent!!.name.removePrefix("mc").replace('_', '.')
-PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "${extra["fabricPackageLoader"]}$game", false,
+PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "${extra["fabricPackageLoader"]}$game",
     tasks.jar.flatMap { it.archiveFile })

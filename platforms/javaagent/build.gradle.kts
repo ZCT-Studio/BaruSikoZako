@@ -106,7 +106,6 @@ val agentManifest = mapOf("Premain-Class" to "io.github.zct_studio.barusikozako.
 tasks.jar {
     from(rootProject.file("resource/barusikozako/agent")) { into("assets/barusikozako/agent") }
     archiveBaseName.set("barusikozako-javaagent")
-    archiveClassifier.set("unbundled")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest.attributes(agentManifest)
     dependsOn(runtimeInputs)
@@ -116,31 +115,19 @@ tasks.jar {
     }) { excludeJarMetadata() }
     from(sharedApi.flatMap { it.archiveFile }) { into("META-INF/barusikozako") }
     from(windowsPersistence.flatMap { it.archiveFile }) { into("META-INF/barusikozako") }
-    from(rootProject.file("LICENSE")) { into("META-INF") }
-    from(agentNotices.flatMap { it.collected }) { into("META-INF/third-party") }
-}
-
-val bundledJar = tasks.register<Jar>("bundledJar") {
-    archiveBaseName.set("barusikozako-javaagent")
-    archiveClassifier.set("bundled")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    manifest.attributes(agentManifest)
-    from(tasks.jar.flatMap { it.archiveFile }.map { zipTree(it) }) { excludeJarMetadata() }
     from(zstdComponent.flatMap { it.archiveFile }) {
         into("META-INF/barusikozako")
         rename { "backend.jar" }
     }
+    from(rootProject.file("LICENSE")) { into("META-INF") }
+    from(agentNotices.flatMap { it.collected }) { into("META-INF/third-party") }
 }
 
 val agentGame = providers.gradleProperty("agentGameVersion").orElse(providers.gradleProperty("gameVersion"))
     .getOrElse("26.3")
 require(agentGame in setOf("1.21.11", "26.1.2", "26.2", "26.3")) { "Unsupported Agent product target: $agentGame" }
-PublishProductJar.register(project, "publishBundledProduct", "agent", "barusikozako", "agent$agentGame", false,
-    bundledJar.flatMap { it.archiveFile })
-PublishProductJar.register(project, "publishLeanProduct", "agent", "barusikozako", "agent$agentGame", true,
+PublishProductJar.register(project, "publishBundledProduct", "agent", "barusikozako", "agent$agentGame",
     tasks.jar.flatMap { it.archiveFile })
-PublishProductJar.register(project, "publishBackendProduct", "backend", "barusikozako_backendzstd", "agent$agentGame", false,
-    extra["zstdVersion"].toString(), zstdComponent.flatMap { it.archiveFile })
 val contracts = configurations.create("publicApiContract") { isTransitive = false }
 dependencies.add(contracts.name, project(":api:common"))
 val apiJar = tasks.register<Jar>("agentApiJar") {
@@ -150,7 +137,7 @@ val apiJar = tasks.register<Jar>("agentApiJar") {
     from(contracts.map { zipTree(it) }) { include("io/github/zct_studio/barusikozako/api/**") }
     from(rootProject.file("LICENSE")) { into("META-INF") }
 }
-PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "agent$agentGame", false,
+PublishProductJar.register(project, "publishApiProduct", "api", "barusikozako_api", "agent$agentGame",
     extra["apiVersion"].toString(), apiJar.flatMap { it.archiveFile })
 
 val captureFixture = sourceSets.create("captureFixture")

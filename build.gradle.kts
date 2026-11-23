@@ -148,6 +148,11 @@ subprojects {
     extra.set("apiVersion", apiVersion)
     extra.set("zstdVersion", zstdVersion)
     extra.set("fabricPackageLoader", distributionLoader)
+    if (game != null) {
+        compatibilityTargets.getProperty("fabric.runtime.loader.$game")?.let {
+            extra.set("fabricLoaderRequirement", ">=$it")
+        }
+    }
     extra.set("localTarget", localTarget)
 }
 

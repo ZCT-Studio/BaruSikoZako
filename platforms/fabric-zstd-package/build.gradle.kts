@@ -1,6 +1,5 @@
 import java.util.Properties
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
-import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 
 plugins {
     alias(libs.plugins.fabric.loom)
@@ -44,6 +43,7 @@ sourceSets.main { resources.srcDir(rootProject.file("platforms/fabric-zstd-packa
 tasks.processResources {
     from(rootProject.file("resource/barusikozako_backendzstd/icon.png"))
     val metadata = mapOf("productVersion" to project.version.toString(),
+        "loaderRequirement" to project.extra["fabricLoaderRequirement"],
         "javaVersion" to runtimeJava,
         "minecraftVersions" to supportedMinecraft.joinToString("\",\""))
     @Suppress("UNCHECKED_CAST")
@@ -74,7 +74,3 @@ tasks.jar {
     archiveBaseName.set("barusikozako_backendzstd-fabric$runtimeSuffix")
     from(rootProject.file("LICENSE")) { into("META-INF") }
 }
-
-PublishProductJar.register(project, "publishBackendProduct", "backend", "barusikozako_backendzstd",
-    "${extra["fabricPackageLoader"]}$runtimeMinecraft", false,
-    tasks.jar.flatMap { it.archiveFile })

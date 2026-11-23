@@ -68,18 +68,18 @@ public abstract class PublishProductJar extends DefaultTask {
     }
 
     public static TaskProvider<PublishProductJar> register(Project project, String task, String directory,
-            String id, String target, boolean lean, Provider<RegularFile> source) {
-        return register(project, task, directory, id, target, lean, project.getVersion().toString(), source);
+            String id, String target, Provider<RegularFile> source) {
+        return register(project, task, directory, id, target, project.getVersion().toString(), source);
     }
 
     public static TaskProvider<PublishProductJar> register(Project project, String task, String directory,
-            String id, String target, boolean lean, String version, Provider<RegularFile> source) {
+            String id, String target, String version, Provider<RegularFile> source) {
         if (!directory.matches("[a-z]+") || !id.matches("[a-zA-Z0-9_-]+")
                 || !version.matches("[a-zA-Z0-9][a-zA-Z0-9.+-]*")
                 || !target.matches("[a-z]+[0-9]+(\\.[0-9]+)+")) {
             throw new IllegalArgumentException("Invalid product coordinate: " + id + "-" + version + "+" + target);
         }
-        String file = id + "-v" + version + (lean ? "_L" : "") + "+" + target + ".jar";
+        String file = id + "-v" + version + "+" + target + ".jar";
         var destination = project.getRootProject().getLayout().getProjectDirectory()
                 .file("build_product/" + directory + "/" + file);
         var publish = project.getTasks().register(task, PublishProductJar.class, export -> {

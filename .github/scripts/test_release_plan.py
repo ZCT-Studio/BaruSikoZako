@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import release_plan
 from release_plan import (
-    read_table, rules, channel, resolve, targets, code_changed,
+    read_table, channel, resolve, targets, code_changed,
     changelogs, asset_names, plan, previous_catalog,
 )
 
@@ -55,7 +55,7 @@ class TestReleasePlan(unittest.TestCase):
         result = resolve(self.sample_versions, "fabric", "1.20.1")
         self.assertEqual(result["mod"], "1.0.0")
         self.assertEqual(result["api"], "1.0.0")
-        self.assertEqual(result["zstd"], "1.0.0")
+        self.assertEqual(set(result), {"mod", "api"})
 
     def test_targets(self):
         selected = targets(self.sample_releases)
@@ -73,8 +73,15 @@ class TestReleasePlan(unittest.TestCase):
         paths = asset_names("mod", "1.0.0", "fabric1.20.1")
         self.assertEqual(paths, [
             "mod/barusikozako-v1.0.0+fabric1.20.1.jar",
-            "mod/barusikozako-v1.0.0_L+fabric1.20.1.jar",
         ])
+
+    def test_bundled_zstd_version_change_builds_without_publishing(self):
+        current = dict(self.sample_versions, backend={"zstd": {"version": "1.0.1", "overrides": {}}})
+        result = plan(current, self.sample_releases, self.sample_versions, "", ["versions.json5"])
+        self.assertTrue(result["should_build"])
+        self.assertFalse(result["should_release"])
+        for job in result["build_jobs"]:
+            self.assertEqual({asset["component"] for asset in job["assets"]}, {"mod", "api"})
 
     def test_plan_should_release(self):
         # 使用 versions.json5 和 CHANGELOG.md 创建临时目录
@@ -306,10 +313,7 @@ class TestReleasePlan(unittest.TestCase):
             # 检查构建作业是否包含所有组件
             for job in result.get("build_jobs", []):
                 components = {asset["component"] for asset in job["assets"]}
-                # 应该有 mod、api、zstd 用于验证构建
-                self.assertIn("mod", components)
-                self.assertIn("api", components)
-                self.assertIn("zstd", components)
+                self.assertEqual(components, {"mod", "api"})
                 self.assertTrue(job.get("build_only", False))
 
     def test_release_jobs_only_emitted_components(self):
@@ -344,7 +348,7 @@ class TestReleasePlan(unittest.TestCase):
             # 验收版本包括伴随工件，但不发布它们
             for job in result["build_jobs"]:
                 components = {asset["component"] for asset in job["assets"]}
-                self.assertEqual(components, {"mod", "api", "zstd"})
+                self.assertEqual(components, {"mod", "api"})
 
     def test_fabric_quilt_sharing_in_build_jobs(self):
         """版本一致时 Fabric 和 Quilt 应共享构建目标"""
@@ -435,7 +439,7 @@ class TestReleasePlan(unittest.TestCase):
         self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
         # All components should be emitted despite no version change
         for job in result["jobs"]:
-            self.assertEqual(len(job["assets"]), 3)  # mod, api, zstd
+            self.assertEqual(len(job["assets"]), 2)  # mod, api
         # But build jobs should include both fabric and quilt
         self.assertEqual({job["target"] for job in result["build_jobs"]},
                          {"fabric1.20.1", "quilt1.20.1", "forge1.20.1"})

@@ -13,7 +13,10 @@ final class SavedDataBarriers {
     private SavedDataBarriers() {}
 
     static void add(MinecraftServer server, List<ServerLevel> levels, List<CompletableFuture<?>> barriers) {
-        // 库存 NeoForge 队列链写入；提交后获取服务器线程上的当前尾部
-        barriers.add(NeoForgeSaveQueue.barusikozako$pending());
+        switch (NeoForgeSavedDataMixins.mode()) {
+            case SYNCHRONOUS -> { }
+            case ASYNCHRONOUS -> barriers.add(NeoForgeSaveQueue.barusikozako$pending());
+            case UNKNOWN -> throw new IllegalStateException("Unrecognized NeoForge SavedData save path");
+        }
     }
 }

@@ -103,7 +103,7 @@ dependencies {
 tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
         "minecraftVersions" to game, "javaVersion" to runtimeJava,
-        "loaderRequirement" to ">=0.19.5", "modDescription" to "BaruSikoZako remapped server development build.")
+        "loaderRequirement" to project.extra["fabricLoaderRequirement"], "modDescription" to "BaruSikoZako remapped server development build.")
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["mod"] as Map<String, Any?>
     val metadataFields = mapOf("descriptionJson" to groovy.json.JsonOutput.toJson(info["description"]).removeSurrounding("\""),
@@ -115,8 +115,8 @@ tasks.processResources {
     inputs.properties(metadataFields)
     filesMatching("fabric.mod.json") { expand(metadata + metadataFields) }
     filesMatching("barusikozako.mixins.json") {
-        filter { line: String -> line.replace("\"minVersion\": \"0.8.7\",",
-            "\"minVersion\": \"0.8.7\", \"injectors\": { \"defaultRequire\": 1 },") }
+        filter { line: String -> line.replace("\"package\":",
+            "\"injectors\": { \"defaultRequire\": 1 }, \"package\":") }
     }
     if (oldAnvil) filesMatching("barusikozako.mixins.json") {
         filter { line: String -> line.replace("\"PlayerFileObservation\",",
@@ -162,29 +162,5 @@ tasks.jar {
 }
 
 val bundledJar = tasks.named<RemapJarTask>("remapJar")
-val noBackendJar = tasks.register<Jar>("noBackendJar") {
-    group = LifecycleBasePlugin.BUILD_GROUP
-    description = "Packages the remapped server mod without the bundled backend."
-    archiveClassifier.set("no-backend")
-    manifest.attributes("Implementation-Version" to project.version.toString())
-    val nested = "META-INF/jars/$backendArchive"
-    inputs.property("backendArchive", nested)
-    from(bundledJar.flatMap { it.archiveFile }.map { zipTree(it) }) {
-        includeEmptyDirs = false
-        exclude(nested)
-        filesMatching("fabric.mod.json") {
-            filter { line: String ->
-                line.replace("\"name\":\"BaruSikoZako\"", "\"name\":\"BaruSikoZako <NO_BACKEND>\"")
-                    .replace(",{\"file\":\"$nested\"}", "")
-                    .replace("{\"file\":\"$nested\"},", "")
-            }
-        }
-    }
-}
-PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", packageTarget, false,
+PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", packageTarget,
     bundledJar.flatMap { it.archiveFile })
-PublishProductJar.register(project, "publishLeanProduct", "mod", "barusikozako", packageTarget, true,
-    noBackendJar.flatMap { it.archiveFile })
-tasks.assemble {
-    dependsOn("${parent!!.path}:fabric-zstd-package:assemble")
-}

@@ -54,5 +54,5 @@ tasks.jar {
 val bukkitGame = providers.gradleProperty("bukkitGameVersion").orElse(providers.gradleProperty("agentGameVersion"))
     .orElse(providers.gradleProperty("gameVersion")).getOrElse("26.3")
 PublishProductJar.register(project, "publishBukkitProduct", if (apiOnly) "api" else "plugin",
-    if (apiOnly) "barusikozako_api" else "barusikozako", "bukkit$bukkitGame", false,
+    if (apiOnly) "barusikozako_api" else "barusikozako", "bukkit$bukkitGame",
     tasks.jar.flatMap { it.archiveFile })

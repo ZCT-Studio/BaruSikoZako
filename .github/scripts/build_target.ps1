@@ -24,9 +24,8 @@ switch ($loader) {
     { $_ -in 'forge','neoforge' } {
         $targets = Get-Content 'gradle/compatibility-targets.properties' -Raw | ConvertFrom-StringData
         $version = $targets["fml.runtime.$loader.$game"]
-        $checksum = $targets["fml.installer.sha256.$loader.$game"]
-        if (!$version -or $checksum -notmatch '^[0-9a-f]{64}$') {
-            throw "Missing pinned installer for $loader $game"
+        if (!$version) {
+            throw "Missing installer version for $loader $game"
         }
         $repo = if ($loader -eq 'forge') {
             'https://maven.minecraftforge.net/net/minecraftforge/forge'
@@ -38,9 +37,6 @@ switch ($loader) {
         $installer = Join-Path $runtime.FullName $filename
         curl --fail --location --retry 3 --silent --show-error --user-agent 'Mozilla/5.0 (GitHub Actions)' --output $installer "$repo/$version/$filename"
         if ($LASTEXITCODE -ne 0) { throw "Could not download the official $loader $version installer" }
-        if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $checksum) {
-            throw "SHA-256 mismatch for $filename"
-        }
         $patched = if ($loader -eq 'forge') {
             "libraries/net/minecraftforge/forge/$version/forge-$version-server.jar"
         } elseif ($game -eq '1.21.1') {

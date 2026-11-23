@@ -18,9 +18,9 @@ MODRINTH = "https://api.modrinth.com/v2"
 CURSEFORGE = "https://minecraft.curseforge.com/api"
 CURSEFORGE_CORE = "https://api.curseforge.com/v1"
 TYPES = {"release": "release", "rc": "beta", "beta": "beta", "alpha": "alpha", "snapshot": "alpha"}
-FIELDS = {"mod": "MOD", "api": "API", "zstd": "ZSTD"}
+FIELDS = {"mod": "MOD", "api": "API"}
 MAIN_SLUG = "barusikozako"
-REQUIRED_PROJECTS = {"api": ("mod",), "zstd": ("mod",), "mod": ()}
+REQUIRED_PROJECTS = {"api": ("mod",), "mod": ()}
 LOADERS = {"fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge"}
 MODRINTH_ENVIRONMENT = "server_only"
 
@@ -140,7 +140,7 @@ def project_ids(prefix, auth):
     if slugs["mod"] != MAIN_SLUG:
         raise ValueError(f"{prefix} main project must use the slug {MAIN_SLUG}")
     if len(set(projects.values())) != len(projects):
-        raise ValueError(f"{prefix} requires separate projects for mod, API and Zstd")
+        raise ValueError(f"{prefix} requires separate projects for mod and API")
     return projects, slugs
 
 
@@ -264,7 +264,7 @@ def curseforge_has_hash(old, expected):
 
 def ordered_storefront(entries):
     loader_order = ("forge", "fabric", "quilt", "neoforge")
-    component_order = ("mod", "api", "zstd")
+    component_order = ("mod", "api")
 
     def release_key(entry):
         job, asset, _ = entry

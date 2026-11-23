@@ -10,16 +10,16 @@ import io.github.zct_studio.barusikozako.fabric.NativeEntrypoints;
 import io.github.zct_studio.barusikozako.fabric.PublicApi;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 @Mod("barusikozako")
 public final class MainMod {
-    public MainMod(FMLJavaModLoadingContext context) {
+    public MainMod() {
+        var modList = ModList.get();
         LoaderBridge.install(new NativeEntrypoints(FMLPaths.CONFIGDIR.get(),
-            context.getContainer().getModInfo().getVersion().toString(),
-            () -> ModList.get().isLoaded("barusikozako_api"), () ->
-            ModList.get().applyForEachModContainer(container -> new NativeEntrypoints.Integration(
+            modList.getModContainerById("barusikozako").orElseThrow().getModInfo().getVersion().toString(),
+            () -> modList.isLoaded("barusikozako_api"), () ->
+            modList.applyForEachModContainer(container -> new NativeEntrypoints.Integration(
                 container.getModId(),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null)))

@@ -36,13 +36,23 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ### Changed / 变更
 
+- The main mod now always includes Zstd. Standalone Zstd downloads and the backend-free main mod are no longer published.
+<br> 主模组始终内置 Zstd，停止发布独立 Zstd 后端和无后端版主模组。
 - Localize command feedback, including task results, verification, and configuration messages.
 <br> 指令反馈按玩家语言显示，涵盖任务结果、校验和配置提示。
-
 - Use `fromuuid <uuid>` in snapshot commands to select by UUID, including pagination and baseline selection. The configuration schema is read-only.
 <br> 快照命令统一用 `fromuuid <uuid>` 指定 UUID，涵盖翻页和基线选择。配置中的 schema 为只读。
 - Zstd names snapshot directories by UTC time and UUID, and migrates previous UUID-only directories on the next backup.
 <br> Zstd 快照目录以 UTC 时间和 UUID 命名，旧 UUID 目录在下一次备份时迁移。
+- Lowered the declared Fabric Loader minimum by Minecraft version and aligned the standalone API and Zstd backend with the main mod.
+<br> 按 Minecraft 版本降低 Fabric Loader 声明下限，同步主模组、独立 API 和 Zstd 后端的要求。
+- Unified the declared Mixin minimum at 0.8.5 across mod loader targets.
+<br> 将各模组加载器目标的 Mixin 声明下限统一为 0.8.5。
+
+### Fixed / 修复
+
+- The Minecraft 1.21.1 NeoForge build supports the synchronous and asynchronous world data save paths in NeoForge 21.1.1 through 21.1.267.
+  <br> Minecraft 1.21.1 的 NeoForge 构建兼容 NeoForge 21.1.1 至 21.1.267 的同步和异步世界数据保存路径。
 
 ## [1.0.1] - 2026-11-23
 

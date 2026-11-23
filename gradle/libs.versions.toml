@@ -4,7 +4,6 @@ commons-compress = "1.28.0"
 jackson-core = "3.3.0"
 loom = "1.19.4"
 fabric-loader = "0.20.1"
-fabric-api = "0.166.2+26.3"
 
 [libraries]
 snakeyaml = { module = "org.yaml:snakeyaml", version = "2.6" }
