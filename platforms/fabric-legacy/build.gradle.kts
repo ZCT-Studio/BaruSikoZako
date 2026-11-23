@@ -24,6 +24,7 @@ val fabric = rootProject.file("platforms/fabric/src/main")
 val runtimeProjects = listOf(":engine:mod-runtime", ":platforms:spi", ":backends:spi", ":engine:core")
 val structuredPermissions = game == "1.21.11"
 val oldAnvil = game == "1.20.1"
+val runtimeJava = if (oldAnvil) 17 else 21
 val synchronousSavedData = oldAnvil || game == "1.21.1"
 val separateStatsHook = !structuredPermissions
 
@@ -36,7 +37,7 @@ repositories {
 
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(25)
+    options.release.set(runtimeJava)
     options.encoding = "UTF-8"
 }
 
@@ -44,6 +45,7 @@ tasks.compileJava {
     source(fileTree(shared.resolve("java")) {
         exclude("**/SavedDataObservation.java", "**/SavedDataQueue.java", "**/SavedDataBarriers.java",
             "**/ChunkUnloadObservation.java")
+        exclude("**/WindowsDirectorySync.java", "**/LinuxReflink.java", "**/NativeAccess.java")
         if (synchronousSavedData) exclude("**/EmptyServerCaptureMixin.java", "**/PoiWrites.java")
         if (separateStatsHook) exclude("**/AuxiliaryPlayerObservation.java")
         if (oldAnvil) exclude("**/WorldLevelMetadata.java", "**/DedicatedStartupMixin.java",
@@ -53,6 +55,7 @@ tasks.compileJava {
             exclude("**/GameCommandAccess.java", "**/ChunkBarrier.java", "**/ReplacementObservation.java")
         }
     })
+    source(fileTree(sharedSources.resolve("legacyJava/java")))
     source(fileTree(fabric.resolve("java")))
     if (!structuredPermissions) source(fileTree(sharedSources.resolve("beforeStructuredPermissions/java")) {
         if (oldAnvil) exclude("**/ReplacementObservation.java")
@@ -99,7 +102,7 @@ dependencies {
 
 tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
-        "minecraftVersions" to game,
+        "minecraftVersions" to game, "javaVersion" to runtimeJava,
         "loaderRequirement" to ">=0.19.5", "modDescription" to "BaruSikoZako remapped server development build.")
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["mod"] as Map<String, Any?>

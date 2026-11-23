@@ -30,7 +30,9 @@ val fmlSource = rootProject.file("platforms/fml")
 val legacyMinecraft = minecraft.startsWith("1.")
 val legacyChunkWorker = legacyMinecraft && minecraft != "1.21.11"
 val forgeSrg = minecraft == "1.20.1"
+val runtimeJava = if (forgeSrg) 17 else if (legacyMinecraft) 21 else 25
 val synchronousSavedData = forgeSrg || minecraft == "1.21.1"
+val isolateBackendCommons = synchronousSavedData || targetLoader == "forge"
 val sharedSources = shared.parentFile
 val ownComponents = listOf(":engine:mod-runtime", ":backends:spi", ":platforms:spi", ":engine:core")
 val backendComponents = listOf(":backends:zstd", ":backends:compression-zstd")
@@ -46,8 +48,8 @@ dependencies {
     add(hostLibraries.name, libs.snakeyaml)
     for (library in listOf(libs.zstd.jni, libs.jackson.core))
         add(backendLibraries.name, library)
-    if (synchronousSavedData) {
-        // 较旧的服务器将不兼容的 Commons 类型放入其模块层中
+    if (isolateBackendCommons) {
+        // Forge 客户端和旧版服务端可能已加载另一份 Commons 模块
         add(isolatedCommons.name, libs.commons.compress)
         add(isolatedCommons.name, "commons-codec:commons-codec:1.19.0")
         add(isolatedCommons.name, "commons-io:commons-io:2.20.0")
@@ -108,7 +110,8 @@ fun metadata(loader: String, id: String, displayName: String, mixin: Boolean = f
     appendLine("description=${quote(info["description"])}")
     appendLine("displayURL=${quote(info["homepage"])}")
     appendLine("modUrl=${quote(info["sources"])}")
-    appendLine("${if (modernNeoArtwork) "iconFile" else "logoFile"}=\"icon.png\"")
+    val artwork = if (!modernNeoArtwork && id == "barusikozako") "banner.png" else "icon.png"
+    appendLine("${if (modernNeoArtwork) "iconFile" else "logoFile"}=\"$artwork\"")
     if (modernNeoArtwork && id == "barusikozako") appendLine("bannerFile=\"banner.png\"")
     if (!neo) appendLine("displayTest=\"IGNORE_SERVER_VERSION\"")
     fun dependency(on: String, range: String) {
@@ -117,7 +120,7 @@ fun metadata(loader: String, id: String, displayName: String, mixin: Boolean = f
         appendLine(if (neo) "type=\"required\"" else "mandatory=true")
         appendLine("versionRange=\"$range\"")
         appendLine("ordering=\"AFTER\"")
-        appendLine("side=\"SERVER\"")
+        appendLine("side=\"BOTH\"")
     }
     dependency("minecraft", "[$minecraft]")
     dependency(loader, "[${versions.getValue(loader).removePrefix("$minecraft-")},)")
@@ -284,19 +287,35 @@ for ((loader, version) in versions) {
     val serverClasspath = (if (namedGameTask != null) files(namedGame).builtBy(namedGameTask) else files()) +
         files(patched) + otherLibraries
     val toml = if (loader == "neoforge") "neoforge.mods.toml" else "mods.toml"
+    val forgePack = if (loader == "forge") {
+        // 格式范围与各版本 Forge 官方包一致，Forge 会在客户端和服务端读取此元数据
+        val formats = when (minecraft) {
+            "1.20.1" -> mapOf("pack_format" to 15)
+            "1.21.1" -> mapOf("pack_format" to 48)
+            "1.21.10" -> mapOf("min_format" to 88, "max_format" to 88)
+            "1.21.11" -> mapOf("min_format" to listOf(94, 1), "max_format" to 94)
+            "26.1.2" -> mapOf("min_format" to listOf(101, 1), "max_format" to 101)
+            "26.2" -> mapOf("min_format" to listOf(107, 1), "max_format" to 107)
+            "26.3" -> mapOf("min_format" to 121, "max_format" to 121)
+            else -> error("Missing Forge resource pack metadata for Minecraft $minecraft")
+        }
+        val pack = mapOf("description" to "BaruSikoZako resources") + formats
+        metadataFile("forgePackMetadata", "pack.mcmeta", JsonOutput.toJson(mapOf("pack" to pack)))
+    } else null
     if (apiOnly) {
         val api = sourceSets.main.get()
         api.java.srcDir(rootProject.file("api/shared/fml/src/${loader}Api/java"))
         api.compileClasspath += serverClasspath
         addCompileDependency(api, project(":api:common"))
         tasks.compileJava {
-            options.release.set(25)
+            options.release.set(runtimeJava)
             options.encoding = "UTF-8"
             options.compilerArgs.add("-proc:none")
         }
         evaluationDependsOn(":api:common")
         val apiMeta = metadataFile("${loader}ApiMetadata", toml, metadata(loader, "barusikozako_api", "ZakoBak API"))
         tasks.jar {
+            if (forgePack != null) from(forgePack)
             from(rootProject.file("resource/barusikozako_api/icon.png"))
             archiveBaseName.set("barusikozako_api-$loader-$minecraft")
             from(apiMeta) { into("META-INF") }
@@ -319,6 +338,7 @@ for ((loader, version) in versions) {
             source(fileTree(shared.resolve("java")) {
                 exclude("**/SavedDataBarriers.java", "**/SavedDataQueue.java", "**/SavedDataObservation.java",
                     "**/ChunkUnloadObservation.java")
+                exclude("**/WindowsDirectorySync.java", "**/LinuxReflink.java", "**/NativeAccess.java")
                 if (legacyChunkWorker) exclude("**/GameCommandAccess.java", "**/ChunkBarrier.java",
                     "**/ReplacementObservation.java", "**/AuxiliaryPlayerObservation.java")
                 if (synchronousSavedData) exclude("**/EmptyServerCaptureMixin.java", "**/PoiWrites.java")
@@ -326,6 +346,7 @@ for ((loader, version) in versions) {
                     "**/RootFileObservation.java", "**/ServerSaveObservation.java", "**/EntityStorageAccess.java",
                     "**/PoiStorageAccess.java", "**/PlayerLanguage.java")
             })
+            source(fileTree(sharedSources.resolve("legacyJava/java")))
             if (synchronousSavedData) {
                 source(fileTree(sharedSources.resolve("synchronousSavedData/java")) {
                     if (neoSavedData) exclude("**/SavedDataObservation.java", "**/SavedDataBarriers.java")
@@ -357,7 +378,7 @@ for ((loader, version) in versions) {
     }
     for (set in listOf(main, backend)) {
         tasks.named<JavaCompile>(set.compileJavaTaskName) {
-            options.release.set(25)
+            options.release.set(runtimeJava)
             options.encoding = "UTF-8"
             if (forgeSrg && set == main) {
                 options.annotationProcessorPath = otherLibraries.filter {
@@ -378,7 +399,8 @@ for ((loader, version) in versions) {
     val backendMeta = metadataFile("${loader}BackendMetadata", toml, metadata(loader, "barusikozako_backendzstd", "ZakoBak Zstd"))
     val backendJarJar = jarJarMetadata("${loader}Backend", backendLibraries)
     val backendJar = tasks.register("${loader}BackendJar",
-        if (synchronousSavedData) ShadowJar::class.java else Jar::class.java) {
+        if (isolateBackendCommons) ShadowJar::class.java else Jar::class.java) {
+        if (forgePack != null) from(forgePack)
         from(rootProject.file("resource/barusikozako_backendzstd/icon.png"))
         archiveBaseName.set("barusikozako_backendzstd-$loader-$minecraft")
         archiveVersion.set(zstdVersion)
@@ -408,11 +430,10 @@ for ((loader, version) in versions) {
         val includedBackend = if (lean) null else backendJar
         val jarJar = jarJarMetadata("$loader$kind", hostLibraries, includedBackend)
         tasks.register<Jar>("$loader${kind}Jar") {
+            if (forgePack != null) from(forgePack)
             from(rootProject.file("resource/barusikozako/icon.png"))
             from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
-            if (loader == "neoforge" && supportsNeoBanner) {
-                from(rootProject.file("resource/barusikozako/banner.png"))
-            }
+            from(rootProject.file("resource/barusikozako/banner.png"))
             archiveBaseName.set("barusikozako-$loader-$minecraft")
             if (lean) archiveClassifier.set("no-backend")
             if (forgeSrg) {

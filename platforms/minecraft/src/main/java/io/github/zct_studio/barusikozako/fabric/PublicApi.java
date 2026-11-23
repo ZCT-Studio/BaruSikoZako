@@ -52,12 +52,14 @@ public final class PublicApi {
 
     private record Service(io.github.zct_studio.barusikozako.runtime.BackupService runtime) implements BackupService {
         @Override public Submission submit(BackupRequest request) {
-            return switch (runtime.submit(request(request))) {
-                case io.github.zct_studio.barusikozako.runtime.BackupService.Submission.Accepted accepted ->
-                    new Submission.Accepted(new TaskId(accepted.id().value()), accepted.completion().thenApply(PublicApi::result));
-                case io.github.zct_studio.barusikozako.runtime.BackupService.Submission.Rejected rejected ->
-                    new Submission.Rejected(Rejection.valueOf(rejected.reason().name()));
-            };
+            var submission = runtime.submit(request(request));
+            if (submission instanceof io.github.zct_studio.barusikozako.runtime.BackupService.Submission.Accepted accepted) {
+                return new Submission.Accepted(new TaskId(accepted.id().value()), accepted.completion().thenApply(PublicApi::result));
+            }
+            if (submission instanceof io.github.zct_studio.barusikozako.runtime.BackupService.Submission.Rejected rejected) {
+                return new Submission.Rejected(Rejection.valueOf(rejected.reason().name()));
+            }
+            throw new IllegalArgumentException("Unknown submission type: " + submission);
         }
 
         @Override public Cancellation cancel(TaskId id) {
@@ -133,20 +135,27 @@ public final class PublicApi {
     }
 
     private static io.github.zct_studio.barusikozako.runtime.BackupRequest request(BackupRequest request) {
-        return switch (request) {
-            case BackupRequest.Backup backup -> new io.github.zct_studio.barusikozako.runtime.BackupRequest.Backup(
-                backup.repositoryId(), backup.sourceId(), new io.github.zct_studio.barusikozako.runtime.BackupRequest.Trigger(
-                    backup.trigger().source(), backup.trigger().reason(), backup.trigger().metadata()),
-                io.github.zct_studio.barusikozako.runtime.BackupRequest.BackupMode.valueOf(backup.mode().name()),
-                backup.baseline().map(PublicApi::internalSnapshot));
-            case BackupRequest.Verify verify -> new io.github.zct_studio.barusikozako.runtime.BackupRequest.Verify(
-                internalSnapshot(verify.snapshot()),
-                io.github.zct_studio.barusikozako.runtime.BackupRequest.VerificationLevel.valueOf(verify.level().name()));
-            case BackupRequest.Restore restore -> new io.github.zct_studio.barusikozako.runtime.BackupRequest.Restore(
-                internalSnapshot(restore.snapshot()), restore.targetId());
-            case BackupRequest.Delete delete -> new io.github.zct_studio.barusikozako.runtime.BackupRequest.Delete(
-                internalSnapshot(delete.snapshot()));
-        };
+        if (request instanceof BackupRequest.Backup backup) {
+            return new io.github.zct_studio.barusikozako.runtime.BackupRequest.Backup(
+                    backup.repositoryId(), backup.sourceId(), new io.github.zct_studio.barusikozako.runtime.BackupRequest.Trigger(
+                        backup.trigger().source(), backup.trigger().reason(), backup.trigger().metadata()),
+                    io.github.zct_studio.barusikozako.runtime.BackupRequest.BackupMode.valueOf(backup.mode().name()),
+                    backup.baseline().map(PublicApi::internalSnapshot));
+        }
+        if (request instanceof BackupRequest.Verify verify) {
+            return new io.github.zct_studio.barusikozako.runtime.BackupRequest.Verify(
+                    internalSnapshot(verify.snapshot()),
+                    io.github.zct_studio.barusikozako.runtime.BackupRequest.VerificationLevel.valueOf(verify.level().name()));
+        }
+        if (request instanceof BackupRequest.Restore restore) {
+            return new io.github.zct_studio.barusikozako.runtime.BackupRequest.Restore(
+                    internalSnapshot(restore.snapshot()), restore.targetId());
+        }
+        if (request instanceof BackupRequest.Delete delete) {
+            return new io.github.zct_studio.barusikozako.runtime.BackupRequest.Delete(
+                    internalSnapshot(delete.snapshot()));
+        }
+        throw new IllegalArgumentException("Unknown request type: " + request);
     }
 
     private static TaskState state(io.github.zct_studio.barusikozako.runtime.TaskState state) {
@@ -156,29 +165,47 @@ public final class PublicApi {
     }
 
     private static TaskEvent event(io.github.zct_studio.barusikozako.runtime.TaskEvent event) {
-        return switch (event) {
-            case io.github.zct_studio.barusikozako.runtime.TaskEvent.StateChanged changed -> new TaskEvent.StateChanged(state(changed.state()));
-            case io.github.zct_studio.barusikozako.runtime.TaskEvent.Progress progress -> new TaskEvent.Progress(state(progress.state()));
-            case io.github.zct_studio.barusikozako.runtime.TaskEvent.CancellationRequested cancelled ->
-                new TaskEvent.CancellationRequested(new TaskId(cancelled.id().value()));
-            case io.github.zct_studio.barusikozako.runtime.TaskEvent.Evicted evicted -> new TaskEvent.Evicted(new TaskId(evicted.id().value()));
-        };
+        if (event instanceof io.github.zct_studio.barusikozako.runtime.TaskEvent.StateChanged changed) {
+            return new TaskEvent.StateChanged(state(changed.state()));
+        }
+        if (event instanceof io.github.zct_studio.barusikozako.runtime.TaskEvent.Progress progress) {
+            return new TaskEvent.Progress(state(progress.state()));
+        }
+        if (event instanceof io.github.zct_studio.barusikozako.runtime.TaskEvent.CancellationRequested cancelled) {
+            return new TaskEvent.CancellationRequested(new TaskId(cancelled.id().value()));
+        }
+        if (event instanceof io.github.zct_studio.barusikozako.runtime.TaskEvent.Evicted evicted) {
+            return new TaskEvent.Evicted(new TaskId(evicted.id().value()));
+        }
+        throw new IllegalArgumentException("Unknown event type: " + event);
     }
 
     private static TaskResult result(io.github.zct_studio.barusikozako.runtime.TaskResult result) {
-        return switch (result) {
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.BackupCommitted backup ->
-                new TaskResult.BackupCommitted(snapshot(backup.snapshot()), backup.logicalBytes(), backup.archiveBytes(), backup.elapsed());
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.VerificationComplete verify -> new TaskResult.VerificationComplete(
-                BackupRequest.VerificationLevel.valueOf(verify.coverage().name()), verify.entries(), verify.bytes());
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.RestoreQueued queued ->
-                new TaskResult.RestoreQueued(snapshot(queued.snapshot()), queued.targetId());
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.Restored restored ->
-                new TaskResult.Restored(snapshot(restored.snapshot()), restored.targetId());
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.Deleted deleted -> new TaskResult.Deleted(snapshot(deleted.snapshot()));
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.Failed failed -> new TaskResult.Failed(TaskResult.Failure.valueOf(failed.reason().name()));
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.Cancelled ignored -> new TaskResult.Cancelled();
-            case io.github.zct_studio.barusikozako.runtime.TaskResult.CommitUncertain ignored -> new TaskResult.CommitUncertain();
-        };
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.BackupCommitted backup) {
+            return new TaskResult.BackupCommitted(snapshot(backup.snapshot()), backup.logicalBytes(), backup.archiveBytes(), backup.elapsed());
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.VerificationComplete verify) {
+            return new TaskResult.VerificationComplete(
+                    BackupRequest.VerificationLevel.valueOf(verify.coverage().name()), verify.entries(), verify.bytes());
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.RestoreQueued queued) {
+            return new TaskResult.RestoreQueued(snapshot(queued.snapshot()), queued.targetId());
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.Restored restored) {
+            return new TaskResult.Restored(snapshot(restored.snapshot()), restored.targetId());
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.Deleted deleted) {
+            return new TaskResult.Deleted(snapshot(deleted.snapshot()));
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.Failed failed) {
+            return new TaskResult.Failed(TaskResult.Failure.valueOf(failed.reason().name()));
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.Cancelled) {
+            return new TaskResult.Cancelled();
+        }
+        if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.CommitUncertain) {
+            return new TaskResult.CommitUncertain();
+        }
+        throw new IllegalArgumentException("Unknown result type: " + result);
     }
 }

@@ -134,7 +134,7 @@ tasks.processResources {
         "issuesJson" to groovy.json.JsonOutput.toJson(info["issues"]).removeSurrounding("\""))
     inputs.properties(metadata)
     inputs.properties(metadataFields)
-    filesMatching("fabric.mod.json") { expand(metadata + metadataFields) }
+    filesMatching("fabric.mod.json") { expand(metadata + metadataFields + ("javaVersion" to 25)) }
 }
 
 val collectNotices = tasks.register<CollectNotices>("collectNotices") {

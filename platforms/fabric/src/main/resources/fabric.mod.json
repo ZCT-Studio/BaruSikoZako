@@ -7,15 +7,15 @@
   "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},
   "icon": "icon.png",
   "description": "${descriptionJson}",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
-    "server": ["io.github.zct_studio.barusikozako.fabric.FabricEntrypoint"]
+    "main": ["io.github.zct_studio.barusikozako.fabric.FabricEntrypoint"]
   },
   "mixins": ["barusikozako.mixins.json"],
   "depends": {
     "fabricloader": "${loaderRequirement}",
     "minecraft": ["${minecraftVersions}"],
-    "java": ">=25",
+    "java": ">=${javaVersion}",
     "fabric-command-api-v2": "*",
     "fabric-lifecycle-events-v1": "*"
   },

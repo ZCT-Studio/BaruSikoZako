@@ -11,7 +11,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone, timedelta
 
 import json5
 
@@ -28,70 +27,11 @@ BUILDERS = {"fabric", "quilt", "forge", "neoforge", "agent"}
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
 SECTION = re.compile(r"^## \[([^\]]+)\].*$", re.MULTILINE)
 
-# 北京时区 (UTC+8)
-BEIJING_TZ = timezone(timedelta(hours=8))
-TAG_PREFIX = "release/"
-RELEASE_TITLE_PREFIX = "BaruSikoZako · Release "
-
-
 def git(*args, missing=False):
     result = subprocess.run(["git", *args], text=True, encoding="utf-8", capture_output=True)
     if result.returncode and not missing:
         raise ValueError(result.stderr.strip())
     return result.stdout if not result.returncode else None
-
-
-def get_existing_release_tags():
-    """从远程获取所有现有发行标签"""
-    output = git("ls-remote", "--tags", "origin", "release/*", missing=True)
-    if not output:
-        return []
-    tags = []
-    for line in output.strip().split("\n"):
-        parts = line.split("\t")
-        if len(parts) >= 2:
-            ref = parts[1]
-            if ref.startswith("refs/tags/release/"):
-                tags.append(ref[len("refs/tags/"):])
-    return tags
-
-
-def get_today_batch_number():
-    """获取今天的下一个批次号，使用北京时间"""
-    today = datetime.now(BEIJING_TZ).strftime("%Y.%m.%d")
-    prefix = f"{TAG_PREFIX}{today}."
-    
-    existing_tags = get_existing_release_tags()
-    used_numbers = []
-    for tag in existing_tags:
-        if tag.startswith(prefix):
-            suffix = tag[len(prefix):]
-            if suffix.isdigit():
-                used_numbers.append(int(suffix))
-    
-    return max(used_numbers, default=0) + 1
-
-
-def generate_release_tag():
-    """为今天的批次生成发行标签"""
-    today = datetime.now(BEIJING_TZ).strftime("%Y.%m.%d")
-    batch = get_today_batch_number()
-    return f"{TAG_PREFIX}{today}.{batch}"
-
-
-def get_release_title(tag):
-    """根据标签生成 GitHub Release 标题"""
-    # 标签格式：release/YYYY.MM.DD.N
-    if tag.startswith(TAG_PREFIX):
-        rest = tag[len(TAG_PREFIX):]  # YYYY.MM.DD.N
-        parts = rest.split(".")
-        if len(parts) == 4:
-            date_str = f"{parts[0]}.{parts[1]}.{parts[2]}"
-            batch = parts[3]
-            return f"{RELEASE_TITLE_PREFIX}{date_str} #{batch}"
-    # 倒退
-    today = datetime.now(BEIJING_TZ).strftime("%Y.%m.%d")
-    return f"{RELEASE_TITLE_PREFIX}{today} #1"
 
 
 def read_table(text):
@@ -250,23 +190,19 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
 
     for (game, _, version_entries, emitted), platforms in grouped.items():
         versions = dict(version_entries)
-        release = job(game, platforms, versions, emitted, False)
-        release_jobs.append(release)
+        is_agent = platforms[0] == "agent"
+        if not is_agent:
+            release_jobs.append(job(game, platforms, versions, emitted, False))
         # 即使仅发布一个组件，验收也需要当前的配套 JAR
-        build = job(game, platforms, versions, versions, False)
+        build = job(game, platforms, versions, versions, is_agent)
         build_jobs[build["target"]] = build
 
-    tag = generate_release_tag() if release_jobs else None
     return {
-        "tag": tag,
-        "prerelease": any(asset["channel"] != "release"
-                         for release in release_jobs for asset in release["assets"]),
         "jobs": release_jobs,
         "build_jobs": list(build_jobs.values()),
         "should_build": bool(build_jobs),
         "should_release": bool(release_jobs),
         "force_release": force_release and bool(release_jobs),
-        "release_title": get_release_title(tag) if tag else None,
     }
 
 
@@ -316,9 +252,6 @@ def main():
             print("has_jobs=" + str(bool(result["jobs"])).lower(), file=stream)
             print("should_build=" + str(result.get("should_build", False)).lower(), file=stream)
             print("should_release=" + str(result.get("should_release", False)).lower(), file=stream)
-            print("tag=" + (result.get("tag") or ""), file=stream)
-            print("release_title=" + (result.get("release_title") or ""), file=stream)
-            print("prerelease=" + str(result.get("prerelease", False)).lower(), file=stream)
             matrix = [{key: job[key] for key in ("target", "game", "loader")} for job in result["jobs"]]
             print("matrix=" + json.dumps({"include": matrix}, ensure_ascii=True), file=stream)
             # 构建作业的构建矩阵

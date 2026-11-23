@@ -12,6 +12,7 @@ val targets = Properties().apply {
 }
 val minecraftVersion = requireNotNull(targets.getProperty("fabric.development.minecraft"))
 val runtimeMinecraft = parent!!.name.removePrefix("mc").replace('_', '.')
+val runtimeJava = if (runtimeMinecraft == "1.20.1") 17 else if (runtimeMinecraft.startsWith("1.")) 21 else 25
 require(runtimeMinecraft == minecraftVersion || targets.containsKey("fabric.runtime.api.$runtimeMinecraft") ||
     targets.containsKey("fabric.legacy.api.$runtimeMinecraft")) {
     "No Fabric backend build target for Minecraft $runtimeMinecraft"
@@ -43,6 +44,7 @@ sourceSets.main { resources.srcDir(rootProject.file("platforms/fabric-zstd-packa
 tasks.processResources {
     from(rootProject.file("resource/barusikozako_backendzstd/icon.png"))
     val metadata = mapOf("productVersion" to project.version.toString(),
+        "javaVersion" to runtimeJava,
         "minecraftVersions" to supportedMinecraft.joinToString("\",\""))
     @Suppress("UNCHECKED_CAST")
     val info = ((rootProject.extra["productMetadata"] as Map<*, *>)["backend"] as Map<*, *>)["zstd"] as Map<String, Any?>

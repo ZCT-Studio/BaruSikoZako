@@ -6,11 +6,12 @@
 
 ## CI 与发布
 
+- 模组运行基线按 Minecraft 版本划分。1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。CI 检查本体、API 和后端 JAR 内的项目字节码是否超过对应基线。
 - 推送或向 `main` 提交拉取请求时，代码与构建输入变更触发 `latest` 构建。纯文档变更不触发产物构建。手动运行工作流会重新构建 `latest`。拉取请求和手动运行均只构建。
 - 所有产物构建使用 GitHub 托管的 Ubuntu runner。Forge 和 NeoForge 构建根据 `gradle/compatibility-targets.properties` 下载并校验对应的官方安装器，在该任务的临时目录准备编译输入。
-- 推送到主分支时，CI 比较推送前后的有效组件版本。有版本变化且提交标题没有 `[no-release]` 时，符合维护渠道的产物才进入发布计划。发布由流水线生成批次标签。
+- 推送到主分支时，CI 比较推送前后的有效组件版本。有版本变化且提交标题没有 `[no-release]` 时，符合维护渠道的产物才进入发布计划。正式文件发布到 Modrinth 和 CurseForge。GitHub Actions 保留可下载的构建产物，不创建 Release 或 Git 标签。重新启用仅构建的 JavaAgent 目标时，从 Actions 获取相应产物。
 - 默认渠道为 `lts` 允许 RC 和正式版，`nlts` 再允许 Beta，`shift` 再允许 Alpha，`latest` 再允许 Snapshot。`[release-all]` 跳过渠道限制，`[release-temp]` 只选 `nlts` 和 `shift`，`[release-latest]` 只选 `latest`。`[no-build]` 同时跳过构建和发布。
-- `[force-release]` 即使版本表未改也生成发布计划。和 `[release-all]` 组合时，发布矩阵中的全部有效目标都进入计划。若平台已有同版本但内容不同的文件，使用当前工作流 ID 区分补发批次。`[no-release]`、`[no-build]` 和仅构建的工作流仍会阻止发布。
+- `[force-release]` 即使版本表未改也生成发布计划。和 `[release-all]` 组合时，发布矩阵中所有可上传至这两个平台的目标都进入发布计划。若平台已有同版本但内容不同的文件，使用当前工作流 ID 区分补发批次。`[no-release]`、`[no-build]` 和仅构建的工作流仍会阻止发布。
 - 当前发布工作流运行构建与自动化检查。实际服务端验收需单独进行。
 - Modrinth 使用主项目 slug `barusikozako` 查找项目 ID。CurseForge 使用 `CURSEFORGE_MOD_ID`，并核对其 slug 同为 `barusikozako`。API 和后端分别使用各自的项目变量。
 - 两个平台上，独立 API 和 Zstd 文件都将主模组标记为必需依赖。加载器标签来自发布目标，只有实际共用同一产物的 Fabric 和 Quilt 才共用两个标签。主模组可独立安装，调用公开接口的外部模组需额外安装对应的独立 API JAR。

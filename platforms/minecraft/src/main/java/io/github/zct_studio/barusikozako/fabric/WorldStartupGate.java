@@ -24,6 +24,7 @@ import java.util.UUID;
 public final class WorldStartupGate implements RestoreWindow {
     private static final System.Logger LOG = System.getLogger("BaruSikoZako");
     private static WorldStartupGate lifetime;
+    private static WorldStartupGate clientLock;
     private final Path target;
     private final FileChannel channel;
     private final FileLock lock;
@@ -43,50 +44,8 @@ public final class WorldStartupGate implements RestoreWindow {
         var parent = path.getParent().toRealPath();
         var gate = acquire(parent.resolve(path.getFileName()), parent.resolve(".barusikozako-worlds.lock"));
         try {
-            requireUnaliasedWorld(gate.target);
-            var engine = new BackupEngine();
-            var request = RestoreRequest.read(gate.target);
-            boolean pending = engine.hasPendingRestore(gate);
-            if (pending || request != null) {
-                // Vanilla 的补充锁可以检测已经运行的未修改的进程
-                // 当世界存在时。在整个操作过程中，未经修改的服务器仍必须保留在外面
-                try (var session = gate.windows() ? null : existingSessionLock(gate.target)) {
-                    if (pending) {
-                        var result = engine.recoverRestore(gate);
-                        LOG.log(System.Logger.Level.INFO, "Startup restore recovery: {0}", result.status());
-                    }
-                    if (request != null) {
-                        var config = ServerConfig.load(false);
-                        var keyword = request.backend == null ? config.backendKeyword() : request.backend;
-                        var location = ServerRepository.checkPath(ServerRepository.forBackend(keyword, gate.target), gate.target);
-                        var backend = BackendRegistry.configure(keyword, false);
-                        var snapshotRef = new io.github.zct_studio.barusikozako.runtime.SnapshotRef(FabricOperations.REPOSITORY_ID, request.snapshot.toString());
-                        var hookContext = new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
-                            io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.OFFLINE_RESTORE,
-                            FabricOperations.REPOSITORY_ID, java.util.Optional.of(snapshotRef));
-                        LifecycleHooks.beforeStartupRestore(config.lifecycleIntegrations(), hookContext);
-                        try (var repository = backend.open(location, ServerRepository::forceDirectory, "FULL", null)) {
-                            long restoreStarted = System.nanoTime();
-                            var result = engine.restoreWorld(repository, request.snapshot, request.operation,
-                                config.readLimits(), gate, false, WorldStartupGate::checkWorldStage);
-                            if (result.status() != RestoreResult.Status.RESTORED)
-                                throw new IOException("Restore request was previously rolled back: " + request.operation);
-                            if (request.backend != null) {
-                                Files.delete(queuedRequest(gate.target));
-                                ServerRepository.forceDirectory(gate.target.getParent());
-                            }
-                            LifecycleHooks.after(config.lifecycleIntegrations(), hookContext,
-                                new io.github.zct_studio.barusikozako.runtime.TaskResult.Restored(snapshotRef, FabricOperations.SOURCE_ID));
-                            LOG.log(System.Logger.Level.INFO, "Offline restore committed for {0}; original world: {1}",
-                                request.snapshot, result.previousWorld().orElseThrow());
-                            LOG.log(System.Logger.Level.INFO, "Offline verification and switch elapsed {0} ms",
-                                java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - restoreStarted));
-                        }
-                    }
-                }
-            }
-            gate.offline = false;
-            lifetime = gate; // Keep the OS lock until this dedicated process exits.
+            gate.restoreBeforeAccess(true);
+            lifetime = gate;
         } catch (IOException | RuntimeException failure) {
             try {
                 gate.close();
@@ -95,6 +54,75 @@ public final class WorldStartupGate implements RestoreWindow {
             }
             throw new IOException("BaruSikoZako could not establish safe world startup", failure);
         }
+    }
+
+    public static synchronized void beforeClientWorldAccess(Path saves, String name) throws IOException {
+        var configuredSaves = LoaderBridge.configDirectory().toAbsolutePath().normalize().resolveSibling("saves");
+        if (!saves.toAbsolutePath().normalize().equals(configuredSaves)) return;
+        var relative = saves.getFileSystem().getPath(name);
+        if (relative.getRoot() != null || relative.getNameCount() != 1 || name.isEmpty() || name.equals(".") || name.equals(".."))
+            throw new IOException("Invalid singleplayer world name");
+        var parent = saves.toRealPath();
+        if (clientLock == null) {
+            clientLock = acquire(parent, parent.resolve(".barusikozako-worlds.lock"));
+        }
+        var target = parent.resolve(relative);
+        clientWindow(target).restoreBeforeAccess(false);
+    }
+
+    static synchronized boolean canRestoreClientWorld(Path world) {
+        return clientLock != null && clientLock.lock.isValid() && clientLock.target.equals(world.getParent());
+    }
+
+    private static WorldStartupGate clientWindow(Path world) throws IOException {
+        if (!canRestoreClientWorld(world)) throw new IOException("Singleplayer save directory is not locked");
+        return new WorldStartupGate(world, clientLock.channel, clientLock.lock);
+    }
+
+    private void restoreBeforeAccess(boolean dedicated) throws IOException {
+        requireUnaliasedWorld(target);
+        var engine = new BackupEngine();
+        var request = dedicated ? RestoreRequest.read(target) : RestoreRequest.readQueued(target);
+        boolean pending = engine.hasPendingRestore(this);
+        if (pending || request != null) {
+            // Vanilla 的补充锁可以检测已经运行的未修改的进程
+            // 当世界存在时。在整个操作过程中，未经修改的服务器仍必须保留在外面
+            try (var session = windows() ? null : existingSessionLock(target)) {
+                if (pending) {
+                    var result = engine.recoverRestore(this);
+                    LOG.log(System.Logger.Level.INFO, "Startup restore recovery: {0}", result.status());
+                }
+                if (request != null) {
+                    var config = ServerConfig.load(false);
+                    var keyword = request.backend == null ? config.backendKeyword() : request.backend;
+                    var location = ServerRepository.checkPath(ServerRepository.forBackend(keyword, target), target);
+                    var backend = BackendRegistry.configure(keyword, false);
+                    var snapshotRef = new io.github.zct_studio.barusikozako.runtime.SnapshotRef(FabricOperations.REPOSITORY_ID, request.snapshot.toString());
+                    var hookContext = new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
+                        io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.OFFLINE_RESTORE,
+                        FabricOperations.REPOSITORY_ID, java.util.Optional.of(snapshotRef));
+                    LifecycleHooks.beforeStartupRestore(config.lifecycleIntegrations(), hookContext);
+                    try (var repository = backend.open(location, ServerRepository::forceDirectory, "FULL", null)) {
+                        long restoreStarted = System.nanoTime();
+                        var result = engine.restoreWorld(repository, request.snapshot, request.operation,
+                            config.readLimits(), this, false, WorldStartupGate::checkWorldStage);
+                        if (result.status() != RestoreResult.Status.RESTORED)
+                            throw new IOException("Restore request was previously rolled back: " + request.operation);
+                        if (request.backend != null) {
+                            Files.delete(queuedRequest(target));
+                            ServerRepository.forceDirectory(target.getParent());
+                        }
+                        LifecycleHooks.after(config.lifecycleIntegrations(), hookContext,
+                            new io.github.zct_studio.barusikozako.runtime.TaskResult.Restored(snapshotRef, FabricOperations.SOURCE_ID));
+                        LOG.log(System.Logger.Level.INFO, "Offline restore committed for {0}; original world: {1}",
+                            request.snapshot, result.previousWorld().orElseThrow());
+                        LOG.log(System.Logger.Level.INFO, "Offline verification and switch elapsed {0} ms",
+                            java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - restoreStarted));
+                    }
+                }
+            }
+        }
+        offline = false;
     }
 
     private static void checkWorldStage(Path stage) throws IOException {
@@ -201,7 +229,8 @@ public final class WorldStartupGate implements RestoreWindow {
 
     static synchronized void queueRestore(Path world, String backend, UUID snapshot,
                                           io.github.zct_studio.barusikozako.backend.Repository.CommitGate commit) throws IOException {
-        if (lifetime == null || lifetime.offline || !lifetime.lock.isValid() || !lifetime.target.equals(world))
+        if ((lifetime == null || lifetime.offline || !lifetime.lock.isValid() || !lifetime.target.equals(world))
+            && !canRestoreClientWorld(world))
             throw new IOException("Restore scheduling requires the active world's cooperation lock");
         var file = queuedRequest(world);
         if (!Files.notExists(file, LinkOption.NOFOLLOW_LINKS))

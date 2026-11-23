@@ -17,6 +17,19 @@ BASE = "io/github/zct_studio/barusikozako/"
 FABRIC_LOADERS = ("fabric", "quilt")
 
 
+def verify_bytecode(archive, label, java):
+    for name in archive.namelist():
+        if name.startswith(BASE) and name.endswith(".class"):
+            with archive.open(name) as stream:
+                header = stream.read(8)
+            major = int.from_bytes(header[6:8], "big")
+            if header[:4] != b"\xca\xfe\xba\xbe" or major > java + 44 or header[4:6] == b"\xff\xff":
+                raise ValueError(f"{label} contains {name} incompatible with Java {java} (class version {major})")
+        elif name.startswith("META-INF/") and name.endswith(".jar"):
+            with ZipFile(BytesIO(archive.read(name))) as nested:
+                verify_bytecode(nested, f"{label}!/{name}", java)
+
+
 def metadata(archive, loader, mod_id):
     if loader in FABRIC_LOADERS:
         data = json.loads(archive.read("fabric.mod.json"))
@@ -36,7 +49,13 @@ def metadata(archive, loader, mod_id):
 
 def verify(job, directory):
     loader = job["loader"]
+    game = job["game"]
+    java = 17 if game.startswith("1.20.") else 21 if game.startswith("1.21.") else 25
     paths = {asset["component"]: asset["paths"] for asset in job["assets"]}
+    for names in paths.values():
+        for name in names:
+            with ZipFile(directory / name) as archive:
+                verify_bytecode(archive, name, java)
     for name in paths["mod"]:
         with ZipFile(directory / name) as archive:
             required, nested = metadata(archive, loader, MAIN_ID)

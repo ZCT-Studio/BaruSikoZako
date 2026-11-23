@@ -22,6 +22,16 @@ FIELDS = {"mod": "MOD", "api": "API", "zstd": "ZSTD"}
 MAIN_SLUG = "barusikozako"
 REQUIRED_PROJECTS = {"api": ("mod",), "zstd": ("mod",), "mod": ()}
 LOADERS = {"fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge"}
+VERIFIED_SINGLEPLAYER_TARGETS = {
+    "forge1.20.1", "neoforge1.21.1", "forge1.21.10",
+    "fabric1.21.11", "quilt1.21.11", "forge1.21.11",
+    "forge26.1.2", "forge26.2",
+    "fabric26.3", "quilt26.3", "forge26.3", "neoforge26.3",
+}
+
+
+def supports_singleplayer(job):
+    return all(loader + job["game"] in VERIFIED_SINGLEPLAYER_TARGETS for loader in storefront_loaders(job))
 
 
 def storefront_loaders(job):
@@ -131,6 +141,7 @@ def modrinth(job, entry, files, ids, *, force_run=None):
     project = ids[component]
     auth = ("Authorization", env("MODRINTH_TOKEN"))
     loaders = storefront_loaders(job)
+    environment = "server_only" if supports_singleplayer(job) else "dedicated_server_only"
     dependencies = [{"project_id": ids[required], "dependency_type": "required"}
                     for required in REQUIRED_PROJECTS[component]]
     version = entry["version"] + ("." if "+" in entry["version"] else "+") + job["target"]
@@ -159,11 +170,16 @@ def modrinth(job, entry, files, ids, *, force_run=None):
             fields["dependencies"] = unmanaged + dependencies
         if fields:
             request(f"{MODRINTH}/version/{old['id']}", "PATCH", auth=auth, fields=("json", fields))
+        if "environment" in old and old["environment"] != environment:
+            # v2 的版本编辑接口不更新运行环境
+            route = MODRINTH.removesuffix("/v2") + f"/v3/version/{old['id']}"
+            request(route, "PATCH", auth=auth, fields=("json", {"minecraft_mod": {"environment": environment}}))
         return
     parts = [(f"jar{i}", file) for i, file in enumerate(files)]
     metadata = {"project_id": project, "name": f'{entry["version"]} · {job["target"]}', "version_number": version,
                 "changelog": entry["notes"], "game_versions": [job["game"]], "loaders": loaders,
-                "version_type": TYPES[entry["channel"]], "environment": "dedicated_server_only",
+                "version_type": TYPES[entry["channel"]],
+                "environment": environment,
                 "featured": False, "file_parts": [part for part, _ in parts], "primary_file": parts[0][0],
                 "dependencies": dependencies}
     request(f"{MODRINTH}/version", "POST", auth=auth, fields=("data", metadata), files=parts)
@@ -171,7 +187,8 @@ def modrinth(job, entry, files, ids, *, force_run=None):
 
 def curseforge_versions(job):
     # 由上传 API 在项目上下文中解析标签名称
-    return [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job))]
+    environments = ["Client", "Server"] if supports_singleplayer(job) else ["Server"]
+    return [job["game"], *(LOADERS[loader] for loader in storefront_loaders(job)), *environments]
 
 
 def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
@@ -207,7 +224,7 @@ def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
             update = {}
             old_types = {name.casefold() for name in old["gameVersions"]}
             old_loaders = old_types & LOADERS.keys()
-            if old_loaders != set(job["platforms"]) or job["game"].casefold() not in old_types:
+            if old_loaders != set(job["platforms"]) or not {name.casefold() for name in version_names} <= old_types:
                 update["gameVersionNames"] = version_names
             if managed != desired:
                 extras = [dep for dep in old_deps if dep["modId"] not in our_ids]
@@ -237,63 +254,6 @@ def curseforge(job, entry, files, ids, version_names, slugs, *, force_run=None):
 
 def curseforge_has_hash(old, expected):
     return any(item["algo"] == 1 and item["value"].lower() == expected for item in old["hashes"])
-
-
-def github_destination(repository, planned_tag, commit_sha, marker):
-    """在已串行化的发布作业中选择批次号，重试回到原有草稿"""
-    match = re.fullmatch(r"(release/\d{4}\.\d{2}\.\d{2}\.)(\d+)", planned_tag)
-    if match is None:
-        raise ValueError(f"Invalid release batch tag: {planned_tag}")
-    prefix, planned_batch = match[1], int(match[2])
-    pages = json.loads(invoke(["gh", "api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"]))
-    releases = [release for page in pages for release in page]
-    ours = [release for release in releases if marker in (release.get("body") or "").splitlines()]
-    if not ours:
-        ours = [release for release in releases if release["tag_name"] == planned_tag
-                and release["target_commitish"] == commit_sha]
-    if len(ours) > 1:
-        raise ValueError("Multiple GitHub releases match this workflow run")
-    if ours:
-        return ours[0]["tag_name"], ours[0]
-    refs = json.loads(invoke(["gh", "api", f"repos/{repository}/git/matching-refs/tags/{prefix}"]))
-    occupied = {release["tag_name"] for release in releases}
-    occupied.update(ref["ref"].removeprefix("refs/tags/") for ref in refs)
-    batches = [int(tag[len(prefix):]) for tag in occupied
-               if tag.startswith(prefix) and tag[len(prefix):].isdigit()]
-    batch = max(planned_batch, max(batches, default=0) + 1)
-    return f"{prefix}{batch}", None
-
-
-def github_release(repository, tag, existing, prerelease, notes, files, commit_sha):
-    """准备 GitHub Release，返回发布平台完成后是否需要转为公开"""
-    if existing is None:
-        date, batch = tag.removeprefix("release/").rsplit(".", 1)
-        title = f"BaruSikoZako · Release {date} #{batch}"
-        invoke(["gh", "release", "create", tag, "--target", commit_sha,
-                "--draft", "--title", title, "--notes-file", str(notes),
-                *(["--prerelease"] if prerelease else []), *map(str, files)])
-        return True
-    else:
-        if existing["draft"] and existing["target_commitish"] != commit_sha:
-            raise ValueError(f"Release draft {tag} belongs to a different commit")
-        if not existing["draft"]:
-            commit = json.loads(invoke(["gh", "api",
-                                        f"repos/{repository}/commits/{quote(tag, safe='')}"]))
-            if commit["sha"] != commit_sha:
-                raise ValueError(f"Release tag {tag} belongs to a different commit")
-        incoming = {file.name: "sha256:" + digest(file, "sha256") for file in files}
-        old = {file["name"]: file.get("digest") for file in existing["assets"]}
-        
-        # 检查是否有冲突
-        if any(incoming.get(name) != digest or name not in incoming for name, digest in old.items()):
-            raise ValueError(f"Release {tag} already contains a different set of assets")
-        
-        missing = [str(file) for file in files if file.name not in old]
-        if missing:
-            if not existing["draft"]:
-                raise ValueError(f"Published release {tag} is missing planned assets")
-            invoke(["gh", "release", "upload", tag, *missing])
-        return existing["draft"]
 
 
 def publish_modrinth(storefront, ids, *, force_run=None):
@@ -331,71 +291,31 @@ def main():
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     if not plan.get("should_release", False):
         raise ValueError("Release not triggered: version unchanged or [no-release] flag present")
-    if not plan.get("tag"):
-        raise ValueError("No release tag in plan")
-    
-    tag = plan["tag"]
-    prerelease = plan.get("prerelease", False)
-    release_title = plan.get("release_title", "")
-    commit_sha = os.environ.get("GITHUB_SHA", "")
-    
-    entries = list(assets(plan, args.artifacts, skip_missing=args.dry_run))
-    if not entries:
-        raise ValueError("No release assets")
-    storefront = [entry for entry in entries if entry[0]["loader"] != "agent"]
+    storefront = [entry for entry in assets(plan, args.artifacts, skip_missing=args.dry_run)
+                  if entry[0]["loader"] != "agent"]
+    if not storefront:
+        raise ValueError("No Modrinth or CurseForge release assets")
     
     if args.dry_run:
-        print(f"Tag: {tag}")
-        print(f"Title: {release_title}")
-        print(f"Prerelease: {prerelease}")
-        print(f"Commit SHA: {commit_sha}")
-        print(release_notes(entries))
-        for _, _, files in entries:
+        print(release_notes(storefront))
+        for _, _, files in storefront:
             print(*(file.name for file in files), sep="\n")
         return
     
-    # 如果是标签推送，请验证标签是否与工作流程引用匹配
-    if os.environ.get("GITHUB_REF_TYPE") == "tag" and tag != os.environ.get("GITHUB_REF_NAME"):
-        raise ValueError(f"The release plan tag {tag} must match the workflow ref {os.environ.get('GITHUB_REF_NAME')}")
-    env("GITHUB_SHA", r"[0-9a-f]{40}")
+    # 上传前核对两个平台的项目身份、游戏版本和加载器标签
+    mr, _ = project_ids("MODRINTH", ("Authorization", env("MODRINTH_TOKEN")))
+    cf, slugs = project_ids("CURSEFORGE", ("x-api-key", env("CURSEFORGE_API_KEY")))
+    env("CURSEFORGE_TOKEN")
+    versions = {job["target"]: curseforge_versions(job) for job, _, _ in storefront}
 
-    # 在创建草稿或上传前核对两个平台的项目身份和 CurseForge 游戏版本与加载器标签
-    if storefront:
-        mr, _ = project_ids("MODRINTH", ("Authorization", env("MODRINTH_TOKEN")))
-        cf, slugs = project_ids("CURSEFORGE", ("x-api-key", env("CURSEFORGE_API_KEY")))
-        env("CURSEFORGE_TOKEN")
-        versions = {job["target"]: curseforge_versions(job) for job, _, _ in storefront}
+    run_id = env("GITHUB_RUN_ID", r"\d+") if plan.get("force_release") else None
+    print("Publishing to Modrinth...")
+    publish_modrinth(storefront, mr, force_run=run_id)
+    print("Modrinth: done")
 
-    # 准备发行说明
-    repository = env("GITHUB_REPOSITORY", r"[\w.-]+/[\w.-]+")
-    run_id = env("GITHUB_RUN_ID", r"\d+")
-    force_run = run_id if plan.get("force_release") else None
-    marker = f"<!-- barusikozako-release-run:{run_id} -->"
-    tag, existing = github_destination(repository, tag, commit_sha, marker)
-    with tempfile.TemporaryDirectory() as temp:
-        notes = Path(temp) / "CHANGELOG.md"
-        notes.write_text(release_notes(entries) + "\n" + marker + "\n", encoding="utf-8")
-        
-        # 第 1 步：创建/更新 GitHub 版本
-        print(f"Creating/updating GitHub Release for tag {tag}...")
-        draft = github_release(repository, tag, existing, prerelease, notes,
-                               [file for _, _, files in entries for file in files], commit_sha)
-    
-    # 第2步：发布到Modrinth（独立，可以单独重试）
-    if storefront:
-        print("Publishing to Modrinth...")
-        publish_modrinth(storefront, mr, force_run=force_run)
-        print("Modrinth: done")
-        
-        # 步骤3：发布到CurseForge（独立，可以单独重试）
-        print("Publishing to CurseForge...")
-        publish_curseforge(storefront, cf, versions, slugs, force_run=force_run)
-        print("CurseForge: done")
-        
-    if draft:
-        print("Publishing GitHub Release...")
-        invoke(["gh", "release", "edit", tag, "--draft=false"])
-        print("GitHub Release published")
+    print("Publishing to CurseForge...")
+    publish_curseforge(storefront, cf, versions, slugs, force_run=run_id)
+    print("CurseForge: done")
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
 
     private static final System.Logger LOG = System.getLogger("BaruSikoZako");
     private static FileLock stageLifetime;
+    private static Path ownedStagingParent;
     private final Path world;
     private final Path stagingParent;
     private final ServerConfig config;
@@ -61,7 +62,11 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
     }
 
     private static synchronized void ownStagingParent(Path parent) throws IOException {
-        if (stageLifetime != null) throw new IOException("Repeated use of dedicated capture staging");
+        if (stageLifetime != null) {
+            if (!parent.equals(ownedStagingParent) || !stageLifetime.isValid())
+                throw new IOException("Capture staging directory changed during this process");
+            return;
+        }
         var file = FileChannel.open(parent.resolve(".capture.lock"), StandardOpenOption.WRITE,
             StandardOpenOption.CREATE, LinkOption.NOFOLLOW_LINKS);
         try {
@@ -69,6 +74,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
             if (lock == null) throw new IOException("Capture staging is already in use");
             StagedDirectoryView.cleanupAbandoned(parent);
             stageLifetime = lock;
+            ownedStagingParent = parent;
         } catch (IOException | RuntimeException failure) {
             try {
                 file.close();

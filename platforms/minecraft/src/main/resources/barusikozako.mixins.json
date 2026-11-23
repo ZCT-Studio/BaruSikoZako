@@ -2,8 +2,9 @@
   "required": true,
   "minVersion": "0.8.7",
   "package": "io.github.zct_studio.barusikozako.fabric.mixin",
-  "server": [
-    "DedicatedStartupMixin",
+  "server": ["DedicatedStartupMixin"],
+  "client": ["ClientStorageRestore"],
+  "mixins": [
     "EmptyServerCaptureMixin",
     "SavedDataObservation",
     "SavedDataQueue",

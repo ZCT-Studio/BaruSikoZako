@@ -1,5 +1,7 @@
 # Gradle 模块与 IDEA 开发配置
 
+Gradle JVM 与游戏运行时分别设置。1.20.1 游戏实例使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。旧版原生适配复用 Minecraft 自带的 JNA，26.x 使用 Java 的 FFM API。
+
 在 IDEA 中打开仓库根目录，使用仓库的 Gradle Wrapper。Gradle 构建需要 Java 17 和 Java 25 toolchain，Gradle JVM 选 Java 25。Gradle 会自动发现标准目录中的 JDK，也可用 `JAVA17_HOME` 和 `JAVA25_HOME` 指定本机路径。
 
 在本地创建 `gradle/local-target.properties`。下面的配置会在 Gradle 工具窗口显示 Minecraft 26.3 的 Fabric、Forge、NeoForge 本体与 API 项目。

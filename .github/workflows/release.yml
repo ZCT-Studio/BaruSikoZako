@@ -17,10 +17,6 @@ jobs:
       has_jobs: ${{ steps.plan.outputs.has_jobs }}
       should_build: ${{ steps.plan.outputs.should_build }}
       should_release: ${{ steps.plan.outputs.should_release }}
-      tag: ${{ steps.plan.outputs.tag }}
-      release_title: ${{ steps.plan.outputs.release_title }}
-      prerelease: ${{ steps.plan.outputs.prerelease }}
-      matrix: ${{ steps.plan.outputs.matrix }}
       build_matrix: ${{ steps.plan.outputs.build_matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -105,8 +101,6 @@ jobs:
     concurrency:
       group: publish-release
       cancel-in-progress: false
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -122,7 +116,6 @@ jobs:
           path: release-artifacts
       - name: Publish release
         env:
-          GH_TOKEN: ${{ github.token }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           MODRINTH_API_ID: ${{ vars.MODRINTH_API_ID }}
           MODRINTH_ZSTD_ID: ${{ vars.MODRINTH_ZSTD_ID }}

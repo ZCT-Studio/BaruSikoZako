@@ -7,14 +7,14 @@
   "authors": ["${authorsJson}"],
   "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},
   "icon": "icon.png",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
     "barusikozako:backend": ["io.github.zct_studio.barusikozako.zstd.ZstdProvider"]
   },
   "depends": {
     "barusikozako": "*",
     "minecraft": ["${minecraftVersions}"],
-    "java": ">=25"
+    "java": ">=${javaVersion}"
   },
   "license": "MPL-2.0"
 }

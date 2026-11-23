@@ -39,6 +39,7 @@ class StorefrontTests(unittest.TestCase):
                 self.assertEqual(kind, "data")
                 self.assertEqual(payload["project_id"], self.ids[component])
                 self.assertEqual(payload["loaders"], ["fabric", "quilt"])
+                self.assertEqual(payload["environment"], "server_only")
                 self.assertEqual(payload["dependencies"], [] if component == "mod" else [
                     {"project_id": "11", "dependency_type": "required"}])
 
@@ -55,6 +56,29 @@ class StorefrontTests(unittest.TestCase):
                                                   {"project_id": "11", "dependency_type": "required"}]}))
 
     @patch.object(publish, "request")
+    def test_modrinth_marks_verified_singleplayer_target(self, request):
+        request.side_effect = [None, {}]
+        job = dict(self.job("forge"), game="1.20.1", target="forge1.20.1")
+        publish.modrinth(job, self.entry("mod"), [self.file], self.ids)
+        self.assertEqual(request.call_args.kwargs["fields"][1]["environment"], "server_only")
+
+    @patch.object(publish, "request")
+    def test_modrinth_updates_environment_of_existing_version(self, request):
+        request.side_effect = [{"id": "existing", "environment": "dedicated_server_only",
+                                "loaders": ["fabric", "quilt"], "game_versions": ["26.3"],
+                                "files": [{"filename": self.file.name,
+                                           "hashes": {"sha512": publish.digest(self.file, "sha512")}}]}, None]
+        publish.modrinth(self.job("fabric", "quilt"), self.entry("mod"), [self.file], self.ids)
+        self.assertEqual(request.call_args.args, ("https://api.modrinth.com/v3/version/existing", "PATCH"))
+        self.assertEqual(request.call_args.kwargs["fields"], ("json", {"minecraft_mod": {"environment": "server_only"}}))
+
+    def test_shared_release_requires_singleplayer_evidence_for_every_loader(self):
+        with patch.object(publish, "VERIFIED_SINGLEPLAYER_TARGETS", {"fabric26.3"}):
+            self.assertFalse(publish.supports_singleplayer(self.job("fabric", "quilt")))
+            self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt")),
+                             ["26.3", "Fabric", "Quilt", "Server"])
+
+    @patch.object(publish, "request")
     def test_curseforge_all_loader_labels_and_dependencies(self, request):
         for loader, label in publish.LOADERS.items():
             for component in self.ids:
@@ -65,28 +89,32 @@ class StorefrontTests(unittest.TestCase):
                     publish.curseforge(job, self.entry(component), [self.file], self.ids, version_names, self.slugs)
                     kind, payload = request.call_args.kwargs["fields"]
                     self.assertEqual(kind, "metadata")
-                    self.assertEqual(payload["gameVersionNames"], ["26.3", label])
+                    self.assertEqual(payload["gameVersionNames"], ["26.3", label, "Client", "Server"])
                     if component == "mod":
                         self.assertNotIn("relations", payload)
                     else:
                         self.assertEqual(payload["relations"], {"projects": [
                             {"projectID": "11", "slug": "barusikozako", "type": "requiredDependency"}]})
-        self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt")), ["26.3", "Fabric", "Quilt"])
+        self.assertEqual(publish.curseforge_versions(self.job("fabric", "quilt")),
+                         ["26.3", "Fabric", "Quilt", "Client", "Server"])
         legacy = {"game": "1.20.1", "loader": "forge", "platforms": ["forge"], "target": "forge1.20.1"}
-        self.assertEqual(publish.curseforge_versions(legacy), ["1.20.1", "Forge"])
+        self.assertEqual(publish.curseforge_versions(legacy), ["1.20.1", "Forge", "Client", "Server"])
         with self.assertRaisesRegex(ValueError, "Invalid storefront loader"):
             publish.curseforge_versions(self.job("forge", "neoforge"))
 
     @patch.object(publish, "request")
-    def test_curseforge_retry_updates_matched_bytes(self, request):
+    def test_curseforge_retry_adds_missing_environment(self, request):
         request.side_effect = [{"data": [{"id": 12, "fileName": self.file.name,
-                                         "gameVersions": ["26.3", "Forge"], "dependencies": [],
+                                         "gameVersions": ["26.3", "NeoForge"],
+                                         "dependencies": [{"modId": 11, "relationType": 3}],
                                          "hashes": [{"algo": 1, "value": publish.digest(self.file, "sha1")}] }],
                                 "pagination": {"totalCount": 1}}, {"id": 12}]
-        publish.curseforge(self.job("neoforge"), self.entry("zstd"), [self.file], self.ids, ["26.3", "NeoForge"], self.slugs)
+        job = self.job("neoforge")
+        publish.curseforge(job, self.entry("zstd"), [self.file], self.ids, publish.curseforge_versions(job), self.slugs)
         self.assertEqual(request.call_args.args, (publish.CURSEFORGE + "/projects/33/update-file", "POST"))
         self.assertEqual(request.call_args.kwargs["fields"][1]["fileID"], 12)
-        self.assertEqual(request.call_args.kwargs["fields"][1]["gameVersionNames"], ["26.3", "NeoForge"])
+        self.assertEqual(request.call_args.kwargs["fields"][1]["gameVersionNames"],
+                         ["26.3", "NeoForge", "Client", "Server"])
 
     @patch.object(publish, "request")
     def test_force_release_uses_distinct_storefront_keys_for_different_bytes(self, request):
@@ -95,8 +123,9 @@ class StorefrontTests(unittest.TestCase):
         self.assertEqual(request.call_args.kwargs["fields"][1]["version_number"], "0.5.0+fabric26.3.build.12345")
         request.side_effect = [{"data": [{"fileName": self.file.name, "hashes": [{"algo": 1, "value": "different"}]}],
                                 "pagination": {"totalCount": 1}}, {}]
-        publish.curseforge(self.job("forge"), self.entry("api"), [self.file], self.ids, ["26.3", "Forge"], self.slugs,
-                          force_run="12345")
+        job = self.job("forge")
+        publish.curseforge(job, self.entry("api"), [self.file], self.ids, publish.curseforge_versions(job),
+                          self.slugs, force_run="12345")
         self.assertEqual(request.call_args.kwargs["files"], [("file", self.file, "product.build.12345.jar")])
 
     @patch.object(publish, "request")
@@ -111,20 +140,28 @@ class StorefrontTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "main project must use the slug"):
                 publish.project_ids("CURSEFORGE", ("x-api-key", "test"))
 
-    @patch.object(publish, "invoke")
-    def test_github_batch_collision_and_retry(self, invoke):
-        sha = "a" * 40
-        marker = "<!-- barusikozako-release-run:123 -->"
-        old = {"tag_name": "release/2026.11.22.1", "target_commitish": "b" * 40, "draft": True, "body": ""}
-        invoke.side_effect = [json.dumps([[old]]), json.dumps([{"ref": "refs/tags/release/2026.11.22.2"}])]
-        tag, release = publish.github_destination("org/repo", old["tag_name"], sha, marker)
-        self.assertEqual(tag, "release/2026.11.22.3")
-        self.assertIsNone(release)
-        draft = {"tag_name": tag, "target_commitish": sha, "draft": True, "body": "notes\n" + marker, "assets": []}
-        invoke.side_effect = [json.dumps([[old, draft]]), ""]
-        self.assertEqual(publish.github_destination("org/repo", old["tag_name"], sha, marker), (tag, draft))
-        self.assertTrue(publish.github_release("org/repo", tag, draft, False, self.file, [self.file], sha))
-        self.assertIn("upload", invoke.call_args.args[0])
+    def test_publish_plan_without_github_release_metadata(self):
+        directory = self.file.parent
+        job = self.job("fabric")
+        entry = self.entry("mod")
+        entry["paths"] = ["barusikozako-0.5.0+fabric26.3.jar"]
+        artifacts = directory / "target-fabric26.3"
+        artifacts.mkdir()
+        (artifacts / entry["paths"][0]).write_bytes(self.file.read_bytes())
+        plan = directory / "plan.json"
+        plan.write_text(json.dumps({"should_release": True, "jobs": [dict(job, assets=[entry])]}),
+                        encoding="utf-8")
+        with (patch("sys.argv", ["publish_release.py", "--plan", str(plan), "--artifacts", str(directory)]),
+              patch.dict("os.environ", {"MODRINTH_TOKEN": "test", "CURSEFORGE_API_KEY": "test",
+                                        "CURSEFORGE_TOKEN": "test"}, clear=True),
+              patch.object(publish, "invoke", side_effect=AssertionError("unexpected CLI call")),
+              patch.object(publish, "project_ids", side_effect=[(self.ids, {}), (self.ids, self.slugs)]),
+              patch.object(publish, "curseforge_versions", return_value=["26.3", "Fabric"]),
+              patch.object(publish, "publish_modrinth") as modrinth,
+              patch.object(publish, "publish_curseforge") as curseforge):
+            publish.main()
+        self.assertEqual(modrinth.call_args.args[0][0][2], [(artifacts / entry["paths"][0]).resolve()])
+        self.assertEqual(curseforge.call_args.args[0], modrinth.call_args.args[0])
 
     def test_packaged_resource_changes_needs_ci(self):
         self.assertTrue(code_changed(["metadatas.json5"]))

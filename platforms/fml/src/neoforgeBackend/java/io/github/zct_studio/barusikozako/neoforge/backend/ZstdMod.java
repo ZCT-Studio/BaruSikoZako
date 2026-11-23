@@ -6,9 +6,8 @@ package io.github.zct_studio.barusikozako.neoforge.backend;
 import io.github.zct_studio.barusikozako.fabric.NativeEntrypoints;
 import io.github.zct_studio.barusikozako.zstd.ZstdProvider;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.api.distmarker.Dist;
 
-@Mod(value = "barusikozako_backendzstd", dist = Dist.DEDICATED_SERVER)
+@Mod(value = "barusikozako_backendzstd")
 public final class ZstdMod {
     public ZstdMod() {
         NativeEntrypoints.registerBackend(new ZstdProvider());

@@ -10,8 +10,6 @@ import io.github.zct_studio.barusikozako.fabric.NativeEntrypoints;
 import io.github.zct_studio.barusikozako.fabric.PublicApi;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.loading.FMLEnvironment;
-import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -23,7 +21,6 @@ import net.minecraftforge.event.server.ServerStoppedEvent;
 @Mod("barusikozako")
 public final class MainMod {
     public MainMod(FMLJavaModLoadingContext context) {
-        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER) return;
         LoaderBridge.install(new NativeEntrypoints(FMLPaths.CONFIGDIR.get(), context.getContainer().getModInfo().getVersion().toString(),
             () -> ModList.isLoaded("barusikozako_api"), () ->
             ModList.applyForEachModContainer(container -> new NativeEntrypoints.Integration(

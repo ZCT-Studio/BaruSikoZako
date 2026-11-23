@@ -1,7 +1,4 @@
-# Changelog / 更新日志
-
-## [Unreleased / 未发布]
-
 ## [1.0.0] - 2026-11-23
 
-### 这是发布首个版本
+_首次发布版本_
+The first Release

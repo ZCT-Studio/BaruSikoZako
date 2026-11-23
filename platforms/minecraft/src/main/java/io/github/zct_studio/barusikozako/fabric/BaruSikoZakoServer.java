@@ -235,7 +235,8 @@ public final class BaruSikoZakoServer {
                     Files.createDirectories(staging);
                     capture = new WorldCapture(world, ServerRepository.checkPath(staging, world), config);
                 }
-                var operations = new FabricOperations(config, world, capture, backend, server.isDedicatedServer());
+                var operations = new FabricOperations(config, world, capture, backend,
+                    server.isDedicatedServer() || WorldStartupGate.canRestoreClientWorld(world));
                 activeBackend = config.backendKeyword();
                 running = new BackupApiHost(operations);
                 host = running;
@@ -412,24 +413,36 @@ public final class BaruSikoZakoServer {
     }
 
     private static String summarize(TaskResult result) {
-        return switch (result) {
-            case TaskResult.VerificationComplete verified -> verificationSummary(verified, "");
-            case TaskResult.BackupCommitted committed -> "Backup committed " + committed.snapshot().snapshotId() +
-                committed.elapsed().map(value -> " · " + value.toMillis() + " ms").orElse("") +
-                (committed.archiveBytes().isPresent() ? " · " + committed.archiveBytes().getAsLong() + " archive bytes" :
-                    committed.logicalBytes().isPresent() ? " · " + committed.logicalBytes().getAsLong() + " logical bytes" : "") + ".";
-            case TaskResult.RestoreQueued value -> "Restore queued for " + value.snapshot().snapshotId() +
-                ". Restart the server to apply it before world load.";
-            case TaskResult.Deleted deleted -> "Snapshot deleted " + deleted.snapshot().snapshotId() + ".";
-            case TaskResult.Failed failed -> switch (failed.reason()) {
+        if (result instanceof TaskResult.VerificationComplete verified) {
+            return verificationSummary(verified, "");
+        }
+        if (result instanceof TaskResult.BackupCommitted committed) {
+            return "Backup committed " + committed.snapshot().snapshotId() +
+                    committed.elapsed().map(value -> " · " + value.toMillis() + " ms").orElse("") +
+                    (committed.archiveBytes().isPresent() ? " · " + committed.archiveBytes().getAsLong() + " archive bytes" :
+                        committed.logicalBytes().isPresent() ? " · " + committed.logicalBytes().getAsLong() + " logical bytes" : "") + ".";
+        }
+        if (result instanceof TaskResult.RestoreQueued value) {
+            return "Restore queued for " + value.snapshot().snapshotId() +
+                    ". Singleplayer restore runs when you reopen this world. On a dedicated server, restart the server.";
+        }
+        if (result instanceof TaskResult.Deleted deleted) {
+            return "Snapshot deleted " + deleted.snapshot().snapshotId() + ".";
+        }
+        if (result instanceof TaskResult.Failed failed) {
+            return switch (failed.reason()) {
                 case NATIVE_ACCESS_DENIED -> WindowsDirectorySync.ACCESS_HELP;
                 case DIRECTORY_SYNC_FAILED -> WindowsDirectorySync.SYNC_HELP;
                 default -> "Backup operation failed (" + failed.reason() + "). See server log.";
             };
-            case TaskResult.CommitUncertain ignored -> "Commit outcome is uncertain. Check the repository before retrying.";
-            case TaskResult.Cancelled ignored -> "Task cancelled.";
-            default -> "Operation completed.";
-        };
+        }
+        if (result instanceof TaskResult.CommitUncertain) {
+            return "Commit outcome is uncertain. Check the repository before retrying.";
+        }
+        if (result instanceof TaskResult.Cancelled) {
+            return "Task cancelled.";
+        }
+        return "Operation completed.";
     }
 
     private static String verificationSummary(TaskResult.VerificationComplete verified, String target) {

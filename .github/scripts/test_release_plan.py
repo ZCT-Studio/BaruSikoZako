@@ -5,7 +5,6 @@
 
 import json
 import unittest
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tempfile
 import os
@@ -19,8 +18,6 @@ import release_plan
 from release_plan import (
     read_table, rules, channel, resolve, targets, code_changed,
     changelogs, asset_names, plan, previous_catalog,
-    get_today_batch_number, generate_release_tag, get_release_title,
-    BEIJING_TZ, TAG_PREFIX
 )
 
 
@@ -79,39 +76,6 @@ class TestReleasePlan(unittest.TestCase):
             "mod/barusikozako-v1.0.0_L+fabric1.20.1.jar",
         ])
 
-    def test_generate_release_tag_format(self):
-        tag = generate_release_tag()
-        self.assertTrue(tag.startswith("release/"))
-        # 格式：发布/YYYY.MM.DD.N
-        parts = tag.split("/")
-        self.assertEqual(len(parts), 2)
-        date_parts = parts[1].split(".")
-        self.assertEqual(len(date_parts), 4)
-        # 检查日期格式
-        year, month, day, batch = date_parts
-        self.assertTrue(year.isdigit() and len(year) == 4)
-        self.assertTrue(month.isdigit() and len(month) == 2)
-        self.assertTrue(day.isdigit() and len(day) == 2)
-        self.assertTrue(batch.isdigit())
-
-    def test_get_release_title(self):
-        tag = "release/2026.11.22.1"
-        title = get_release_title(tag)
-        self.assertEqual(title, "BaruSikoZako · Release 2026.11.22 #1")
-
-        tag = "release/2026.12.01.5"
-        title = get_release_title(tag)
-        self.assertEqual(title, "BaruSikoZako · Release 2026.12.01 #5")
-
-        # 测试无效格式的回退
-        title = get_release_title("invalid-tag")
-        today = datetime.now(BEIJING_TZ).strftime("%Y.%m.%d")
-        self.assertEqual(title, f"BaruSikoZako · Release {today} #1")
-
-    def test_beijing_timezone(self):
-        # 北京时间 UTC+8
-        self.assertEqual(BEIJING_TZ.utcoffset(None), timedelta(hours=8))
-
     def test_plan_should_release(self):
         # 使用 versions.json5 和 CHANGELOG.md 创建临时目录
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -128,17 +92,13 @@ class TestReleasePlan(unittest.TestCase):
                 "## [1.0.0]\n\nInitial release.\n"
             )
             self.assertTrue(result["should_release"])
-            self.assertIsNotNone(result["tag"])
-            self.assertTrue(result["tag"].startswith("release/"))
 
-    def test_build_only_keeps_fml_targets_and_never_allocates_a_tag(self):
+    def test_build_only_keeps_fml_targets(self):
         self.sample_releases["versions"]["1.20.1"] = {"latest": ["fabric", "quilt", "forge"]}
-        with patch("release_plan.generate_release_tag", side_effect=AssertionError):
-            result = plan(self.sample_versions, self.sample_releases, None, "bump version",
-                          ["versions.json5"], build_only=True)
+        result = plan(self.sample_versions, self.sample_releases, None, "bump version",
+                      ["versions.json5"], build_only=True)
         self.assertEqual({job["loader"] for job in result["build_jobs"]}, {"fabric", "quilt", "forge"})
         self.assertFalse(result["should_release"])
-        self.assertIsNone(result["tag"])
 
     def test_manual_build_is_independent_of_the_previous_commit(self):
         result = plan(self.sample_versions, self.sample_releases, None, "docs [no-build]",
@@ -166,7 +126,6 @@ class TestReleasePlan(unittest.TestCase):
                 "## [1.0.0]\n\nInitial release.\n"
             )
             self.assertFalse(result["should_release"])
-            self.assertIsNone(result["tag"])
 
     def test_plan_version_unchanged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,7 +142,6 @@ class TestReleasePlan(unittest.TestCase):
                 "## [1.0.0]\n\nInitial release.\n"
             )
             self.assertFalse(result["should_release"])
-            self.assertIsNone(result["tag"])
 
     def test_prerelease_detection(self):
         versions_with_beta = {
@@ -205,25 +163,8 @@ class TestReleasePlan(unittest.TestCase):
                 "## [1.0.0-beta]\n\nBeta release.\n"
             )
             self.assertTrue(result["should_release"])
-            self.assertTrue(result["prerelease"])
-
-    def test_release_title_in_plan(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
-            (tmpdir / "versions.json5").write_text(json.dumps(self.sample_versions))
-            (tmpdir / "releases.json5").write_text(json.dumps(self.sample_releases))
-            (tmpdir / "CHANGELOG.md").write_text("## [1.0.0]\n\nInitial release.\n")
-            
-            old = None
-            changed = ["versions.json5"]
-            result = plan(
-                self.sample_versions, self.sample_releases, old,
-                "feat: bump version", changed,
-                "## [1.0.0]\n\nInitial release.\n"
-            )
-            self.assertIn("release_title", result)
-            self.assertIsNotNone(result["release_title"])
-            self.assertTrue(result["release_title"].startswith("BaruSikoZako · Release"))
+            self.assertTrue(any(asset["channel"] == "beta"
+                                    for job in result["jobs"] for asset in job["assets"]))
 
     def test_plan_should_build_on_code_change(self):
         """代码变化而版本未变化时应构建，但不应发布"""
@@ -242,7 +183,6 @@ class TestReleasePlan(unittest.TestCase):
             )
             self.assertTrue(result["should_build"])
             self.assertFalse(result["should_release"])
-            self.assertIsNone(result["tag"])
             self.assertEqual({job["target"] for job in result["build_jobs"]},
                              {"fabric1.20.1", "quilt1.20.1"})
             # 但没有发布工作
@@ -270,7 +210,6 @@ class TestReleasePlan(unittest.TestCase):
             )
             self.assertTrue(result["should_build"])
             self.assertTrue(result["should_release"])
-            self.assertIsNotNone(result["tag"])
             self.assertGreater(len(result.get("build_jobs", [])), 0)
             self.assertGreater(len(result.get("jobs", [])), 0)
 
@@ -321,7 +260,6 @@ class TestReleasePlan(unittest.TestCase):
             )
             self.assertTrue(result["should_build"])
             self.assertFalse(result["should_release"])
-            self.assertIsNone(result["tag"])
             self.assertGreater(len(result.get("build_jobs", [])), 0)
             self.assertEqual(len(result.get("jobs", [])), 0)
 
@@ -432,7 +370,7 @@ class TestReleasePlan(unittest.TestCase):
             fabric_jobs = [j for j in result.get("build_jobs", []) if j["loader"] == "fabric"]
             self.assertGreater(len(fabric_jobs), 0)
 
-    def test_agent_targets_included(self):
+    def test_agent_targets_are_only_built(self):
         """构建和发布应包含 Agent 目标"""
         releases_with_agent = {
             "policy": {"maxShiftVersions": 5},
@@ -469,10 +407,9 @@ class TestReleasePlan(unittest.TestCase):
             agent_build = [j for j in result.get("build_jobs", []) if j["loader"] == "agent"]
             agent_release = [j for j in result.get("jobs", []) if j["loader"] == "agent"]
             self.assertGreater(len(agent_build), 0)
-            self.assertGreater(len(agent_release), 0)
+            self.assertEqual(agent_release, [])
 
-    @patch("release_plan.generate_release_tag", return_value="release/2026.11.22.1")
-    def test_prerelease_filters_and_build_plan_covers_release_assets(self, _tag):
+    def test_prerelease_filters_and_build_plan_covers_release_assets(self):
         current = dict(self.sample_versions, mod={"version": "1.1.0-ALPHA.1", "overrides": {}})
         args = (current, self.sample_releases, self.sample_versions)
         changed = ["versions.json5", "platforms/fabric/src/main/java/Foo.java"]
@@ -483,7 +420,8 @@ class TestReleasePlan(unittest.TestCase):
         for job in result["jobs"]:
             self.assertTrue(set(path for entry in job["assets"] for path in entry["paths"]) <=
                             set(path for entry in builds[job["target"]]["assets"] for path in entry["paths"]))
-        self.assertTrue(result["prerelease"])
+        self.assertTrue(any(asset["channel"] != "release"
+                            for job in result["jobs"] for asset in job["assets"]))
 
         forced = plan(*args, "Bump alpha [release-all]", changed)
         self.assertIn("forge1.20.1", {job["target"] for job in forced["jobs"]})
@@ -511,8 +449,7 @@ class TestReleasePlan(unittest.TestCase):
         self.assertEqual({job["target"] for job in result["build_jobs"]},
                          {"fabric1.20.1", "forge1.20.1"})
 
-    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
-    def test_force_release_and_release_all(self, _tag):
+    def test_force_release_and_release_all(self):
         self.sample_versions["mod"]["version"] = "1.0.0-alpha"
         args = (self.sample_versions, self.sample_releases, self.sample_versions)
         ordinary = plan(*args, "Retry [force-release]", [])
@@ -526,14 +463,12 @@ class TestReleasePlan(unittest.TestCase):
             self.assertFalse(plan(*args, f"Retry [force-release] {flag}", [])["should_release"])
         self.assertFalse(plan(*args, "Retry [force-release]", [], build_only=True)["should_release"])
 
-    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
-    def test_release_title_alias_can_trigger_release(self, _tag):
+    def test_release_title_alias_can_trigger_release(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
                       "chore(release): Release v1.0.0 [force-relaese]", [])
         self.assertTrue(result["force_release"])
 
-    @patch("release_plan.generate_release_tag", return_value="release/2026.11.23.1")
-    def test_cli_missing_push_base_after_force_push(self, _tag):
+    def test_cli_missing_push_base_after_force_push(self):
         cases = [
             ("chore(release): Release v1.0.0 [force-relaese]", [], True),
             ("Retry [force-release]", [], True),
@@ -577,34 +512,6 @@ class TestReleasePlan(unittest.TestCase):
     def test_ci_scripts_are_build_inputs(self):
         self.assertTrue(code_changed([".github/scripts/release_plan.py"]))
         self.assertTrue(code_changed([".github/scripts/build_target.ps1"]))
-
-    @patch("release_plan.git")
-    @patch("release_plan.datetime")
-    def test_get_today_batch_number(self, mock_datetime, mock_git):
-        mock_datetime.now.return_value = datetime(2026, 11, 22, 12, 0, tzinfo=BEIJING_TZ)
-
-        mock_git.return_value = ""
-        batch = get_today_batch_number()
-        self.assertEqual(batch, 1)
-
-        # 使用现有标签进行测试
-        mock_git.return_value = "abc123\trefs/tags/release/2026.11.22.1\n" \
-                                "def456\trefs/tags/release/2026.11.22.3\n" \
-                                "ghi789\trefs/tags/release/2026.11.21.1"
-        batch = get_today_batch_number()
-        self.assertEqual(batch, 4)  # Next after 3
-        mock_datetime.now.assert_called_with(BEIJING_TZ)
-
-    @patch("release_plan.git")
-    @patch("release_plan.datetime")
-    def test_get_today_batch_number_resets_on_new_day(self, mock_datetime, mock_git):
-        mock_datetime.now.return_value = datetime(2026, 11, 23, 0, 30, tzinfo=BEIJING_TZ)
-        mock_git.return_value = "abc123\trefs/tags/release/2026.11.22.1\n" \
-                                "def456\trefs/tags/release/2026.11.22.3\n" \
-                                "ghi789\trefs/tags/release/2026.11.21.4"
-
-        self.assertEqual(get_today_batch_number(), 1)
-        mock_datetime.now.assert_called_with(BEIJING_TZ)
 
 
 if __name__ == "__main__":

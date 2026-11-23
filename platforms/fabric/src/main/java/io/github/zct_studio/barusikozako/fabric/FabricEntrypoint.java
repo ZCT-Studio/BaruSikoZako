@@ -3,15 +3,15 @@
 
 package io.github.zct_studio.barusikozako.fabric;
 
-import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
-public final class FabricEntrypoint implements DedicatedServerModInitializer {
+public final class FabricEntrypoint implements ModInitializer {
     @Override
-    public void onInitializeServer() {
+    public void onInitialize() {
         var loader = FabricLoader.getInstance();
         LoaderBridge.install(new LoaderBridge.Binding() {
             @Override public java.nio.file.Path configDirectory() { return loader.getConfigDir(); }

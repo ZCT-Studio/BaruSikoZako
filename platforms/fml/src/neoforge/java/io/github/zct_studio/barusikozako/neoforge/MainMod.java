@@ -11,7 +11,6 @@ import io.github.zct_studio.barusikozako.fabric.PublicApi;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -20,7 +19,7 @@ import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
-@Mod(value = "barusikozako", dist = Dist.DEDICATED_SERVER)
+@Mod(value = "barusikozako")
 public final class MainMod {
     public MainMod(ModContainer context) {
         LoaderBridge.install(new NativeEntrypoints(FMLPaths.CONFIGDIR.get(), context.getModInfo().getVersion().toString(),

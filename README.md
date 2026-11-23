@@ -17,7 +17,7 @@ BaruSikoZako 是 Minecraft Java 版的服务端世界备份模组。服务器运
 ## 安装
 
 1. 从发布文件中选择与你的 Minecraft 版本和加载器匹配的 JAR。模组构建目标包括 Fabric、Quilt、Forge 和 NeoForge。请以下载文件标注的版本和加载器为准。
-2. 使用 Java 25 启动服务端，将默认版 JAR 放入服务器的 `mods` 目录。默认版已包含 Zstd 后端，玩家客户端无需安装。
+2. 将默认版 JAR 放入服务器的 `mods` 目录。请选择与构建匹配的 Java，1.20.1 使用 Java 17，1.21.x 使用 Java 21，26.x 使用 Java 25。默认版已包含 Zstd 后端，联机玩家无需安装。单人备份在客户端实例的 `mods` 目录安装，单人备份与回滚已在 Forge 1.20.1／1.21.10／1.21.11／26.1.2／26.2、NeoForge 1.21.1、Fabric／Quilt 1.21.11，以及 26.3 的 Fabric、Quilt、Forge、NeoForge 验证。
 3. 运行 `/barusikozako backup` 创建首个备份，再用 `/barusikozako list` 查看快照 ID。
 
 默认版和标有 `_L` 的无后端版二选一。`_L` 版需要安装兼容的后端才能备份。如有外部模组调用公开接口，再安装对应 Minecraft 版本及加载器的 `barusikozako_api`。
@@ -46,7 +46,7 @@ BaruSikoZako 是 Minecraft Java 版的服务端世界备份模组。服务器运
 
 ## 开发与链接
 
-使用仓库自带的 Gradle Wrapper，并为构建配置 Java 17 和 Java 25 工具链。参见[构建指南](gradle/README.md)、[发布目标](releases.README.md)、[更新记录](CHANGELOG.md)和[许可证](LICENSE)。[GitHub Releases](https://github.com/ZCT-Studio/BaruSikoZako/releases) · [问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+使用仓库自带的 Gradle Wrapper，并为构建配置 Java 17 和 Java 25 工具链。参见[构建指南](gradle/README.md)、[发布目标](releases.README.md)、[更新记录](CHANGELOG.md)和[许可证](LICENSE)。[GitHub Actions](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml) · [问题反馈](https://github.com/ZCT-Studio/BaruSikoZako/issues)
 
 </details>
 
@@ -64,7 +64,7 @@ BaruSikoZako is a server-side world backup mod for Minecraft Java Edition. Creat
 ## Installation
 
 1. Pick the JAR for your Minecraft version and loader. Build targets include Fabric, Quilt, Forge, and NeoForge. Check the release file for its exact compatibility.
-2. Run the server with Java 25 and place the standard JAR in the server's `mods` directory. It includes the Zstd backend, and players can join without installing the mod on their clients.
+2. Place the standard JAR in the server's `mods` directory and use the Java version for your build (17 for Minecraft 1.20.1, 21 for 1.21.x, or 25 for 26.x). The JAR includes the Zstd backend, and multiplayer guests can join without installing it. For singleplayer backups, install it in the client instance's `mods` directory. Singleplayer backups and restores have been tested on Forge (1.20.1, 1.21.10, 1.21.11, 26.1.2 and 26.2), NeoForge 1.21.1, Fabric and Quilt 1.21.11, and Fabric, Quilt, Forge and NeoForge 26.3.
 3. Run `/barusikozako backup` to create your first snapshot, then find its ID with `/barusikozako list`.
 
 Install either the standard build or the `_L` build. The `_L` build needs a compatible backend to create backups. Install the matching `barusikozako_api` only when another mod uses the public integration API.
@@ -93,4 +93,4 @@ Run these commands as an administrator or from the server console. A restore rep
 
 ## Development and links
 
-Use the Gradle Wrapper with Java 17 and Java 25 toolchains. See the [build guide](gradle/README.md), [release targets](releases.README.md), [changelog](CHANGELOG.md), and [MPL-2.0 license](LICENSE). [GitHub Releases](https://github.com/ZCT-Studio/BaruSikoZako/releases) · [Issue tracker](https://github.com/ZCT-Studio/BaruSikoZako/issues)
+Use the Gradle Wrapper with Java 17 and Java 25 toolchains. See the [build guide](gradle/README.md), [release targets](releases.README.md), [changelog](CHANGELOG.md), and [MPL-2.0 license](LICENSE). [GitHub Actions](https://github.com/ZCT-Studio/BaruSikoZako/actions/workflows/release.yml) · [Issue tracker](https://github.com/ZCT-Studio/BaruSikoZako/issues)
