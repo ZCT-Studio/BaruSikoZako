@@ -21,6 +21,10 @@ final class GameCommandAccess {
 
     static boolean canManageBackups(CommandSourceStack source) {
         var server = source.getServer();
+        if (server == null) {
+            // 指令树序列化时使用无服务端上下文的探测源，只能按权限等级判断。
+            return isAdministrator(source);
+        }
 
         if (server.isDedicatedServer()) {
             return isAdministrator(source);

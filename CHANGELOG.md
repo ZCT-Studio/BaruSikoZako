@@ -19,6 +19,16 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+## [1.0.2-hotfix] - 2026-11-25
+
+### Fixed / 修复
+
+- Fixed a crash caused by command synchronization when the server context is unavailable as a player joins.
+<br> 修复玩家加入时指令同步缺少服务端上下文导致的崩溃。
+
+>**_This Changelog isn't AIGC_**
+><br>**_本次更新日志为非AI生成内容_**
+
 ## [1.0.2-patch.2] - 2026-11-24
 
 ### Changed / 变更
