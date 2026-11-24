@@ -8,5 +8,9 @@ gradlePlugin {
             id = "barusikozako.java17-library"
             implementationClass = "io.github.zct_studio.barusikozako.buildlogic.Java17Library"
         }
+        register("minecraftSources") {
+            id = "barusikozako.minecraft-sources"
+            implementationClass = "io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin"
+        }
     }
 }

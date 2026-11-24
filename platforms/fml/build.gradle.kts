@@ -1,5 +1,6 @@
 import groovy.json.JsonOutput
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
+import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PrepareFmlRuntime
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
@@ -28,12 +29,11 @@ val zstdVersion = extra["zstdVersion"].toString()
 val versions = mapOf(targetLoader to requireNotNull(compatibility.getProperty("fml.runtime.$targetLoader.$minecraft")))
 val fmlSource = rootProject.file("platforms/fml")
 val legacyMinecraft = minecraft.startsWith("1.")
-val legacyChunkWorker = legacyMinecraft && minecraft != "1.21.11"
 val forgeSrg = minecraft == "1.20.1"
 val runtimeJava = if (forgeSrg) 17 else if (legacyMinecraft) 21 else 25
 val synchronousSavedData = forgeSrg || minecraft == "1.21.1"
 val isolateBackendCommons = synchronousSavedData || targetLoader == "forge"
-val sharedSources = shared.parentFile
+val buildTargets = MinecraftSourcesPlugin.load(project)
 val ownComponents = listOf(":engine:mod-runtime", ":backends:spi", ":platforms:spi", ":engine:core")
 val backendComponents = listOf(":backends:zstd", ":backends:compression-zstd")
 val backendLibraries = configurations.create("backendLibraries") { isTransitive = false }
@@ -193,7 +193,6 @@ fun Jar.attachLibraries(libraries: Configuration, descriptor: TaskProvider<Task>
 }
 
 for ((loader, version) in versions) {
-    val neoSavedData = loader == "neoforge" && synchronousSavedData
     val apiPath = ":api:${parent!!.name}:$loader"
     val runtimeProperty = "${loader}26ServerDir"
     val runtimeOverride = providers.gradleProperty(runtimeProperty).orNull
@@ -330,50 +329,10 @@ for ((loader, version) in versions) {
     }
     (ownComponents + backendComponents).forEach { evaluationDependsOn(it) }
     val main = sourceSets.create(loader) {
-        java.srcDir(fmlSource.resolve("src/$loader/java"))
-        if (!legacyMinecraft) java.srcDir(shared.resolve("java"))
-        if (legacyMinecraft && loader == "forge") java.exclude("**/MainMod.java")
         compileClasspath += serverClasspath
     }
-    if (legacyMinecraft) {
-        tasks.named<JavaCompile>(main.compileJavaTaskName) {
-            source(fileTree(shared.resolve("java")) {
-                exclude("**/SavedDataBarriers.java", "**/SavedDataQueue.java", "**/SavedDataObservation.java",
-                    "**/ChunkUnloadObservation.java")
-                exclude("**/WindowsDirectorySync.java", "**/LinuxReflink.java", "**/NativeAccess.java")
-                if (legacyChunkWorker) exclude("**/GameCommandAccess.java", "**/ChunkBarrier.java",
-                    "**/ReplacementObservation.java", "**/AuxiliaryPlayerObservation.java")
-                if (synchronousSavedData) exclude("**/EmptyServerCaptureMixin.java", "**/PoiWrites.java")
-                if (forgeSrg) exclude("**/WorldLevelMetadata.java", "**/DedicatedStartupMixin.java",
-                    "**/RootFileObservation.java", "**/ServerSaveObservation.java", "**/EntityStorageAccess.java",
-                    "**/PoiStorageAccess.java", "**/PlayerLanguage.java")
-            })
-            source(fileTree(sharedSources.resolve("legacyJava/java")))
-            if (synchronousSavedData) {
-                source(fileTree(sharedSources.resolve("synchronousSavedData/java")) {
-                    if (neoSavedData) exclude("**/SavedDataBarriers.java")
-                    if (forgeSrg) exclude("**/SavedDataObservation.java")
-                })
-                if (neoSavedData) source(fileTree(fmlSource.resolve("src/neoforge1211/java")))
-            } else {
-                source(fileTree(sharedSources.resolve("asynchronousSavedData/java")))
-            }
-            if (legacyChunkWorker) {
-                source(fileTree(sharedSources.resolve("beforeStructuredPermissions/java")) {
-                    if (forgeSrg) exclude("**/ReplacementObservation.java")
-                })
-                source(fileTree(sharedSources.resolve("separateStatsHook/java")))
-            }
-            if (forgeSrg) {
-                source(fileTree(sharedSources.resolve("minecraft1201/java")))
-                source(fileTree(fmlSource.resolve("src/forgeSrg/java")))
-            } else source(fileTree(fmlSource.resolve("src/officialLegacy/java")))
-            if (loader == "forge") {
-                source(fileTree(fmlSource.resolve("src/forgeLegacy/java")))
-                source(fileTree(fmlSource.resolve(if (synchronousSavedData) "src/forgeClassicBus/java" else "src/forgeTypedBus/java")))
-            }
-        }
-    }
+    val target = buildTargets.require(loader, minecraft)
+    val mixinTask = MinecraftSourcesPlugin.configure(project, main, buildTargets, target, false, true)
     val backend = sourceSets.create("${loader}Backend") {
         java.srcDir(fmlSource.resolve("src/${loader}Backend/java"))
         compileClasspath += serverClasspath + main.output
@@ -438,30 +397,8 @@ for ((loader, version) in versions) {
             from(refmap)
         }
         from(main.output)
-        from(shared.resolve("resources")) {
-            if (legacyMinecraft) filesMatching("barusikozako.mixins.json") {
-                filter { line: String ->
-                    var value = line.replace("\"package\":",
-                        "\"injectors\": { \"defaultRequire\": 1 }, \"package\":")
-                    if (legacyChunkWorker) value = value
-                        .replace("\"PoiStorageAccess\"", "\"PoiStorageAccess\", \"LegacyChunkStorageAccess\"")
-                    if (legacyChunkWorker) value = value.replace("\"AuxiliaryPlayerObservation\",",
-                            "\"AuxiliaryPlayerObservation\", \"PlayerStatsObservation\",")
-                    if (synchronousSavedData) value = value.replace("\"EmptyServerCaptureMixin\",", "")
-                        .replace("\"SavedDataQueue\",", "")
-                        .replace("\"PoiStorageAccess\"", "\"LegacyPoiWrites\", \"PoiStorageAccess\"")
-                    if (neoSavedData) value = value.replace("\"SavedDataObservation\",", "")
-                        .replace("\"package\":", "\"plugin\": \"io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins\", \"package\":")
-                    if (forgeSrg) value = value.replace("\"package\":",
-                            "\"refmap\": \"barusikozako.refmap.json\", \"package\":")
-                        .replace("\"ServerSaveObservation\",",
-                            "\"LegacyRegionWriteFailure\", \"LegacyChunkSerializationFailure\", \"LegacyPoiSerializationFailure\",")
-                    if (forgeSrg) value = value.replace("\"PlayerFileObservation\",",
-                        "\"PlayerFileObservation\", \"ClientLanguageObservation\",")
-                    value
-                }
-            }
-        }
+        from(shared.resolve("resources")) { exclude("barusikozako.mixins.json") }
+        if (mixinTask != null) from(mixinTask)
         from(descriptor) { into("META-INF") }
         copyComponents(ownComponents)
         loaderManifest("barusikozako", mixin = loader == "forge")

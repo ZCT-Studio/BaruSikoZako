@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 ZCT Studio
 
+//? if mc > 1.21.1
 package io.github.zct_studio.barusikozako.fabric.mixin;
 
 import io.github.zct_studio.barusikozako.fabric.BaruSikoZakoServer;
@@ -20,3 +21,4 @@ abstract class EmptyServerCaptureMixin {
         BaruSikoZakoServer.captureWhileEmptyPaused((MinecraftServer) (Object) this);
     }
 }
+//? end

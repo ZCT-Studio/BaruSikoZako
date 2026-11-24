@@ -1,0 +1,308 @@
+{
+  version: 1,
+  layout: { strict: true },
+  // 相对于仓库根目录
+  mixinTemplate: "platforms/minecraft/src/mixin/barusikozako.mixins.json",
+
+  // 源码层：路径相对于 platforms/，目录下可有 java/ 与 resources/。
+  // main 只保留所有目标共用的文件；版本差异用条件编译，加载器差异用独占层。
+  layers: {
+    main: "minecraft/src/main",
+    modernJava: "minecraft/src/modernJava",
+    legacyJava: "minecraft/src/legacyJava",
+    fabric: "fabric/src/main",
+    fabricLegacy: "fabric-legacy/src/main",
+    forgeModern: "fml/src/forgeModern",
+    forgeLegacy: "fml/src/forgeLegacy",
+    forgeClassicBus: "fml/src/forgeClassicBus",
+    forgeTypedBus: "fml/src/forgeTypedBus",
+    forgeSrg: "fml/src/forgeSrg",
+    officialLegacy: "fml/src/officialLegacy",
+    neoforge: "fml/src/neoforge",
+    neoforge1211: "fml/src/neoforge1211",
+  },
+
+  targets: {
+    // ---------------------------------------------------------------- Fabric 现代
+    "fabric@26.1.2": {
+      java: 25,
+      sources: ["main", "modernJava", "fabric"],
+      resources: ["main", "fabric"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "fabric@26.2": {
+      java: 25,
+      sources: ["main", "modernJava", "fabric"],
+      resources: ["main", "fabric"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "fabric@26.3": {
+      java: 25,
+      sources: ["main", "modernJava", "fabric"],
+      resources: ["main", "fabric"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+
+    // ---------------------------------------------------------------- Fabric 旧版
+    "fabric@1.20.1": {
+      java: 17,
+      sources: ["main", "legacyJava", "fabric", "fabricLegacy"],
+      resources: ["main", "fabric"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "SavedDataObservation", "LegacyRegionWriteFailure", "LegacyChunkSerializationFailure",
+          "LegacyPoiSerializationFailure", "PlayerFileObservation", "ClientLanguageObservation",
+          "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "fabric@1.21.1": {
+      java: 21,
+      sources: ["main", "legacyJava", "fabric", "fabricLegacy"],
+      resources: ["main", "fabric"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "SavedDataObservation", "ServerSaveObservation", "PlayerFileObservation",
+          "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "fabric@1.21.10": {
+      java: 21,
+      sources: ["main", "legacyJava", "fabric", "fabricLegacy"],
+      resources: ["main", "fabric"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "PlayerStatsObservation",
+          "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess",
+          "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "fabric@1.21.11": {
+      java: 21,
+      sources: ["main", "legacyJava", "fabric", "fabricLegacy"],
+      resources: ["main", "fabric"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+
+    // ---------------------------------------------------------------- Forge
+    "forge@1.20.1": {
+      java: 17,
+      sources: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "forgeSrg"],
+      resources: ["main"],
+      mixin: {
+        injectors: true, refmap: true,
+        mixins: [
+          "SavedDataObservation", "LegacyRegionWriteFailure", "LegacyChunkSerializationFailure",
+          "LegacyPoiSerializationFailure", "PlayerFileObservation", "ClientLanguageObservation",
+          "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "forge@1.21.1": {
+      java: 21,
+      sources: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "officialLegacy"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "SavedDataObservation", "ServerSaveObservation", "PlayerFileObservation",
+          "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "forge@1.21.10": {
+      java: 21,
+      sources: ["main", "legacyJava", "forgeLegacy", "forgeTypedBus", "officialLegacy"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "PlayerStatsObservation",
+          "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess",
+          "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "forge@1.21.11": {
+      java: 21,
+      sources: ["main", "legacyJava", "forgeLegacy", "forgeTypedBus", "officialLegacy"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "forge@26.1.2": {
+      java: 25,
+      sources: ["main", "modernJava", "forgeModern"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "forge@26.2": {
+      java: 25,
+      sources: ["main", "modernJava", "forgeModern"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "forge@26.3": {
+      java: 25,
+      sources: ["main", "modernJava", "forgeModern"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+
+    // ---------------------------------------------------------------- NeoForge
+    "neoforge@1.21.1": {
+      java: 21,
+      sources: ["main", "legacyJava", "neoforge", "officialLegacy", "neoforge1211"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        plugin: "io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins",
+        mixins: [
+          "ServerSaveObservation", "PlayerFileObservation", "AuxiliaryPlayerObservation",
+          "PlayerStatsObservation", "RootFileObservation", "ReplacementObservation",
+          "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess", "EntityStorageAccess",
+          "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "neoforge@1.21.10": {
+      java: 21,
+      sources: ["main", "legacyJava", "neoforge", "officialLegacy"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "PlayerStatsObservation",
+          "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess",
+          "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        ],
+      },
+    },
+    "neoforge@1.21.11": {
+      java: 21,
+      sources: ["main", "legacyJava", "neoforge", "officialLegacy"],
+      resources: ["main"],
+      mixin: {
+        injectors: true,
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "neoforge@26.1.2": {
+      java: 25,
+      sources: ["main", "modernJava", "neoforge"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "neoforge@26.2": {
+      java: 25,
+      sources: ["main", "modernJava", "neoforge"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+    "neoforge@26.3": {
+      java: 25,
+      sources: ["main", "modernJava", "neoforge"],
+      resources: ["main"],
+      mixin: {
+        mixins: [
+          "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+          "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+          "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+          "EntityStorageAccess", "PoiStorageAccess",
+        ],
+      },
+    },
+  },
+}

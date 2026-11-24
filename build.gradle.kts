@@ -1,13 +1,34 @@
 import org.gradle.api.Project
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import io.github.zct_studio.barusikozako.buildlogic.ActivateTarget
 
 plugins {
     base
+    id("barusikozako.java17-library") apply false
 }
 
 tasks.register("buildProducts") {
     group = "build"
     description = "Builds every installable product selected by the current target profile."
+}
+
+// 切换 IDEA 活跃构建目标：重写条件分支并更新 gradle/local-target.properties
+tasks.register<ActivateTarget>("activateTarget") {
+    group = "ide"
+    description = "Activates a build target for IDE work: ./gradlew activateTarget -PgameVersion=26.3 -Ploaders=fabric"
+    game.set(providers.gradleProperty("gameVersion").orElse("26.3"))
+    loader.set(providers.gradleProperty("loaders").orElse("fabric").map { it.substringBefore(',').trim() })
+    rootDirectory.set(layout.projectDirectory)
+}
+
+tasks.register("checkTargetSources") {
+    group = "verification"
+    description = "Validates every selected build target against targets.json5"
+}
+subprojects {
+    tasks.matching { it.name == "checkTargetSources" }.configureEach {
+        rootProject.tasks.named("checkTargetSources").configure { dependsOn(this@configureEach) }
+    }
 }
 
 val compatibilityTargets = java.util.Properties().apply {
@@ -24,13 +45,23 @@ for (game in selectableGames) {
     val loaders = listOf("fabric", "quilt") + listOf("forge", "neoforge").filter {
         compatibilityTargets.containsKey("fml.runtime.$it.$game")
     }
+    val targetsProject = project(":targets:$game")
     for (loader in loaders) {
-        project(":targets:$game").tasks.register<Exec>(loader) {
+        targetsProject.tasks.register<Exec>(loader) {
             group = "build"
             description = "Builds the $loader products for Minecraft $game"
             workingDir = rootDir
             val wrapper = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
             commandLine(wrapper, "-PgameVersion=$game", "-Ploaders=$loader", "buildProducts")
+        }
+        // Quilt 复用 Fabric 的清单目标与条件分支，不单独提供切换任务
+        if (loader == "quilt") continue
+        targetsProject.tasks.register<ActivateTarget>("activate${loader.replaceFirstChar { it.uppercase() }}") {
+            group = "ide"
+            description = "Switches the IDE target to $loader on Minecraft $game; reload Gradle projects afterwards"
+            getGame().set(game)
+            getLoader().set(loader)
+            getRootDirectory().set(rootProject.layout.projectDirectory)
         }
     }
     /* 暂停在 Gradle 目标列表提供 JavaAgent 构建

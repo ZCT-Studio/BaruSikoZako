@@ -20,7 +20,11 @@ abstract class DedicatedStartupMixin {
     private static LevelStorageSource.LevelStorageAccess barusikozako$guardStartup(LevelStorageSource storage,
                                                                                    String world)
         throws IOException, ContentValidationException {
+//? if mc == 1.20.1
+//?~         WorldStartupGate.beforeWorldAccess(storage.getBaseDir().resolve(world));
+//? else
         WorldStartupGate.beforeWorldAccess(storage.getLevelPath(world));
+//? end
         return storage.validateAndCreateAccess(world);
     }
 }
