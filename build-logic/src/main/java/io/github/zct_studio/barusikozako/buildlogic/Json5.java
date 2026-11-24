@@ -69,7 +69,12 @@ public final class Json5 {
 
     private Object read() {
         skip();
-        return value();
+        Object value = value();
+        skip();
+        if (at < source.length()) {
+            throw new IllegalArgumentException("Unexpected trailing content at offset " + at);
+        }
+        return value;
     }
 
     private void skip() {
