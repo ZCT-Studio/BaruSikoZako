@@ -1,6 +1,6 @@
 {
   mod: {
-    version: "1.0.2-patch.1",
+    version: "1.0.2-patch.2",
     overrides: {
     },
   },
@@ -11,7 +11,7 @@
   },
   backend: {
     zstd: {
-      version: "1.0.2",
+      version: "1.0.2-patch.1",
       overrides: {
       },
     },

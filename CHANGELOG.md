@@ -21,6 +21,18 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [1.0.2-patch.1] - 2026-11-24
 
+### Changed / 变更
+
+- Change MAX_DEPTH to 2048 and change DEFAULT_DEPTH to 32.
+<br> 最大增量备份数量提升至2048并且修改默认增量备份数量为32。
+
+>**_This Changelog isn't AIGC_**
+><br>**_本次更新日志为非AI生成内容_**
+
+## [1.0.2] - 2026-11-23
+
+## [1.0.2-patch.1] - 2026-11-24
+
 ### Fixed / 修复
 
 - Fixed the issue where backups could not be used in single-player mode without cheats.

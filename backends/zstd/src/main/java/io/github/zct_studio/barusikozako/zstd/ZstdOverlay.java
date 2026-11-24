@@ -21,7 +21,8 @@ import java.util.Map;
 final class ZstdOverlay {
     static final String INHERITED = "inherited.jsonl";
     static final String REMOVED = "removed.jsonl";
-    static final int MAX_DEPTH = 8;
+    static final int MAX_DEPTH = 2048;
+    static final int DEFAULT_DEPTH = 32;
     private static final long META_LIMIT = 16L << 20;
 
     private ZstdOverlay() {}

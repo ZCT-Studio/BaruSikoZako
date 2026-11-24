@@ -135,7 +135,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
     public enum WriteMode { FULL, EXPERIMENTAL_FIXED_CHUNKS, INCREMENTAL, DIFFERENTIAL }
 
     public record Rollover(int maxIncrementals, int fullThresholdPercent, long fullIntervalSeconds) {
-        static final Rollover DEFAULT = new Rollover(ZstdOverlay.MAX_DEPTH, 0, 0);
+        static final Rollover DEFAULT = new Rollover(ZstdOverlay.DEFAULT_DEPTH, 0, 0);
 
         public Rollover {
             if (maxIncrementals < 0 || maxIncrementals > ZstdOverlay.MAX_DEPTH ||
