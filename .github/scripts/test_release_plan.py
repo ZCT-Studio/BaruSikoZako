@@ -453,6 +453,36 @@ class TestReleasePlan(unittest.TestCase):
         self.assertEqual({job["target"] for job in result["build_jobs"]},
                          {"fabric1.20.1", "forge1.20.1"})
 
+    def test_build_all_marker_builds_every_target_without_releasing(self):
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "chore: verify all targets [build-all]", [".lists/version.json5"])
+        self.assertEqual({job["target"] for job in result["build_jobs"]},
+                         {"fabric1.20.1", "quilt1.20.1", "forge1.20.1"})
+        self.assertTrue(result["should_build"])
+        self.assertFalse(result["should_release"])
+        self.assertEqual(result["jobs"], [])
+        for job in result["build_jobs"]:
+            self.assertEqual({asset["component"] for asset in job["assets"]}, {"mod", "api"})
+
+    def test_build_lts_marker_builds_only_lts_targets_without_releasing(self):
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "chore: verify lts [BUILD-LTS]", [".lists/version.json5"])
+        self.assertEqual({job["target"] for job in result["build_jobs"]}, {"forge1.20.1"})
+        self.assertTrue(result["should_build"])
+        self.assertFalse(result["should_release"])
+        self.assertEqual(result["jobs"], [])
+
+    def test_build_markers_apply_to_pull_requests(self):
+        result = plan(self.sample_versions, self.sample_releases, None,
+                      "ci: verify all targets [build-all]", [], build_only=True)
+        self.assertEqual({job["target"] for job in result["build_jobs"]},
+                         {"fabric1.20.1", "quilt1.20.1", "forge1.20.1"})
+        self.assertFalse(result["should_release"])
+        lts = plan(self.sample_versions, self.sample_releases, None,
+                   "ci: verify lts [build-lts]", [], build_only=True)
+        self.assertEqual({job["target"] for job in lts["build_jobs"]}, {"forge1.20.1"})
+        self.assertFalse(lts["should_release"])
+
     def test_storefront_skip_flags_preserve_only_the_selected_release_destinations(self):
         for flags, expected in (("[no-modrinth]", ["curseforge"]),
                                 ("[NO-CURSEFORGE]", ["modrinth"]),

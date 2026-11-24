@@ -13,6 +13,7 @@
 - 默认渠道为 `lts` 允许 RC 和正式版，`nlts` 再允许 Beta，`shift` 再允许 Alpha，`latest` 再允许 Snapshot。`[release-all]` 跳过渠道限制，`[release-temp]` 只选 `nlts` 和 `shift`，`[release-latest]` 只选 `latest`。`[no-build]` 同时跳过构建和发布。
 - `[force-release]` 即使版本表未改也生成发布计划。和 `[release-all]` 组合时，发布矩阵中所有可上传至这两个平台的目标都进入发布计划。若平台已有同版本但内容不同的文件，使用当前工作流 ID 区分补发批次。`[no-release]`、`[no-build]` 和仅构建的工作流仍会阻止发布。
 - `[no-modrinth]` 跳过 Modrinth 文件发布，`[no-curseforge]` 跳过 CurseForge 文件发布。可以和 `[force-release]` 组合。同时使用两个标记时，仍按常规规则构建。
+- `[build-all]` 强制构建发布表中的全部目标且不发布；`[build-lts]` 只构建 `lts` 渠道目标且不发布。推送和拉取请求均可用；两者都跳过常规的 `latest` 判断，`[no-build]` 仍然优先。
 - 每个平台按 Minecraft 版本号从新到旧上传。同一版本按 Forge、Fabric、Quilt、NeoForge 的顺序发布。Fabric 和 Quilt 共用产物时只上传一次。同一目标依次上传主模组和 API。
 - CurseForge 先提交该目标的主模组文件。若平台返回 1018 并拒绝关联必需的主项目，工作流会告警并暂缓受影响的 API 文件。主项目可被关联后，可重跑发布作业补发。
 - 当前发布工作流运行构建与自动化检查。实际服务端验收需单独进行。

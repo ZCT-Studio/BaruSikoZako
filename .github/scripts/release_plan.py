@@ -133,7 +133,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|no-release|no-build|no-modrinth|no-curseforge)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|no-release|no-build|no-modrinth|no-curseforge)\]",
         message, re.IGNORECASE)}
 
 
@@ -145,6 +145,11 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     selected = targets(release_table)
     flags = commit_flags(message)
     force_release = requests_forced_release(flags)
+    build_all = "build-all" in flags
+    build_lts = "build-lts" in flags
+    # [build-all]/[build-lts] 只规划构建，不生成发布；[no-build] 仍然优先。
+    if (build_all or build_lts) and "no-build" not in flags:
+        force_build = True
     catalog_changed = any(path in (".lists/version.json5", ".lists/release.json5") for path in changed)
     storefronts = [name for name in ("modrinth", "curseforge") if f"no-{name}" not in flags]
     allow_release = (bool(storefronts) and not build_only and not force_build
@@ -181,7 +186,10 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
             before = resolve(previous, platform, game) if catalog_changed and previous else {}
             zstd = bundled_zstd_version(current, platform, game)
             previous_zstd = bundled_zstd_version(previous, platform, game) if catalog_changed and previous else None
-            if tier == "latest" and (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd))):
+            requested = "no-build" not in flags and (build_all or (build_lts and tier == "lts"))
+            automatic = not build_all and not build_lts and tier == "latest"
+            if requested or (automatic and
+                             (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd)))):
                 build = job(game, [platform], versions, versions, True)
                 build_jobs[build["target"]] = build
             bypass_tier = "release-all" in flags
@@ -241,10 +249,10 @@ def main():
     args = parser.parse_args()
     base = args.base
     force_build = args.force_build
-    message = "" if args.build_only or force_build else git("log", "-1", "--format=%B")
+    message = "" if force_build else git("log", "-1", "--format=%B")
     available = not force_build and base and git("rev-parse", "--verify", base + "^{commit}", missing=True)
     if not force_build and not available:
-        if requests_forced_release(commit_flags(message)):
+        if not args.build_only and requests_forced_release(commit_flags(message)):
             print("Comparison commit unavailable. Planning the explicitly requested release.", file=sys.stderr)
         else:
             print("Comparison commit unavailable. Building latest targets without publishing.", file=sys.stderr)
