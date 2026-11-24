@@ -1,8 +1,4 @@
 import java.util.Properties
-import java.util.HexFormat
-import java.util.zip.ZipFile
-import java.nio.ByteBuffer
-import java.security.MessageDigest
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 
