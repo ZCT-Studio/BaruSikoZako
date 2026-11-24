@@ -17,7 +17,7 @@
 
 已绑定的公共 `BackupService` 可调用 `registerWorldExclusion("*.tmp")`，来源取自绑定的集成 ID。关闭返回的 `AutoCloseable` 可注销，关闭绑定或主机也会解除其注册。同一来源和规则的重复注册会被拒绝。模组登记仅接受一个正向排除模式。
 
-不直接依赖 API 时，可反射调用模组的 `io.github.zct_studio.barusikozako.fabric.NativeEntrypoints.registerBackupExclusion(String scope, String source, String pattern)` 或 Agent 的 `io.github.zct_studio.barusikozako.agent.AgentRuntime` 同名方法。传入 `WORLD`、模组标识和规则，调用方持有并关闭返回的句柄。Bukkit 插件可从插件管理器获取 `barusikozako` 桥，再调用 `registerWorldExclusion(Plugin owner, String pattern)`，桥会在插件停用时注销。
+不直接依赖 API 时，可反射调用模组的 `io.github.zct_studio.barusikozako.NativeEntrypoints.registerBackupExclusion(String scope, String source, String pattern)` 或 Agent 的 `io.github.zct_studio.barusikozako.agent.AgentRuntime` 同名方法。传入 `WORLD`、模组标识和规则，调用方持有并关闭返回的句柄。Bukkit 插件可从插件管理器获取 `barusikozako` 桥，再调用 `registerWorldExclusion(Plugin owner, String pattern)`，桥会在插件停用时注销。
 
 ## 归档与恢复
 

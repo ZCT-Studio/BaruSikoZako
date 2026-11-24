@@ -3,7 +3,7 @@
 
 package io.github.zct_studio.barusikozako.forge;
 
-import io.github.zct_studio.barusikozako.fabric.BaruSikoZakoServer;
+import io.github.zct_studio.barusikozako.BaruSikoZakoServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;

@@ -3,7 +3,7 @@
 
 package io.github.zct_studio.barusikozako.neoforge.backend;
 
-import io.github.zct_studio.barusikozako.fabric.NativeEntrypoints;
+import io.github.zct_studio.barusikozako.NativeEntrypoints;
 import io.github.zct_studio.barusikozako.zstd.ZstdProvider;
 import net.neoforged.fml.common.Mod;
 
