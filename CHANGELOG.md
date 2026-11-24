@@ -19,6 +19,13 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+## [1.0.2-patch.1] - 2026-11-24
+
+### Fixed / 修复
+
+- Fixed the issue where backups could not be used in single-player mode without cheats.
+<br> 修复单人游戏下无作弊无法使用备份的问题。
+
 ## [1.0.2] - 2026-11-23
 
 ### Added / 新增
