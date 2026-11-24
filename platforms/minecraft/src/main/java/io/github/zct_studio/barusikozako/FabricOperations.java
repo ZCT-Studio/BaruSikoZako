@@ -117,6 +117,10 @@ final class FabricOperations implements BackupApiHost.Operations {
         return List.of(new RepositoryInfo(REPOSITORY_ID, config.backendKeyword()));
     }
 
+    Path repositoryPath() {
+        return repository;
+    }
+
     @Override
     public Page<SnapshotInfo> snapshots(String repositoryId, PageRequest page) throws IOException {
         if (!REPOSITORY_ID.equals(repositoryId)) throw new IllegalArgumentException("Unknown repository");

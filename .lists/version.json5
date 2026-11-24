@@ -1,6 +1,6 @@
 {
   mod: {
-    version: "1.0.3-alpha.1",
+    version: "1.0.3",
     overrides: {
     },
   },

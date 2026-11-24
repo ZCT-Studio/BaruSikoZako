@@ -22,6 +22,7 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -91,50 +92,83 @@ public final class BaruSikoZakoServer {
     private BackupApiHost host;
     private volatile String activeBackend = "";
     private volatile BackupService scheduler;
+    private volatile MinecraftServer server;
+    private volatile Path repositoryPath;
+    private volatile long backupIntervalSeconds;
+    private volatile Instant lastBackupTime;
+    private volatile TaskResult lastBackupResult;
+    private boolean startupNoticeSent;
+    private boolean firstPlayerNoticeSent;
 
     public void registerCommands(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
-            var root = Commands.literal("barusikozako")
-                .requires(GameCommandAccess::canManageBackups)
-                .then(Commands.literal("status").executes(context -> status(context.getSource())))
-                .then(configCommand("server", ServerConfig.defaults(), values -> {
-                    var config = ServerConfig.parse(values);
-                    if (!BackendRegistry.registered().containsKey(config.backendKeyword()) &&
-                        !config.backendKeyword().equals(configuredBackend()))
-                        throw new IllegalArgumentException("Backend is not installed: " + config.backendKeyword());
-                }))
-                .then(Commands.literal("backup")
-                    .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty())))
-                .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshotId())))
-                    .executes(context -> list(context.getSource(), Optional.empty())))
-                .then(snapshotCommand("verify",
-                    snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
-                .then(snapshotCommand("delete", BackupRequest.Delete::new))
-                .then(snapshotCommand("restore", snapshot -> new BackupRequest.Restore(snapshot, SOURCE)))
-                .then(taskCommand("cancel", true))
-                .then(taskCommand("task", false).executes(context -> listTasks(context.getSource())));
-            var selected = configuredBackend();
-            for (var provider : BackendRegistry.registered().values()) {
-                var backendRoot = Commands.literal(provider.keyword())
-                    .requires(GameCommandAccess::canManageBackupsConfigs)
-                    .then(configCommand(provider.keyword(), provider.defaults(), provider::configure));
-                dispatcher.register(backendRoot);
-                for (var command : provider.commands()) {
-                    var mode = BackupRequest.BackupMode.valueOf(command.operation());
-                    var node = Commands.literal(command.keyword());
-                    if (command.needsBaseline()) {
-                        node = snapshotSelection(command.keyword(), (source, baseline) ->
-                            backendBackup(source, provider.keyword(), mode, Optional.of(baseline)));
-                    } else {
-                        node.executes(context -> backendBackup(context.getSource(), provider.keyword(), mode, Optional.empty()));
-                    }
-                    if (provider.keyword().equals(selected)) {
-                        root.then(node);
-                        if (!command.keyword().equals("rebuild"))
-                            root.then(Commands.literal("backup").then(node));
-                    }
+        for (var provider : BackendRegistry.registered().values()) {
+            dispatcher.register(Commands.literal(provider.keyword())
+                .requires(GameCommandAccess::canManageBackupsConfigs)
+                .then(configCommand(provider.keyword(), provider.defaults(), provider::configure)));
+        }
+        var selected = configuredBackend();
+        for (String name : List.of("barusikozako", "zakobak", "zakobackup")) {
+            dispatcher.register(root(name, selected));
+        }
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> root(String name, String selected) {
+        var root = Commands.literal(name)
+            .requires(GameCommandAccess::canManageBackups)
+            .then(Commands.literal("status").executes(context -> status(context.getSource())))
+            .then(Commands.literal("help").executes(context -> help(context.getSource())))
+            .then(configCommand("server", ServerConfig.defaults(), values -> {
+                var config = ServerConfig.parse(values);
+                if (!BackendRegistry.registered().containsKey(config.backendKeyword()) &&
+                    !config.backendKeyword().equals(configuredBackend()))
+                    throw new IllegalArgumentException("Backend is not installed: " + config.backendKeyword());
+            }))
+            .then(Commands.literal("backup")
+                .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty())))
+            .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshotId())))
+                .executes(context -> list(context.getSource(), Optional.empty())))
+            .then(snapshotCommand("verify",
+                snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
+            .then(snapshotCommand("delete", BackupRequest.Delete::new))
+            .then(snapshotCommand("restore", snapshot -> new BackupRequest.Restore(snapshot, SOURCE)))
+            .then(taskCommand("cancel", true))
+            .then(taskCommand("task", false).executes(context -> listTasks(context.getSource())));
+        for (var provider : BackendRegistry.registered().values()) {
+            if (!provider.keyword().equals(selected)) continue;
+            for (var command : provider.commands()) {
+                var mode = BackupRequest.BackupMode.valueOf(command.operation());
+                var node = Commands.literal(command.keyword());
+                if (command.needsBaseline()) {
+                    node = snapshotSelection(command.keyword(), (source, baseline) ->
+                        backendBackup(source, provider.keyword(), mode, Optional.of(baseline)));
+                } else {
+                    node.executes(context -> backendBackup(context.getSource(), provider.keyword(), mode, Optional.empty()));
                 }
+                root.then(node);
+                if (!command.keyword().equals("rebuild"))
+                    root.then(Commands.literal("backup").then(node));
             }
-            dispatcher.register(root);
+        }
+        return root;
+    }
+
+    private static int help(CommandSourceStack source) {
+        var text = String.join("\n",
+            Translations.text(source, "help.header"),
+            Translations.text(source, "help.status"),
+            Translations.text(source, "help.backup"),
+            Translations.text(source, "help.list"),
+            Translations.text(source, "help.verify"),
+            Translations.text(source, "help.delete"),
+            Translations.text(source, "help.restore"),
+            Translations.text(source, "help.cancel"),
+            Translations.text(source, "help.task"),
+            Translations.text(source, "help.config"),
+            Translations.text(source, "help.help"),
+            Translations.text(source, "help.backend"),
+            Translations.text(source, "help.footer"));
+        source.sendSuccess(() -> Component.literal(text), false);
+        return 1;
     }
 
     private LiteralArgumentBuilder<CommandSourceStack> snapshotCommand(
@@ -341,10 +375,40 @@ public final class BaruSikoZakoServer {
 
     public synchronized void onServerStarted(MinecraftServer server) {
         if (workers != null) return;
+        this.server = server;
+        loadStartupInfo(server);
         var next = new WorldWorkers(WorldStartupGate.takeRestoreNotice(server.getWorldPath(LevelResource.ROOT)));
         workers = next;
         empty = false;
         next.integrations.execute(() -> start(server, next));
+        notifyStartup();
+    }
+
+    private void loadStartupInfo(MinecraftServer server) {
+        try {
+            var config = ServerConfig.load(false);
+            backupIntervalSeconds = config.backupIntervalSeconds();
+            repositoryPath = ServerRepository.forBackend(config.backendKeyword(), server.getWorldPath(LevelResource.ROOT));
+        } catch (IOException | RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not read startup configuration", failure);
+        }
+    }
+
+    private void notifyStartup() {
+        if (startupNoticeSent) return;
+        startupNoticeSent = true;
+        LOG.log(System.Logger.Level.INFO, startupNotice(null));
+    }
+
+    private String startupNotice(String language) {
+        var config = LoaderBridge.configDirectory().resolve("barusikozako").toAbsolutePath().normalize();
+        var repository = repositoryPath == null
+            ? Translations.languageText(language, "status.unknown")
+            : repositoryPath.toAbsolutePath().normalize().toString();
+        return String.join("\n",
+            String.format(Locale.ROOT, Translations.languageText(language, "notice.startup_config"), config),
+            String.format(Locale.ROOT, Translations.languageText(language, "notice.startup_repository"), repository),
+            Translations.languageText(language, "notice.startup_schedule"));
     }
 
     public void onServerStopping() { stop(); }
@@ -359,6 +423,13 @@ public final class BaruSikoZakoServer {
 
     public void tickEnd(MinecraftServer server) {
         captureTick(server, WorldCapture.Edge.TICK_END);
+        if (!firstPlayerNoticeSent && server.getPlayerList().getPlayerCount() > 0) {
+            firstPlayerNoticeSent = true;
+            for (var player : server.getPlayerList().getPlayers()) {
+                player.sendSystemMessage(Component.literal(startupNotice(PlayerLanguage.get(player))));
+            }
+            LOG.log(System.Logger.Level.INFO, startupNotice(null));
+        }
         var session = workers;
         if (session == null || session.restoreNotice == null) return;
         for (var player : server.getPlayerList().getPlayers()) {
@@ -372,16 +443,15 @@ public final class BaruSikoZakoServer {
         }
     }
 
-    private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> configCommand(
+    private LiteralArgumentBuilder<CommandSourceStack> configCommand(
         String filename, Map<String, String> defaults, YamlSettings.Validator validator) {
         return Commands.literal("config").executes(context -> configPath(context.getSource(), filename))
+            .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
+                .suggests((context, builder) -> suggestConfigKeys(defaults, builder))
+                .executes(context -> configGet(context.getSource(), filename, defaults,
+                    StringArgumentType.getString(context, "key")))))
             .then(Commands.literal("set").then(Commands.argument("key", StringArgumentType.word())
-                .suggests((context, builder) -> {
-                    defaults.keySet().stream().sorted().filter(key -> !YamlSettings.SCHEMA.equals(key))
-                        .filter(key -> key.startsWith(builder.getRemaining()))
-                        .forEach(builder::suggest);
-                    return builder.buildFuture();
-                })
+                .suggests((context, builder) -> suggestConfigKeys(defaults, builder))
                 .then(Commands.argument("value", StringArgumentType.greedyString()).executes(context -> {
                     var source = context.getSource();
                     var key = StringArgumentType.getString(context, "key");
@@ -404,6 +474,38 @@ public final class BaruSikoZakoServer {
                         return 0;
                     }
                 }))));
+    }
+
+    private static java.util.concurrent.CompletableFuture<Suggestions> suggestConfigKeys(
+            Map<String, String> defaults, SuggestionsBuilder builder) {
+        defaults.keySet().stream().sorted().filter(key -> !YamlSettings.SCHEMA.equals(key))
+            .filter(key -> key.startsWith(builder.getRemaining()))
+            .forEach(builder::suggest);
+        return builder.buildFuture();
+    }
+
+    private int configGet(CommandSourceStack source, String filename, Map<String, String> defaults, String key) {
+        if (!defaults.containsKey(key)) {
+            source.sendFailure(Component.literal(Translations.format(source, "command.config_unknown", key)));
+            return 0;
+        }
+        var active = workers;
+        if (active == null) return 0;
+        try {
+            active.integrations.execute(() -> {
+                try {
+                    var file = LoaderBridge.configDirectory().resolve("barusikozako").resolve(filename + ".yml");
+                    var settings = YamlSettings.load(file, defaults, false, () -> Map.of());
+                    reply(source, Translations.format(source, "command.config_value", key, settings.get(key)), false);
+                } catch (IOException | RuntimeException failure) {
+                    LOG.log(System.Logger.Level.WARNING, "Could not read configuration", failure);
+                    reply(source, Translations.text(source, "command.config_read_failed"), true);
+                }
+            });
+            return 1;
+        } catch (java.util.concurrent.RejectedExecutionException unavailable) {
+            return 0;
+        }
     }
 
     private static int configPath(CommandSourceStack source, String filename) {
@@ -454,6 +556,8 @@ public final class BaruSikoZakoServer {
                 var operations = new FabricOperations(config, world, capture, backend,
                     server.isDedicatedServer() || WorldStartupGate.canRestoreClientWorld(world));
                 activeBackend = config.backendKeyword();
+                backupIntervalSeconds = config.backupIntervalSeconds();
+                repositoryPath = operations.repositoryPath();
                 running = new BackupApiHost(operations);
                 host = running;
                 commandBinding = running.bind("server-operator", new Grant(Map.of(REPOSITORY, EnumSet.allOf(Right.class)),
@@ -551,11 +655,27 @@ public final class BaruSikoZakoServer {
 
     private int status(CommandSourceStack source) {
         var product = LoaderBridge.productVersion();
-        var status = operator == null ? "command.service_unavailable"
+        var state = operator == null ? "command.service_unavailable"
             : capture == null || !capture.available() ? "command.capture_unavailable" : "command.capture_enabled";
-        var detail = Translations.text(source, status);
-        var text = "BaruSikoZako " + product + " · " + detail;
-        source.sendSuccess(() -> Component.literal(text), false);
+        var lines = new StringBuilder("BaruSikoZako ").append(product).append(" · ")
+            .append(Translations.text(source, state));
+        lines.append('\n').append(Translations.format(source, "status.backend",
+            activeBackend.isEmpty() ? Translations.text(source, "status.backend_none") : activeBackend));
+        lines.append('\n').append(Translations.format(source, "status.repository",
+            repositoryPath == null ? Translations.text(source, "status.unknown")
+                : repositoryPath.toAbsolutePath().normalize()));
+        lines.append('\n').append(backupIntervalSeconds > 0
+            ? Translations.format(source, "status.schedule", backupIntervalSeconds)
+            : Translations.text(source, "status.schedule_disabled"));
+        if (lastBackupTime == null || lastBackupResult == null) {
+            lines.append('\n').append(Translations.text(source, "status.last_backup_none"));
+        } else {
+            lines.append('\n').append(Translations.format(source, "status.last_backup",
+                lastBackupTime, summarize(source, lastBackupResult)));
+        }
+        lines.append('\n').append(Translations.format(source, "status.config",
+            LoaderBridge.configDirectory().resolve("barusikozako").toAbsolutePath().normalize()));
+        source.sendSuccess(() -> Component.literal(lines.toString()), false);
         return 1;
     }
 
@@ -565,10 +685,35 @@ public final class BaruSikoZakoServer {
             new BackupRequest.Trigger("schedule", "periodic", Map.of()));
         var submission = service.submit(request);
         if (submission instanceof BackupService.Submission.Accepted accepted) {
-            accepted.completion().thenAccept(result ->
-                LOG.log(System.Logger.Level.INFO, "Scheduled backup {0}: {1}", accepted.id().value(), summarize(null, result)));
+            accepted.completion().whenComplete((result, failure) -> {
+                lastBackupTime = Instant.now();
+                if (failure != null) {
+                    LOG.log(System.Logger.Level.WARNING,
+                        "Scheduled backup " + accepted.id().value() + " failed", failure);
+                    notifyAdmins("notice.scheduled_failed");
+                    return;
+                }
+                lastBackupResult = result;
+                var summary = summarize(null, result);
+                if (result instanceof TaskResult.Failed || result instanceof TaskResult.CommitUncertain) {
+                    LOG.log(System.Logger.Level.WARNING, "Scheduled backup {0} failed: {1}", accepted.id().value(), summary);
+                    notifyAdmins("notice.scheduled_failed");
+                } else {
+                    LOG.log(System.Logger.Level.INFO, "Scheduled backup {0}: {1}", accepted.id().value(), summary);
+                }
+            });
         } else {
-            LOG.log(System.Logger.Level.INFO, "Scheduled backup rejected: {0}", rejection(null, submission));
+            LOG.log(System.Logger.Level.WARNING, "Scheduled backup rejected: {0}", rejection(null, submission));
+            notifyAdmins("notice.scheduled_rejected");
+        }
+    }
+
+    private void notifyAdmins(String key) {
+        var running = server;
+        if (running == null) return;
+        for (var player : running.getPlayerList().getPlayers()) {
+            if (!GameCommandAccess.isAdministrator(player.createCommandSourceStack())) continue;
+            player.sendSystemMessage(Component.literal(Translations.playerText(player, key)));
         }
     }
 
@@ -605,6 +750,10 @@ public final class BaruSikoZakoServer {
                 if (failure != null) {
                     reply(source, Translations.format(source, "command.task_delivery_failed", accepted.id().value()), true);
                 } else {
+                    if (request instanceof BackupRequest.Backup) {
+                        lastBackupTime = Instant.now();
+                        lastBackupResult = result;
+                    }
                     String message = result instanceof TaskResult.VerificationComplete verified &&
                         request instanceof BackupRequest.Verify verify ?
                         Translations.format(source, "result.verified_snapshot", verify.snapshot().snapshotId(),

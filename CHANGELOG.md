@@ -19,6 +19,27 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+## [1.0.3] - 2026-11-25
+
+### Added / 新增
+
+- Added `/zakobak` and `/zakobackup` aliases, plus a bilingual `/help` command.
+<br> 新增 `/zakobak`、`/zakobackup` 别名，以及双语言 `/help` 帮助（超多的杂鱼~）
+- `/config` now supports `get` to read a single value.
+<br> `/config` 新增 `get`，可读取单项配置。
+- The first server start and the first player joining now show the configuration path and backup repository, and note that periodic backups are disabled by default.
+<br> 服务器首次启动和首个玩家进入时会显示配置路径与备份仓库，并提示定时备份默认关闭。
+
+### Changed / 变更
+
+- `/status` now shows the backend, repository path, schedule, last backup and configuration path.
+<br> `/status` 现在显示后端、仓库路径、定时备份、上次备份与配置路径。
+- Failed or rejected periodic backups now notify online administrators and log the concrete reason.
+<br> 定时备份失败或被拒绝时会通知在线管理员，并在日志中记录具体原因。
+
+>**_This Changelog isn't AIGC_**
+><br>**_本次更新日志为非AI生成内容_**
+
 ## [1.0.3-alpha.1] - 2026-11-25
 
 ### Changed / 变更
