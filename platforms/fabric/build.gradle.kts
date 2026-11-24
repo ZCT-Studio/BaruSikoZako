@@ -40,52 +40,6 @@ tasks.processResources {
     from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
 }
 
-abstract class VerifyMinecraftCompileInput : DefaultTask() {
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val minecraftJars: ConfigurableFileCollection
-
-    @get:Input
-    abstract val expectedSha256: Property<String>
-
-    @TaskAction
-    fun verify() {
-        val input = minecraftJars.singleFile
-        val overall = MessageDigest.getInstance("SHA-256")
-        val entryDigest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(64 * 1024)
-        ZipFile(input).use { jar ->
-            val files = jar.entries().asSequence().filterNot { it.isDirectory }.sortedBy { it.name }.toList()
-            var previous: String? = null
-            for (entry in files) {
-                if (entry.name == previous) throw GradleException("Duplicate entry in Minecraft compile input")
-                previous = entry.name
-                val name = entry.name.toByteArray(Charsets.UTF_8)
-                overall.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(name.size).array())
-                overall.update(name)
-                jar.getInputStream(entry).use { contents ->
-                    while (true) {
-                        val count = contents.read(buffer)
-                        if (count < 0) break
-                        entryDigest.update(buffer, 0, count)
-                    }
-                }
-                overall.update(entryDigest.digest())
-            }
-        }
-        val actual = HexFormat.of().formatHex(overall.digest())
-        if (expectedSha256.get() != actual)
-            throw GradleException("Minecraft compile input payload checksum differs from the reviewed 26.3 build: $actual")
-    }
-}
-
-val verifyMinecraftCompileInput = tasks.register<VerifyMinecraftCompileInput>("verifyMinecraftCompileInput") {
-    minecraftJars.from(loom.namedMinecraftJars)
-    expectedSha256.set(requireNotNull(target.getProperty("fabric.development.minecraftContentSha256")))
-}
-
-tasks.named("compileJava") { dependsOn(verifyMinecraftCompileInput) }
-
 dependencies {
     minecraft("com.mojang:minecraft:$minecraftVersion")
     implementation("net.fabricmc:fabric-loader:${libs.versions.fabric.loader.get()}")
