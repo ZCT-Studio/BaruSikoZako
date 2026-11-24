@@ -4,10 +4,10 @@
 package io.github.zct_studio.barusikozako.neoforge;
 
 import io.github.zct_studio.barusikozako.api.neoforge.ZakoBakIntegration;
-import io.github.zct_studio.barusikozako.fabric.BaruSikoZakoServer;
-import io.github.zct_studio.barusikozako.fabric.LoaderBridge;
-import io.github.zct_studio.barusikozako.fabric.NativeEntrypoints;
-import io.github.zct_studio.barusikozako.fabric.PublicApi;
+import io.github.zct_studio.barusikozako.BaruSikoZakoServer;
+import io.github.zct_studio.barusikozako.LoaderBridge;
+import io.github.zct_studio.barusikozako.NativeEntrypoints;
+import io.github.zct_studio.barusikozako.PublicApi;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;

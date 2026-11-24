@@ -181,7 +181,7 @@ final class BuildTargetsTest {
         BuildTargets.Target neoforgeLegacy = targets.require("neoforge", "1.21.1");
         assertEquals(List.of("main", "legacyJava", "neoforge", "officialLegacy", "neoforge1211"),
             neoforgeLegacy.sources());
-        assertEquals("io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins",
+        assertEquals("io.github.zct_studio.barusikozako.NeoForgeSavedDataMixins",
             neoforgeLegacy.mixin().plugin());
 
         for (BuildTargets.Target target : targets.targets().values()) {

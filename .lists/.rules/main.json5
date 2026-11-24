@@ -105,7 +105,7 @@
       source: ["NeoForgeLegacy1211"],
       mixin: {
         groups: ["NeoForge1211"],
-        plugin: "io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins",
+        plugin: "io.github.zct_studio.barusikozako.NeoForgeSavedDataMixins",
       },
     },
     "loader == 'neoforge' && (mc == 1.21.10 || mc == 1.21.11)": {

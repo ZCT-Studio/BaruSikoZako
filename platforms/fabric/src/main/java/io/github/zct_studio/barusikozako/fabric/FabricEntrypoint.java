@@ -9,6 +9,10 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
+import io.github.zct_studio.barusikozako.BaruSikoZakoServer;
+import io.github.zct_studio.barusikozako.LoaderBridge;
+import io.github.zct_studio.barusikozako.PublicApi;
+
 public final class FabricEntrypoint implements ModInitializer {
     @Override
     public void onInitialize() {
