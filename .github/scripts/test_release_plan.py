@@ -11,6 +11,8 @@ import os
 import sys
 from unittest.mock import patch, MagicMock
 
+NOTES = "## [1.0.0]\n\nInitial release.\n"
+
 # 将脚本目录添加到路径
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -417,7 +419,8 @@ class TestReleasePlan(unittest.TestCase):
         current = dict(self.sample_versions, mod={"version": "1.1.0-ALPHA.1", "overrides": {}})
         args = (current, self.sample_releases, self.sample_versions)
         changed = [".lists/version.json5", "platforms/fabric/src/main/java/Foo.java"]
-        result = plan(*args, "Bump alpha", changed)
+        notes = "## [1.1.0-ALPHA.1]\n\nAlpha.\n\n" + NOTES
+        result = plan(*args, "Bump alpha", changed, notes)
         builds = {job["target"]: job for job in result["build_jobs"]}
         self.assertEqual(set(builds), {"fabric1.20.1", "quilt1.20.1"})
         self.assertEqual([job["target"] for job in result["jobs"]], ["fabric1.20.1"])
@@ -427,13 +430,13 @@ class TestReleasePlan(unittest.TestCase):
         self.assertTrue(any(asset["channel"] != "release"
                             for job in result["jobs"] for asset in job["assets"]))
 
-        forced = plan(*args, "Bump alpha [release-all]", changed)
+        forced = plan(*args, "Bump alpha [release-all]", changed, notes)
         self.assertIn("forge1.20.1", {job["target"] for job in forced["jobs"]})
 
     def test_force_release_bypasses_version_check(self):
         """[force-release] should trigger release even without version changes."""
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
-                      "Rerelease [force-release]", ["platforms/fabric/src/main/java/Foo.java"])
+                      "Rerelease [force-release]", ["platforms/fabric/src/main/java/Foo.java"], NOTES)
         self.assertTrue(result["should_release"])
         # fabric and quilt share a release job (loader_group="fabric"), so only 2 release jobs
         self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
@@ -447,11 +450,24 @@ class TestReleasePlan(unittest.TestCase):
     def test_force_release_with_no_code_change(self):
         """[force-release] should work even with only non-code changes."""
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
-                      "Manual rerelease [force-release]", ["README.md"])
+                      "Manual rerelease [force-release]", ["README.md"], NOTES)
         self.assertTrue(result["should_release"])
         self.assertEqual({job["target"] for job in result["jobs"]}, {"fabric1.20.1", "forge1.20.1"})
         self.assertEqual({job["target"] for job in result["build_jobs"]},
                          {"fabric1.20.1", "forge1.20.1"})
+
+    def test_missing_changelog_requires_marker(self):
+        with self.assertRaises(SystemExit):
+            plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                 "Rerelease [force-release]", [])
+
+    def test_no_changelog_marker_allows_missing_section(self):
+        result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
+                      "Rerelease [force-release] [no-changelog]", [])
+        self.assertTrue(result["should_release"])
+        for job in result["jobs"]:
+            for asset in job["assets"]:
+                self.assertIn("No changelog", asset["notes"])
 
     def test_build_all_marker_builds_every_target_without_releasing(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
@@ -490,7 +506,7 @@ class TestReleasePlan(unittest.TestCase):
             with self.subTest(flags=flags):
                 result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
                               f"fix(ci): update publisher [force-release] {flags}",
-                              [".github/scripts/publish_release.py"])
+                              [".github/scripts/publish_release.py"], NOTES)
                 self.assertEqual(result["storefronts"], expected)
                 self.assertEqual(result["should_release"], bool(expected))
                 self.assertEqual(result["force_release"], bool(expected))
@@ -501,8 +517,9 @@ class TestReleasePlan(unittest.TestCase):
     def test_force_release_and_release_all(self):
         self.sample_versions["mod"]["version"] = "1.0.0-alpha"
         args = (self.sample_versions, self.sample_releases, self.sample_versions)
-        ordinary = plan(*args, "Retry [force-release]", [])
-        combined = plan(*args, "Retry\n\n[FORCE-RELEASE] [release-all]", [])
+        notes = "## [1.0.0-alpha]\n\nAlpha.\n\n" + NOTES
+        ordinary = plan(*args, "Retry [force-release]", [], notes)
+        combined = plan(*args, "Retry\n\n[FORCE-RELEASE] [release-all]", [], notes)
         keys = lambda result: {(job["target"], asset["component"])
                                for job in result["jobs"] for asset in job["assets"]}
         self.assertNotIn(("forge1.20.1", "mod"), keys(ordinary))
@@ -514,7 +531,7 @@ class TestReleasePlan(unittest.TestCase):
 
     def test_release_title_alias_can_trigger_release(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
-                      "chore(release): Release v1.0.0 [force-relaese]", [])
+                      "chore(release): Release v1.0.0 [force-relaese]", [], NOTES)
         self.assertTrue(result["force_release"])
 
     def test_cli_missing_push_base_after_force_push(self):
@@ -530,7 +547,7 @@ class TestReleasePlan(unittest.TestCase):
             with self.subTest(message=message, options=options), tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / "plan.json"
                 commit = "a" * 40
-                changelog = "## [1.0.0]\n\nInitial release." if "force-relaese" in message else ""
+                changelog = "## [1.0.0]\n\nInitial release." if publishes else ""
                 files = {"version.json5": json.dumps(self.sample_versions),
                          "release.json5": json.dumps(self.sample_releases), "CHANGELOG.md": changelog}
 

@@ -133,7 +133,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|no-release|no-build|no-modrinth|no-curseforge)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
         message, re.IGNORECASE)}
 
 
@@ -165,7 +165,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     if "release-latest" in flags:
         narrowed.add("latest")
 
-    def job(game, platforms, versions, components, build_only):
+    def job(game, platforms, versions, components, build_only, require_notes=False):
         loader = platforms[0]
         target = loader + game
         assets = []
@@ -173,6 +173,9 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
             version = versions[component]
             asset_notes = notes.get(version, "").strip()
             if not build_only and not asset_notes:
+                if require_notes and "no-changelog" not in flags:
+                    raise SystemExit(f"No changelog entry for version {version} in CHANGELOG.md; "
+                                     "add a section or use [no-changelog]")
                 asset_notes = "_No changelog for this release_\n\n_本次发布未找到更新日志_"
             assets.append({"component": component, "version": version,
                            "paths": asset_names(component, version, target),
@@ -207,7 +210,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         versions = dict(version_entries)
         is_agent = platforms[0] == "agent"
         if not is_agent:
-            release_jobs.append(job(game, platforms, versions, emitted, False))
+            release_jobs.append(job(game, platforms, versions, emitted, False, require_notes=True))
         # 即使仅发布一个组件，验收也需要当前的配套 JAR
         build = job(game, platforms, versions, versions, is_agent)
         build_jobs[build["target"]] = build
