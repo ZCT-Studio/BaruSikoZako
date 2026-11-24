@@ -93,7 +93,7 @@ public final class BaruSikoZakoServer {
 
     public void registerCommands(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
             var root = Commands.literal("barusikozako")
-                .requires(GameCommandAccess::isAdministrator)
+                .requires(GameCommandAccess::canManageBackups)
                 .then(Commands.literal("status").executes(context -> status(context.getSource())))
                 .then(configCommand("server", ServerConfig.defaults(), values -> {
                     var config = ServerConfig.parse(values);
@@ -114,7 +114,7 @@ public final class BaruSikoZakoServer {
             var selected = configuredBackend();
             for (var provider : BackendRegistry.registered().values()) {
                 var backendRoot = Commands.literal(provider.keyword())
-                    .requires(GameCommandAccess::isAdministrator)
+                    .requires(GameCommandAccess::canManageBackupsConfigs)
                     .then(configCommand(provider.keyword(), provider.defaults(), provider::configure));
                 dispatcher.register(backendRoot);
                 for (var command : provider.commands()) {

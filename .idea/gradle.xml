@@ -31,11 +31,10 @@
             <option value="$PROJECT_DIR$/api/common" />
             <option value="$PROJECT_DIR$/api/host" />
             <option value="$PROJECT_DIR$/api/mc26_3" />
-            <option value="$PROJECT_DIR$/api/mc26_3/fabric" />
+            <option value="$PROJECT_DIR$/api/mc26_3/neoforge" />
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/app/mc26_3" />
-            <option value="$PROJECT_DIR$/app/mc26_3/fabric" />
-            <option value="$PROJECT_DIR$/app/mc26_3/fabric-zstd-package" />
+            <option value="$PROJECT_DIR$/app/mc26_3/neoforge" />
             <option value="$PROJECT_DIR$/backends" />
             <option value="$PROJECT_DIR$/backends/compression-zstd" />
             <option value="$PROJECT_DIR$/backends/spi" />

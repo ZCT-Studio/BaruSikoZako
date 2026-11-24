@@ -1,6 +1,6 @@
 {
   mod: {
-    version: "1.0.2",
+    version: "1.0.2-patch.1",
     overrides: {
     },
   },
