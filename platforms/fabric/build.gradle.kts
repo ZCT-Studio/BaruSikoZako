@@ -8,6 +8,7 @@ import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 
 plugins {
     alias(libs.plugins.fabric.loom)
+    id("barusikozako.minecraft-sources")
     id("barusikozako.java17-library") apply false
 }
 
@@ -34,24 +35,9 @@ repositories {
     maven("https://maven.fabricmc.net/")
 }
 
-java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
-}
-
-sourceSets.main {
-    java.srcDir(rootProject.file("platforms/fabric/src/main/java"))
-    resources.srcDir(rootProject.file("platforms/fabric/src/main/resources"))
-    java.srcDir(rootProject.file("platforms/minecraft/src/main/java"))
-    resources.srcDir(rootProject.file("platforms/minecraft/src/main/resources"))
-}
 tasks.processResources {
     from(rootProject.file("resource/barusikozako/icon.png"))
     from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(25)
-    options.encoding = "UTF-8"
 }
 
 abstract class VerifyMinecraftCompileInput : DefaultTask() {

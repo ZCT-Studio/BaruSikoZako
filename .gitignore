@@ -19,6 +19,7 @@ private/
 logs/
 build_product/
 release-plan.json
+gradle/local-target.properties
 
 # Python cache
 __pycache__/

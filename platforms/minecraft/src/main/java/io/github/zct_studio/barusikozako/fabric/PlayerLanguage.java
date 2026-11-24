@@ -9,6 +9,10 @@ final class PlayerLanguage {
     private PlayerLanguage() {}
 
     static String get(ServerPlayer player) {
+//? if mc == 1.20.1
+//?~         return ((ClientLanguageAccess) player).barusikozako$getLanguage();
+//? else
         return player.clientInformation().language();
+//? end
     }
 }

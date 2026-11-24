@@ -5,6 +5,7 @@ import net.fabricmc.loom.task.RemapJarTask
 
 plugins {
     alias(libs.plugins.fabric.remapping)
+    id("barusikozako.minecraft-sources")
     id("barusikozako.java17-library") apply false
 }
 
@@ -18,15 +19,8 @@ val backendArchive = "barusikozako_backendzstd-fabric-$game-${extra["zstdVersion
 val apiVersion = requireNotNull(compatibility.getProperty("fabric.legacy.api.$game")) {
     "No reviewed Fabric API input for Minecraft $game"
 }
-val shared = rootProject.file("platforms/minecraft/src/main")
-val sharedSources = shared.parentFile
-val fabric = rootProject.file("platforms/fabric/src/main")
 val runtimeProjects = listOf(":engine:mod-runtime", ":platforms:spi", ":backends:spi", ":engine:core")
-val structuredPermissions = game == "1.21.11"
-val oldAnvil = game == "1.20.1"
-val runtimeJava = if (oldAnvil) 17 else 21
-val synchronousSavedData = oldAnvil || game == "1.21.1"
-val separateStatsHook = !structuredPermissions
+val runtimeJava = if (game == "1.20.1") 17 else 21
 
 base.archivesName.set("barusikozako-fabric-$game-development")
 
@@ -35,47 +29,6 @@ repositories {
     maven("https://maven.fabricmc.net/")
 }
 
-java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(runtimeJava)
-    options.encoding = "UTF-8"
-}
-
-tasks.compileJava {
-    source(fileTree(shared.resolve("java")) {
-        exclude("**/SavedDataObservation.java", "**/SavedDataQueue.java", "**/SavedDataBarriers.java",
-            "**/ChunkUnloadObservation.java")
-        exclude("**/WindowsDirectorySync.java", "**/LinuxReflink.java", "**/NativeAccess.java")
-        if (synchronousSavedData) exclude("**/EmptyServerCaptureMixin.java", "**/PoiWrites.java")
-        if (separateStatsHook) exclude("**/AuxiliaryPlayerObservation.java")
-        if (oldAnvil) exclude("**/WorldLevelMetadata.java", "**/DedicatedStartupMixin.java",
-            "**/RootFileObservation.java", "**/ServerSaveObservation.java", "**/EntityStorageAccess.java",
-            "**/PoiStorageAccess.java", "**/PlayerLanguage.java")
-        if (!structuredPermissions) {
-            exclude("**/GameCommandAccess.java", "**/ChunkBarrier.java", "**/ReplacementObservation.java")
-        }
-    })
-    source(fileTree(sharedSources.resolve("legacyJava/java")))
-    source(fileTree(fabric.resolve("java")))
-    if (!structuredPermissions) source(fileTree(sharedSources.resolve("beforeStructuredPermissions/java")) {
-        if (oldAnvil) exclude("**/ReplacementObservation.java")
-    })
-    if (synchronousSavedData) {
-        source(fileTree(sharedSources.resolve("synchronousSavedData/java")) {
-            if (oldAnvil) exclude("**/SavedDataObservation.java")
-        })
-    } else {
-        source(fileTree(sharedSources.resolve("asynchronousSavedData/java")))
-    }
-    if (oldAnvil) source(fileTree(sharedSources.resolve("minecraft1201/java")))
-    if (separateStatsHook) source(fileTree(sharedSources.resolve("separateStatsHook/java")))
-}
-
-sourceSets.main {
-    java.srcDir(rootProject.file("platforms/fabric-legacy/src/main/java"))
-    resources.srcDir(shared.resolve("resources"))
-    resources.srcDir(fabric.resolve("resources"))
-}
 tasks.processResources {
     from(rootProject.file("resource/barusikozako/icon.png"))
     from(rootProject.file("resource/barusikozako/lang")) { into("assets/barusikozako/lang") }
@@ -114,33 +67,6 @@ tasks.processResources {
     inputs.properties(metadata)
     inputs.properties(metadataFields)
     filesMatching("fabric.mod.json") { expand(metadata + metadataFields) }
-    filesMatching("barusikozako.mixins.json") {
-        filter { line: String -> line.replace("\"package\":",
-            "\"injectors\": { \"defaultRequire\": 1 }, \"package\":") }
-    }
-    if (oldAnvil) filesMatching("barusikozako.mixins.json") {
-        filter { line: String -> line.replace("\"PlayerFileObservation\",",
-            "\"PlayerFileObservation\", \"ClientLanguageObservation\",") }
-    }
-    if (!structuredPermissions) filesMatching("barusikozako.mixins.json") {
-        filter { line: String ->
-            line.replace("\"PoiStorageAccess\"", "\"PoiStorageAccess\", \"LegacyChunkStorageAccess\"")
-        }
-    }
-    if (synchronousSavedData) filesMatching("barusikozako.mixins.json") {
-        filter { line: String ->
-            line.replace("\"EmptyServerCaptureMixin\",", "").replace("\"SavedDataQueue\",", "")
-                .replace("\"PoiStorageAccess\"", "\"LegacyPoiWrites\", \"PoiStorageAccess\"")
-        }
-    }
-    if (oldAnvil) filesMatching("barusikozako.mixins.json") {
-        filter { line: String -> line.replace("\"ServerSaveObservation\",",
-            "\"LegacyRegionWriteFailure\", \"LegacyChunkSerializationFailure\", \"LegacyPoiSerializationFailure\",") }
-    }
-    if (separateStatsHook) filesMatching("barusikozako.mixins.json") {
-        filter { line: String -> line.replace("\"AuxiliaryPlayerObservation\",",
-            "\"AuxiliaryPlayerObservation\", \"PlayerStatsObservation\",") }
-    }
 }
 
 val notices = tasks.register<CollectNotices>("collectNotices") {

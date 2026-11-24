@@ -1,0 +1,17 @@
+{
+  layers: {
+    main: "minecraft/src/main",
+    modernJava: "minecraft/src/modernJava",
+    legacyJava: "minecraft/src/legacyJava",
+    fabric: "fabric/src/main",
+    fabricLegacy: "fabric-legacy/src/main",
+    forgeModern: "fml/src/forgeModern",
+    forgeLegacy: "fml/src/forgeLegacy",
+    forgeClassicBus: "fml/src/forgeClassicBus",
+    forgeTypedBus: "fml/src/forgeTypedBus",
+    forgeSrg: "fml/src/forgeSrg",
+    officialLegacy: "fml/src/officialLegacy",
+    neoforge: "fml/src/neoforge",
+    neoforge1211: "fml/src/neoforge1211",
+  },
+}

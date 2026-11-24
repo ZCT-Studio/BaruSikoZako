@@ -1,0 +1,6 @@
+{
+  layers: {
+    main: "minecraft/src/main",
+    fabric: "fabric/src/main",
+  },
+}

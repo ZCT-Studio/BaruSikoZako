@@ -57,7 +57,7 @@ class StorefrontTests(unittest.TestCase):
 
     @patch.object(publish, "request")
     def test_all_storefront_targets_support_dedicated_servers_and_singleplayer(self, request):
-        catalog = Path(__file__).resolve().parents[2] / "releases.json5"
+        catalog = Path(__file__).resolve().parents[2] / ".lists" / "release.json5"
         for game, loader in targets(read_table(catalog.read_text(encoding="utf-8"))):
             if loader not in publish.LOADERS:
                 continue
