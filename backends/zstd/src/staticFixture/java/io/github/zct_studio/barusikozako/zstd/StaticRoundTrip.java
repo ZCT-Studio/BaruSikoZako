@@ -38,8 +38,8 @@ public final class StaticRoundTrip {
             exerciseChunks(work);
             exerciseFileModes(work);
             exerciseChainLimit(work);
-        exerciseEarlyRollover(work, "size", new ZstdRepository.Rollover(0, 75, 0), 2);
-        exerciseEarlyRollover(work, "time", new ZstdRepository.Rollover(8, 0, 60), 61);
+            exerciseEarlyRollover(work, "size", new ZstdRepository.Rollover(0, 75, 0), 2);
+            exerciseEarlyRollover(work, "time", new ZstdRepository.Rollover(8, 0, 60), 61);
             exerciseLiveCopy(work);
         } finally {
             try (var paths = Files.walk(work)) {
@@ -47,7 +47,7 @@ public final class StaticRoundTrip {
             }
         }
         System.out.println("Static Zstd backup, full verification, staged recovery and failure checks passed on Java "
-            + Runtime.version().feature() + ".");
+                + Runtime.version().feature() + ".");
     }
 
     private static void exerciseExclusions(Path work) throws IOException {
@@ -82,32 +82,32 @@ public final class StaticRoundTrip {
             var point = new Snapshot(UUID.randomUUID(), Instant.now(), "ignore");
             try (var repository = ZstdRepository.open(repo)) {
                 var view = StagedDirectoryView.copy(source, stages,
-                    new StagedDirectoryView.CopyBudget(1L << 20, 100, 16), () -> {});
+                        new StagedDirectoryView.CopyBudget(1L << 20, 100, 16), () -> {});
                 var notices = new java.util.ArrayList<String>();
                 engine.backup(view, repository, point, UUID.randomUUID(), LIMITS,
-                    () -> {}, () -> {}, ignored -> {}, 0, rules, notices::addAll);
+                        () -> {}, () -> {}, ignored -> {}, 0, rules, notices::addAll);
                 require(engine.verify(repository, point.id(), LIMITS).entries() == (container ? 10 : 7),
-                    "exclusions changed the expected snapshot entries");
+                        "exclusions changed the expected snapshot entries");
                 require(notices.contains("mod fixture.mod [WORLD]: forced.tmp") &&
-                    notices.contains(".worlds/world/datapacks/local.gitignore: !keep-local.log") &&
-                    notices.stream().noneMatch(line -> line.contains("cache/local.gitignore")),
-                    "missing expected rule sources in the notice");
+                                notices.contains(".worlds/world/datapacks/local.gitignore: !keep-local.log") &&
+                                notices.stream().noneMatch(line -> line.contains("cache/local.gitignore")),
+                        "missing expected rule sources in the notice");
                 var archive = engine.prepareRestore(repository, point.id(), LIMITS, stages);
                 require(Files.isRegularFile(archive.resolve(".worlds/world/keep.log")), "missing world archive namespace");
                 var restored = Files.createTempDirectory(stages, "scoped-restore-");
                 engine.readWorld(repository, point.id(), LIMITS, restored, "world", container);
                 var data = container ? restored.resolve("world") : restored;
                 require(Files.readString(data.resolve("keep.log")).equals("included by world exception"),
-                    "re-included content did not survive restore");
+                        "re-included content did not survive restore");
                 require(Files.readString(data.resolve("datapacks/keep-local.log")).equals("nested override"),
-                    "nested rule failed to override ordinary global rules");
+                        "nested rule failed to override ordinary global rules");
                 require(Files.notExists(data.resolve("forced.tmp")) && Files.notExists(data.resolve("omit.log"))
-                    && Files.notExists(data.resolve("cache")) && Files.notExists(data.resolve("datapacks/omit-local.log")),
-                    "excluded data was restored");
+                                && Files.notExists(data.resolve("cache")) && Files.notExists(data.resolve("datapacks/omit-local.log")),
+                        "excluded data was restored");
                 if (container) require(Files.readString(restored.resolve("world_nether/DIM-1/level.dat"))
-                    .equals("separate dimension"), "separate dimension collided with another world");
+                        .equals("separate dimension"), "separate dimension collided with another world");
                 var target = Files.createDirectories(stages.resolve(container ? "restored-container" : "restored-one")
-                    .resolve(container ? "worlds" : "world")).toRealPath();
+                        .resolve(container ? "worlds" : "world")).toRealPath();
                 var original = container ? Files.createDirectory(target.resolve("world")) : target;
                 Files.writeString(original.resolve("forced.tmp"), "retain in the original world");
                 try (var window = new RestoreWindow() {
@@ -117,19 +117,19 @@ public final class StaticRoundTrip {
                     @Override public void close() {}
                 }) {
                     var result = engine.restoreWorld(repository, point.id(), UUID.randomUUID(), LIMITS, window, container,
-                        stage -> require(Files.isRegularFile((container ? stage.resolve("world") : stage).resolve("keep.log")),
-                            "restore validation did not see the projected world path"));
+                            stage -> require(Files.isRegularFile((container ? stage.resolve("world") : stage).resolve("keep.log")),
+                                    "restore validation did not see the projected world path"));
                     require(result.status() == RestoreResult.Status.RESTORED, "namespaced restore did not commit");
                     var previous = result.previousWorld().orElseThrow();
                     if (container) previous = previous.resolve("world");
                     require(Files.readString(previous.resolve("forced.tmp")).equals("retain in the original world"),
-                        "restore did not protect the excluded file in the original world");
+                            "restore did not protect the excluded file in the original world");
                     require(Files.notExists(original.resolve("forced.tmp")), "excluded file leaked into the restored world");
                 }
             }
         }
         require(Files.isRegularFile(config.resolve("world.gitignore")) && Files.notExists(config.resolve("save.gitignore")),
-            "old world rule file was not renamed");
+                "old world rule file was not renamed");
         System.out.println("World namespaces, scoped rules, notifications and restored data verified.");
     }
 
@@ -163,7 +163,7 @@ public final class StaticRoundTrip {
             require(session.next() != null, "live copy did not contain the file");
             try (var content = session.openContent()) {
                 require(java.util.Arrays.equals(content.readAllBytes(), Files.readAllBytes(file)),
-                    "live copy did not retry same-size, same-time modification");
+                        "live copy did not retry same-size, same-time modification");
             }
         }
         var armed = new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -219,25 +219,25 @@ public final class StaticRoundTrip {
         try (var repository = ZstdRepository.open(root, directory -> {
             var name = directory.getFileName().toString();
             if (stop.equals("before") && name.startsWith(".pending-") ||
-                stop.equals("after") && name.equals("snapshots")) Runtime.getRuntime().halt(86);
+                    stop.equals("after") && name.equals("snapshots")) Runtime.getRuntime().halt(86);
         }, compression, ZstdRepository.WriteMode.DIFFERENTIAL, UUID.fromString(args[4]))) {
             var view = StagedDirectoryView.copy(Path.of(args[2]), Path.of(args[3]),
-                new StagedDirectoryView.CopyBudget(8L << 20, 100, 32), () -> {});
+                    new StagedDirectoryView.CopyBudget(8L << 20, 100, 32), () -> {});
             new BackupEngine().backup(view, repository, snapshot, UUID.randomUUID(), LIMITS);
         }
     }
 
     private static void exerciseDeltaPublicationCrash(Path root, Path source, Path stage, Snapshot full)
-        throws IOException {
+            throws IOException {
         Files.writeString(root.resolve(".isolated-crash-fixture"), "fixture");
         var engine = new BackupEngine();
         var javaExecutable = Path.of(System.getProperty("java.home"), "bin",
-            System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
+                System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
         for (String location : java.util.List.of("before", "after")) {
             UUID snapshot = UUID.randomUUID();
             var process = new ProcessBuilder(javaExecutable.toString(), "-cp", System.getProperty("java.class.path"),
-                StaticRoundTrip.class.getName(), "--halt-delta-publication", root.toString(), source.toString(),
-                stage.toString(), full.id().toString(), snapshot.toString(), location).inheritIO().start();
+                    StaticRoundTrip.class.getName(), "--halt-delta-publication", root.toString(), source.toString(),
+                    stage.toString(), full.id().toString(), snapshot.toString(), location).inheritIO().start();
             try {
                 if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
                     process.destroyForcibly();
@@ -262,7 +262,7 @@ public final class StaticRoundTrip {
     }
 
     private static void exerciseEarlyRollover(Path work, String policy, ZstdRepository.Rollover rollover, int seconds)
-        throws IOException {
+            throws IOException {
         var root = Files.createDirectory(work.resolve(policy + "-rollover-repo"));
         var source = Files.createDirectory(work.resolve(policy + "-rollover-source"));
         var stage = Files.createDirectory(work.resolve(policy + "-rollover-stage"));
@@ -271,7 +271,7 @@ public final class StaticRoundTrip {
         var epoch = Instant.parse("2026-01-01T00:00:00Z");
         var budget = new StagedDirectoryView.CopyBudget(8L << 20, 100, 32);
         try (var repository = ZstdRepository.open(root, ignored -> {}, new ZstdRepository.Compression(3, 1),
-            ZstdRepository.WriteMode.INCREMENTAL, null, rollover)) {
+                ZstdRepository.WriteMode.INCREMENTAL, null, rollover)) {
             var random = new java.util.Random(42);
             for (int i = 0; i < 3; i++) {
                 byte[] contents = new byte[32 * 1024];
@@ -279,7 +279,7 @@ public final class StaticRoundTrip {
                 Files.write(file, contents);
                 var point = new Snapshot(UUID.randomUUID(), epoch.plusSeconds(i == 2 ? seconds : i), policy);
                 engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository,
-                    point, UUID.randomUUID(), LIMITS);
+                        point, UUID.randomUUID(), LIMITS);
                 var metadata = root.resolve("snapshots").resolve(ZstdRepository.directoryName(point)).resolve(ZstdOverlay.INHERITED);
                 require(Files.exists(metadata) == (i == 1), "wrong archive type for " + policy + " rollover");
                 require(engine.verify(repository, point.id(), LIMITS).bytes() == contents.length, "rollover verification failed");
@@ -288,6 +288,7 @@ public final class StaticRoundTrip {
     }
 
     private static void exerciseChainLimit(Path work) throws IOException {
+        final int chainLimit = 8;
         var root = Files.createDirectory(work.resolve("chain-repository"));
         var source = Files.createDirectory(work.resolve("chain-world"));
         var stage = Files.createDirectory(work.resolve("chain-stage"));
@@ -300,27 +301,29 @@ public final class StaticRoundTrip {
         }
         var compression = new ZstdRepository.Compression(3, 1);
         try (var repository = ZstdRepository.open(root, ignored -> {}, compression, ZstdRepository.WriteMode.INCREMENTAL, null,
-            new ZstdRepository.Rollover(8, 0, 0))) {
-            for (int depth = 1; depth <= ZstdOverlay.MAX_DEPTH; depth++) {
+                new ZstdRepository.Rollover(chainLimit, 0, 0))) {
+            for (int depth = 1; depth <= chainLimit; depth++) {
                 Files.writeString(file, Integer.toString(depth));
                 var snapshot = new Snapshot(UUID.randomUUID(), full.createdAt().plusSeconds(depth), full.source());
                 engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, snapshot,
-                    UUID.randomUUID(), LIMITS);
+                        UUID.randomUUID(), LIMITS);
+                require(Files.isRegularFile(root.resolve("snapshots").resolve(ZstdRepository.directoryName(snapshot))
+                        .resolve(ZstdOverlay.INHERITED)), "premature rollover at depth " + depth);
                 require(engine.verify(repository, snapshot.id(), LIMITS).entries() == 1, "allowed chain depth did not verify");
             }
-            var excess = new Snapshot(UUID.randomUUID(), full.createdAt().plusSeconds(99), full.source());
+            var excess = new Snapshot(UUID.randomUUID(), full.createdAt().plusSeconds(chainLimit + 1L), full.source());
             var operation = UUID.randomUUID();
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, excess,
-                operation, LIMITS);
+                    operation, LIMITS);
             require(repository.isCommitted(excess.id(), operation), "independent checkpoint was not committed");
             require(!Files.exists(root.resolve("snapshots").resolve(ZstdRepository.directoryName(excess)).resolve(ZstdOverlay.INHERITED)),
-                "chain rollover wrote another delta");
+                    "chain rollover wrote another delta");
             require(engine.verify(repository, excess.id(), LIMITS).entries() == 1, "checkpoint did not verify");
             var followup = new Snapshot(UUID.randomUUID(), excess.createdAt().plusSeconds(1), full.source());
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, followup,
-                UUID.randomUUID(), LIMITS);
+                    UUID.randomUUID(), LIMITS);
             require(Files.isRegularFile(root.resolve("snapshots").resolve(ZstdRepository.directoryName(followup)).resolve(ZstdOverlay.INHERITED)),
-                "incremental backup did not resume after rollover");
+                    "incremental backup did not resume after rollover");
             require(engine.verify(repository, followup.id(), LIMITS).entries() == 1, "new chain did not verify");
         }
     }
@@ -348,18 +351,18 @@ public final class StaticRoundTrip {
         Files.setLastModifiedTime(change, initialTime);
         Files.delete(dir.resolve("removed.mca"));
         try (var repository = ZstdRepository.open(repositoryPath, ignored -> {}, compression, ZstdRepository.WriteMode.INCREMENTAL, null,
-            new ZstdRepository.Rollover(8, 0, 0))) {
+                new ZstdRepository.Rollover(8, 0, 0))) {
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, first, UUID.randomUUID(), LIMITS);
             Files.writeString(change, "CCCC");
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, second, UUID.randomUUID(), LIMITS);
         }
         try (var repository = ZstdRepository.open(repositoryPath, ignored -> {}, compression,
-            ZstdRepository.WriteMode.DIFFERENTIAL, full.id())) {
+                ZstdRepository.WriteMode.DIFFERENTIAL, full.id())) {
             engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository, differential,
-                UUID.randomUUID(), LIMITS);
+                    UUID.randomUUID(), LIMITS);
             var rejected = new Snapshot(UUID.randomUUID(), differential.createdAt().plusSeconds(1), full.source());
             expectFailure(() -> engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}), repository,
-                rejected, UUID.randomUUID(), LIMITS, () -> {}, () -> { throw new IOException("injected cancellation"); }));
+                    rejected, UUID.randomUUID(), LIMITS, () -> {}, () -> { throw new IOException("injected cancellation"); }));
             expectFailure(() -> engine.verify(repository, rejected.id(), LIMITS));
         }
         var noSpace = new Snapshot(UUID.randomUUID(), differential.createdAt().plusSeconds(1), full.source());
@@ -368,7 +371,7 @@ public final class StaticRoundTrip {
                 throw new java.nio.file.FileSystemException(directory.toString(), null, "injected ENOSPC before publication");
         }, compression, ZstdRepository.WriteMode.DIFFERENTIAL, full.id())) {
             expectFailure(() -> engine.backup(StagedDirectoryView.copy(source, stage, budget, () -> {}),
-                repository, noSpace, UUID.randomUUID(), LIMITS));
+                    repository, noSpace, UUID.randomUUID(), LIMITS));
             expectFailure(() -> engine.verify(repository, noSpace.id(), LIMITS));
             require(engine.verify(repository, differential.id(), LIMITS).entries() == 3, "disk fault damaged prior delta");
         }
@@ -379,17 +382,17 @@ public final class StaticRoundTrip {
                 var restored = engine.prepareRestore(repository, point.id(), LIMITS, stage);
                 require(Files.mismatch(retained, restored.resolve("region/retained.mca")) == -1, "inherited file changed");
                 require(Files.readString(restored.resolve("region/edit.mca")).equals(point == first ? "BBBB" : "CCCC"),
-                    "same-length file change was missed");
+                        "same-length file change was missed");
                 require(Files.notExists(restored.resolve("region/removed.mca")), "removed entry returned");
                 var container = repositoryPath.resolve("snapshots").resolve(ZstdRepository.directoryName(point));
                 require(!Files.readString(container.resolve("manifest.jsonl")).contains("retained.mca"),
-                    "unchanged file was added to delta payload");
+                        "unchanged file was added to delta payload");
             }
             expectFailure(() -> repository.deleteIndependentSnapshot(full.id(), () -> {}));
             expectFailure(() -> repository.deleteIndependentSnapshot(first.id(), () -> {}));
             var rebuilt = new Snapshot(UUID.randomUUID(), differential.createdAt().plusSeconds(2), full.source());
             repository.rebuild(second.id(), rebuilt, UUID.randomUUID(), new io.github.zct_studio.barusikozako.backend.Repository.Preparation(
-                LIMITS.contentBytes(), LIMITS.archiveBytes(), LIMITS.entries(), () -> {}), () -> {});
+                    LIMITS.contentBytes(), LIMITS.archiveBytes(), LIMITS.entries(), () -> {}), () -> {});
             repository.deleteIndependentSnapshot(second.id(), () -> {});
             repository.deleteIndependentSnapshot(first.id(), () -> {});
             repository.collectUnreferencedBlocks(100, 1 << 20, () -> {});
@@ -446,7 +449,7 @@ public final class StaticRoundTrip {
             changed[70_000] ^= 1;
             Files.write(file, changed);
             expectFailure(() -> engine.backup(StagedDirectoryView.copy(source, staging, budget, () -> {}), repository,
-                refused, UUID.randomUUID(), LIMITS, () -> {}, () -> { throw new IOException("commit denied"); }));
+                    refused, UUID.randomUUID(), LIMITS, () -> {}, () -> { throw new IOException("commit denied"); }));
             require(blocks(repositoryPath).size() == 6, "failure injection did not leave a collectible orphan");
             expectFailure(() -> engine.verify(repository, refused.id(), LIMITS));
             Path index = repositoryPath.resolve("snapshots").resolve(ZstdRepository.directoryName(second)).resolve("chunks.idx");
@@ -542,7 +545,7 @@ public final class StaticRoundTrip {
         require(countChildren(restoreParent) == 0, "exclusive staging recovery did not remove the abandoned capture");
         interruptStagedCopy(source, restoreParent, file, content);
         var snapshot = new Snapshot(UUID.randomUUID(), Instant.parse("2026-01-01T00:00:00Z"), "static-fixture",
-            Optional.of(new Snapshot.Trigger("test-integration", "before edit", java.util.Map.of("area", "overworld"))));
+                Optional.of(new Snapshot.Trigger("test-integration", "before edit", java.util.Map.of("area", "overworld"))));
         var operation = UUID.randomUUID();
         var engine = new BackupEngine();
         try (var repository = ZstdRepository.open(snapshots)) {
@@ -553,24 +556,24 @@ public final class StaticRoundTrip {
             });
             Files.writeString(source.resolve("session.lock"), "fixture world lock");
             var staged = StagedDirectoryView.copy(source, restoreParent,
-                new StagedDirectoryView.CopyBudget(8L << 20, 100, 32), () -> {});
+                    new StagedDirectoryView.CopyBudget(8L << 20, 100, 32), () -> {});
             Files.writeString(file, "live source changed after copy");
             engine.backup(staged, repository, snapshot, operation, LIMITS);
             Files.write(file, content);
             Files.delete(source.resolve("session.lock"));
             require(countChildren(restoreParent) == 0, "staged view leaked after backup");
             expectFailure(() -> engine.backup(new FixtureView(source, false), repository, snapshot,
-                UUID.randomUUID(), LIMITS));
+                    UUID.randomUUID(), LIMITS));
             var interrupted = new Snapshot(UUID.randomUUID(), snapshot.createdAt(), snapshot.source());
             var interruptedOperation = UUID.randomUUID();
             expectFailure(() -> engine.backup(new FixtureView(source, true), repository, interrupted,
-                interruptedOperation, LIMITS));
+                    interruptedOperation, LIMITS));
             require(!repository.isCommitted(interrupted.id(), interruptedOperation), "partial write was committed");
             require(countChildren(snapshots) == 2, "partial write leaked a staging directory");
             var denied = new Snapshot(UUID.randomUUID(), snapshot.createdAt(), snapshot.source());
             var deniedOperation = UUID.randomUUID();
             expectFailure(() -> engine.backup(new FixtureView(source, false), repository, denied, deniedOperation,
-                LIMITS, () -> {}, () -> { throw new IOException("commit forbidden"); }));
+                    LIMITS, () -> {}, () -> { throw new IOException("commit forbidden"); }));
             require(!repository.isCommitted(denied.id(), deniedOperation), "denied operation published a snapshot");
             require(countChildren(snapshots) == 2, "denied operation leaked staging");
             var older = new Snapshot(UUID.randomUUID(), snapshot.createdAt().minusSeconds(60), snapshot.source());
@@ -578,10 +581,10 @@ public final class StaticRoundTrip {
             var firstPage = repository.snapshots(Optional.empty(), 1, 1 << 20);
             var secondPage = repository.snapshots(firstPage.next(), 1, 1 << 20);
             require(firstPage.entries().size() == 1 && firstPage.next().isPresent() &&
-                secondPage.entries().size() == 1 && secondPage.next().isEmpty() &&
-                !firstPage.entries().equals(secondPage.entries()), "committed snapshot pages are inconsistent");
+                    secondPage.entries().size() == 1 && secondPage.next().isEmpty() &&
+                    !firstPage.entries().equals(secondPage.entries()), "committed snapshot pages are inconsistent");
             require(firstPage.entries().contains(snapshot) || secondPage.entries().contains(snapshot),
-                "history lost original snapshot metadata");
+                    "history lost original snapshot metadata");
         }
         exerciseUncertainPublication(work, source);
         var published = snapshots.resolve("snapshots").resolve(ZstdRepository.directoryName(snapshot));
@@ -599,7 +602,7 @@ public final class StaticRoundTrip {
             exerciseSwitch(engine, repository, snapshot, work, file, source.relativize(file));
 
             expectFailure(() -> engine.prepareRestore(repository, snapshot.id(),
-                new BackupEngine.Limits(32, LIMITS.archiveBytes(), LIMITS.entries()), restoreParent));
+                    new BackupEngine.Limits(32, LIMITS.archiveBytes(), LIMITS.entries()), restoreParent));
             require(countChildren(restoreParent) == 1, "failed budget check leaked a stage");
             var manifest = published.resolve("manifest.jsonl");
             var original = Files.readAllBytes(manifest);
@@ -614,23 +617,23 @@ public final class StaticRoundTrip {
             Files.write(published.resolve("data.tar.zst"), new byte[] {42}, StandardOpenOption.APPEND);
             expectFailure(() -> engine.verify(repository, snapshot.id(), LIMITS));
             require(Files.mismatch(file, output.resolve(source.relativize(file))) == -1,
-                "failed verification altered an earlier output");
+                    "failed verification altered an earlier output");
         }
     }
 
     private static void interruptStagedCopy(Path source, Path staging, Path file, byte[] content) throws IOException {
         try (var unexpected = StagedDirectoryView.copy(source, staging, new StagedDirectoryView.CopyBudget(8L << 20, 100, 32),
-            () -> {
-                try (var candidates = Files.newDirectoryStream(staging)) {
-                    for (var stage : candidates) {
-                        var target = stage.resolve(source.relativize(file));
-                        if (Files.isRegularFile(target)) {
-                            long written = Files.size(target);
-                            if (written > 0 && written < content.length) throw new InterruptedIOException("fixture cancelled a partial copy");
+                () -> {
+                    try (var candidates = Files.newDirectoryStream(staging)) {
+                        for (var stage : candidates) {
+                            var target = stage.resolve(source.relativize(file));
+                            if (Files.isRegularFile(target)) {
+                                long written = Files.size(target);
+                                if (written > 0 && written < content.length) throw new InterruptedIOException("fixture cancelled a partial copy");
+                            }
                         }
                     }
-                }
-            })) {
+                })) {
             throw new AssertionError("the checkpoint did not stop a partial staged copy");
         } catch (InterruptedIOException stopped) {
             require(countChildren(staging) == 0, "partial copy remained after cancellation");
@@ -652,7 +655,7 @@ public final class StaticRoundTrip {
             } catch (ZstdRepository.PublicationUncertain expected) {
                 require(repository.isCommitted(snapshot.id(), operation), "the visible record could not be reconciled");
                 require(engine.verify(repository, snapshot.id(), LIMITS).entries() == 4,
-                    "post-move flush failure altered the published data");
+                        "post-move flush failure altered the published data");
             }
         }
     }
@@ -681,9 +684,9 @@ public final class StaticRoundTrip {
                 outcome = engine.restore(repository, snapshot.id(), UUID.randomUUID(), LIMITS, window);
             } catch (IOException unavailable) {
                 if (!unavailable.getMessage().startsWith("filesystem cannot confirm directory persistence: " +
-                    exclusiveTestRoot)) throw unavailable;
+                        exclusiveTestRoot)) throw unavailable;
                 require(Files.readString(world.resolve("old-marker")).equals("original"),
-                    "unsupported filesystem changed the original world");
+                        "unsupported filesystem changed the original world");
                 require(countChildren(exclusiveTestRoot) == 1, "unsupported filesystem opened a restore transaction");
                 System.out.println("Static Zstd switch refused before any modification: directory persistence unavailable.");
                 return;
@@ -691,9 +694,9 @@ public final class StaticRoundTrip {
             require(outcome.status() == RestoreResult.Status.RESTORED, "verified world was not installed");
             require(Files.mismatch(sourceFile, world.resolve(relativeFile)) == -1, "installed world bytes differ");
             require(Files.readString(outcome.previousWorld().orElseThrow().resolve("old-marker")).equals("original"),
-                "restore discarded the original world");
+                    "restore discarded the original world");
             require(engine.recoverRestore(window).status() == RestoreResult.Status.NO_PENDING_RESTORE,
-                "completed restore remains pending");
+                    "completed restore remains pending");
             System.out.println("Static Zstd archive verified and installed; previous world retained.");
         }
     }
@@ -738,7 +741,7 @@ public final class StaticRoundTrip {
                         var names = new java.util.ArrayList<String>();
                         for (var part : root.relativize(current)) names.add(part.toString());
                         return new Item(names, directory, directory ? 0 : Files.size(current) + (wrongLength ? 1 : 0),
-                            Files.getLastModifiedTime(current).toInstant());
+                                Files.getLastModifiedTime(current).toInstant());
                     }
 
                     @Override

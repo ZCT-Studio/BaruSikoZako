@@ -19,7 +19,7 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
-## [1.0.2-patch.1] - 2026-11-24
+## [1.0.2-patch.2] - 2026-11-24
 
 ### Changed / 变更
 
@@ -28,8 +28,6 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 >**_This Changelog isn't AIGC_**
 ><br>**_本次更新日志为非AI生成内容_**
-
-## [1.0.2] - 2026-11-23
 
 ## [1.0.2-patch.1] - 2026-11-24
 
