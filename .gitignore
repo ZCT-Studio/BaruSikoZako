@@ -39,3 +39,6 @@ htmlcov/
 
 # Build scan / enterprise
 .gradle/enterprise/
+
+# For Claude
+CLAUDE.local.md
