@@ -17,10 +17,9 @@ import java.util.stream.Stream;
 /**
  * 按清单顺序解析目标的有效源码层。
  *
- * <p>后声明的层优先。{@code strict} 模式下出现相同相对路径即报错：IDEA 的模块级排除
+ * <p>后声明的层优先。出现相同相对路径时，源码重复直接报错：IDEA 的模块级排除
  * 只匹配文件名、不匹配路径，无法表达单文件覆盖，因此本仓库要求各目标的有效源码层
- * 互不相交，从结构上避免重复类。非严格模式允许覆盖，并从低优先级层排除被覆盖文件，
- * 同时标记该布局不适合 IDE。
+ * 互不相交，从结构上避免重复类；资源重复只记录警告。
  */
 public final class LayerResolver {
     /** 单个源码层。 */
@@ -44,8 +43,8 @@ public final class LayerResolver {
         }
 
         List<String> warnings = new ArrayList<>();
-        Map<String, Path> javaFiles = effective(perLayerJava, target.sources(), "source", targets.strict(), warnings);
-        Map<String, Path> resourceFiles = effective(perLayerResources, target.sources(), "resource", targets.strict(), warnings);
+        Map<String, Path> javaFiles = effective(perLayerJava, target.sources(), "source", warnings);
+        Map<String, Path> resourceFiles = effective(perLayerResources, target.sources(), "resource", warnings);
 
         List<LayerDir> layers = new ArrayList<>();
         for (int i = 0; i < target.sources().size(); i++) {
@@ -59,7 +58,7 @@ public final class LayerResolver {
     }
 
     private static Map<String, Path> effective(List<Map<String, Path>> perLayer, List<String> names, String kind,
-                                               boolean strict, List<String> warnings) {
+                                               List<String> warnings) {
         Map<String, Path> result = new TreeMap<>();
         Map<String, String> owner = new LinkedHashMap<>();
         for (int i = 0; i < perLayer.size(); i++) {
@@ -68,7 +67,7 @@ public final class LayerResolver {
                 String previous = owner.put(entry.getKey(), layer);
                 if (previous != null) {
                     String message = "Layer '" + layer + "' overrides " + kind + " '" + entry.getKey() + "' from layer '" + previous + "'";
-                    if (strict && kind.equals("source")) {
+                    if (kind.equals("source")) {
                         throw new IllegalStateException(message + "。IDEA 无法表达单文件覆盖；请把被覆盖文件移入独占层，或用条件编译合并差异。");
                     }
                     warnings.add(message);

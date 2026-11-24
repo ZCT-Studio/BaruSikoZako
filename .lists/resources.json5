@@ -1,6 +1,6 @@
 {
-  // 所有目标默认使用的公共资源层。规则文件通过 resource 覆盖或追加。
-  resources: [
-    "main",
-  ],
+  layers: {
+    main: "minecraft/src/main",
+    fabric: "fabric/src/main",
+  },
 }

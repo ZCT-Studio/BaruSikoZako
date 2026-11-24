@@ -5,7 +5,6 @@ package io.github.zct_studio.barusikozako.buildlogic;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,16 +15,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * {@code .lists/} 声明式构建清单的模型、规则解析与严格校验。
  *
  * <p>清单是源码层、资源层、Java 版本与 Mixin 配置的唯一事实来源：
  * <ul>
- *   <li>{@code .lists/targets.json5}：目标注册（{@code jdk}）、源码层、规则文件列表。</li>
- *   <li>{@code .lists/sources.json5}、{@code .lists/resources.json5}、{@code .lists/mixins.json5}：
- *       所有目标的公共默认配置。</li>
+ *   <li>{@code .lists/targets.json5}：目标注册（{@code jdk}）、规则文件列表 {@code rules}
+ *       与可选的单目标覆盖 {@code targets}。</li>
+ *   <li>{@code .lists/sources.json5}、{@code .lists/resources.json5}：可选源码层与资源层目录，
+ *       每项声明 {@code platforms/} 相对路径；{@code .lists/mixins.json5}：Mixin 模板与可选类名目录。</li>
  *   <li>{@code .lists/.rules/*.json5}：命名分组与条件规则，按 {@code rules} 顺序应用。</li>
  * </ul>
  *
@@ -46,10 +45,9 @@ public final class BuildTargets {
 
     private static final String LISTS = ".lists";
     private static final String RULES = ".rules";
-    private static final Set<String> TOP_KEYS = Set.of("version", "layout", "layers", "targets", "mixinTemplate", "rules", "jdk");
+    private static final Set<String> TOP_KEYS = Set.of("rules", "jdk", "targets");
     private static final Set<String> TARGET_KEYS = Set.of("source", "resource", "mixin");
     private static final Set<String> MIXIN_KEYS = Set.of("injectors", "plugin", "refmap", "mixins", "groups", "add", "remove");
-    private static final Set<String> MIXIN_DEFAULT_KEYS = Set.of("injectors", "plugin", "refmap", "mixins");
     private static final Set<String> COLLECTION_KEYS = Set.of("groups", "add", "remove");
     private static final Set<String> RULE_FILE_KEYS = Set.of("groups", "rule");
     private static final Set<String> GROUP_KEYS = Set.of("source", "resource", "mixin");
@@ -59,15 +57,12 @@ public final class BuildTargets {
     private final Path root;
     private final Map<String, String> layers;
     private final Map<String, Target> targets;
-    private final boolean strict;
     private final String mixinTemplate;
 
-    private BuildTargets(Path root, Map<String, String> layers, Map<String, Target> targets,
-                         boolean strict, String mixinTemplate) {
+    private BuildTargets(Path root, Map<String, String> layers, Map<String, Target> targets, String mixinTemplate) {
         this.root = root;
         this.layers = layers;
         this.targets = targets;
-        this.strict = strict;
         this.mixinTemplate = mixinTemplate;
     }
 
@@ -75,20 +70,18 @@ public final class BuildTargets {
         Path lists = root.resolve(LISTS);
         Map<String, Object> document = readObject(lists.resolve("targets.json5"), ".lists/targets.json5");
         rejectUnknown(document, TOP_KEYS, ".lists/targets.json5");
-        long version = number(document.get("version"), 1, "targets.json5.version");
-        if (version != 1) throw new IllegalStateException("Unsupported targets.json5 version: " + version);
 
-        Map<String, Object> layout = table(document.get("layout"));
-        rejectUnknown(layout, Set.of("strict"), "layout");
-        boolean strict = bool(layout.get("strict"), true, "layout.strict");
+        LayerCatalog sourceLayers = layerCatalog(root, lists, "sources.json5");
+        LayerCatalog resourceLayers = layerCatalog(root, lists, "resources.json5");
+        Map<String, String> layers = mergeLayers(sourceLayers.layers(), resourceLayers.layers());
+        MixinCatalog mixins = mixinCatalog(lists);
 
-        Map<String, String> layers = layers(root, document.get("layers"));
-        Set<String> layerNames = layers.keySet();
         Map<String, Integer> jdk = jdkTargets(document.get("jdk"));
         List<RuleFile> ruleFiles = ruleFiles(lists.resolve(RULES),
             strings(document.get("rules"), ".lists/targets.json5.rules"));
-        Set<String> classNames = javaClassNames(root, layers);
-        Defaults defaults = defaults(lists, layerNames, classNames);
+        Set<String> sourceCatalog = sourceLayers.names();
+        Set<String> resourceCatalog = resourceLayers.names();
+        Set<String> mixinCatalog = mixins.names();
         Map<String, Object> overrides = table(document.get("targets"));
         for (String key : overrides.keySet()) {
             if (!jdk.containsKey(key)) {
@@ -109,7 +102,8 @@ public final class BuildTargets {
             TargetId id = targetId(key);
             int java = entry.getValue();
             ConditionalProcessor.Context context = new ConditionalProcessor.Context(id.game, id.loader, java);
-            MutableTarget state = defaults.state();
+            MutableTarget state = new MutableTarget(new ArrayList<>(), new ArrayList<>(),
+                new MutableMixin(false, false, null, new ArrayList<>()));
             Map<String, List<String>> sourceGroups = new LinkedHashMap<>();
             Map<String, List<String>> resourceGroups = new LinkedHashMap<>();
             Map<String, List<String>> mixinGroups = new LinkedHashMap<>();
@@ -127,12 +121,12 @@ public final class BuildTargets {
                     }
                     if (!matches) continue;
                     applyPatch(state, rule.patch(), "rule '" + rule.condition() + "' in " + file.label(), key,
-                        layerNames, classNames, sourceGroups, resourceGroups, mixinGroups);
+                        sourceCatalog, resourceCatalog, mixinCatalog, sourceGroups, resourceGroups, mixinGroups);
                 }
             }
             if (overrides.containsKey(key)) {
                 applyPatch(state, table(overrides.get(key)), "target override", key,
-                    layerNames, classNames, sourceGroups, resourceGroups, mixinGroups);
+                    sourceCatalog, resourceCatalog, mixinCatalog, sourceGroups, resourceGroups, mixinGroups);
             }
 
             if (state.sources.isEmpty()) throw new IllegalStateException("Target '" + key + "' resolved no source layers");
@@ -148,10 +142,7 @@ public final class BuildTargets {
         }
         if (targets.isEmpty()) throw new IllegalStateException(".lists/targets.json5 registers no build targets");
 
-        String mixinTemplate = document.containsKey("mixinTemplate")
-            ? string(document.get("mixinTemplate"), "mixinTemplate")
-            : "platforms/minecraft/src/main/resources/barusikozako.mixins.json";
-        return new BuildTargets(root, Map.copyOf(layers), Map.copyOf(targets), strict, mixinTemplate);
+        return new BuildTargets(root, Map.copyOf(layers), Map.copyOf(targets), mixins.template());
     }
 
     private static TargetId targetId(String key) {
@@ -178,64 +169,59 @@ public final class BuildTargets {
         return result;
     }
 
-    private static Map<String, String> layers(Path root, Object value) {
+    /** 读取层目录：名称映射到 {@code platforms/} 下的相对路径。 */
+    private static LayerCatalog layerCatalog(Path root, Path lists, String fileName) {
+        String label = ".lists/" + fileName;
+        Map<String, Object> document = readObject(lists.resolve(fileName), label);
+        rejectUnknown(document, Set.of("layers"), label);
+
         Map<String, String> result = new LinkedHashMap<>();
         Path platforms = root.resolve("platforms");
-        for (Map.Entry<String, Object> entry : table(value).entrySet()) {
+        for (Map.Entry<String, Object> entry : table(document.get("layers")).entrySet()) {
             if (!(entry.getValue() instanceof String path)) {
-                throw new IllegalStateException("Layer '" + entry.getKey() + "' must be a platforms-relative path");
+                throw new IllegalStateException("Layer '" + entry.getKey() + "' must be a platforms-relative path in " + label);
             }
             Path directory = platforms.resolve(path).normalize();
-            if (!directory.startsWith(platforms)) throw new IllegalStateException("Layer '" + entry.getKey() + "' escapes platforms/");
-            if (!Files.isDirectory(directory)) throw new IllegalStateException("Layer '" + entry.getKey() + "' does not exist: " + path);
+            if (!directory.startsWith(platforms)) {
+                throw new IllegalStateException("Layer '" + entry.getKey() + "' escapes platforms/ in " + label);
+            }
+            if (!Files.isDirectory(directory)) {
+                throw new IllegalStateException("Layer '" + entry.getKey() + "' does not exist: " + path + " in " + label);
+            }
             if (!Files.isDirectory(directory.resolve("java")) && !Files.isDirectory(directory.resolve("resources"))) {
-                throw new IllegalStateException("Layer '" + entry.getKey() + "' has neither java/ nor resources/: " + path);
+                throw new IllegalStateException("Layer '" + entry.getKey() + "' has neither java/ nor resources/: " + path + " in " + label);
             }
             result.put(entry.getKey(), path);
+        }
+        return new LayerCatalog(Set.copyOf(result.keySet()), Map.copyOf(result));
+    }
+
+    private static Map<String, String> mergeLayers(Map<String, String> sources, Map<String, String> resources) {
+        Map<String, String> result = new LinkedHashMap<>(sources);
+        for (Map.Entry<String, String> entry : resources.entrySet()) {
+            String previous = result.putIfAbsent(entry.getKey(), entry.getValue());
+            if (previous != null && !previous.equals(entry.getValue())) {
+                throw new IllegalStateException("Layer '" + entry.getKey()
+                    + "' has different paths in .lists/sources.json5 and .lists/resources.json5");
+            }
         }
         return result;
     }
 
-    private static Defaults defaults(Path lists, Set<String> layerNames, Set<String> classNames) {
-        List<String> sources = defaultCollection(lists, "sources.json5", "sources",
-            "source", layerNames);
-        List<String> resources = defaultCollection(lists, "resources.json5", "resources",
-            "resource", layerNames);
-
+    private static MixinCatalog mixinCatalog(Path lists) {
         Map<String, Object> document = readObject(lists.resolve("mixins.json5"), ".lists/mixins.json5");
-        rejectUnknown(document, MIXIN_DEFAULT_KEYS, ".lists/mixins.json5");
-        boolean injectors = bool(document.get("injectors"), false, ".lists/mixins.json5.injectors");
-        boolean refmap = bool(document.get("refmap"), false, ".lists/mixins.json5.refmap");
-        String plugin = document.containsKey("plugin") ? nullableString(document.get("plugin"), ".lists/mixins.json5.plugin") : null;
-        List<String> mixins = expand(strings(document.get("mixins"), ".lists/mixins.json5.mixins"),
-            Map.of(), classNames, classNames, "mixin", ".lists/mixins.json5", "(default)");
-        return new Defaults(sources, resources, new MutableMixin(injectors, refmap, plugin, mixins));
+        rejectUnknown(document, Set.of("template", "mixins"), ".lists/mixins.json5");
+        String template = string(document.get("template"), ".lists/mixins.json5.template");
+        return new MixinCatalog(template,
+            uniqueNames(document.get("mixins"), ".lists/mixins.json5.mixins"));
     }
 
-    private static List<String> defaultCollection(Path lists, String fileName, String field,
-                                                  String category, Set<String> layerNames) {
-        Map<String, Object> document = readObject(lists.resolve(fileName), ".lists/" + fileName);
-        rejectUnknown(document, Set.of(field), ".lists/" + fileName);
-        return expand(strings(document.get(field), ".lists/" + fileName + "." + field),
-            Map.of(), layerNames, layerNames, category, ".lists/" + fileName, "(default)");
-    }
-
-    private static Set<String> javaClassNames(Path root, Map<String, String> layers) {
-        Set<String> names = new LinkedHashSet<>();
-        Path platforms = root.resolve("platforms");
-        for (String relative : layers.values()) {
-            Path java = platforms.resolve(relative).resolve("java");
-            if (!Files.isDirectory(java)) continue;
-            try (Stream<Path> stream = Files.walk(java)) {
-                stream.filter(Files::isRegularFile)
-                    .map(file -> file.getFileName().toString())
-                    .filter(name -> name.endsWith(".java"))
-                    .forEach(name -> names.add(name.substring(0, name.length() - ".java".length())));
-            } catch (IOException e) {
-                throw new UncheckedIOException("Cannot scan Java sources in " + java, e);
-            }
+    private static Set<String> uniqueNames(Object value, String where) {
+        Set<String> result = new LinkedHashSet<>();
+        for (String name : strings(value, where)) {
+            if (!result.add(name)) throw new IllegalStateException("Duplicate '" + name + "' in " + where);
         }
-        return names;
+        return result;
     }
 
     private static List<RuleFile> ruleFiles(Path directory, List<String> entries) {
@@ -280,21 +266,21 @@ public final class BuildTargets {
     }
 
     private static void applyPatch(MutableTarget state, Map<String, Object> patch, String origin, String target,
-                                   Set<String> layerNames, Set<String> classNames,
+                                   Set<String> sourceCatalog, Set<String> resourceCatalog, Set<String> mixinCatalog,
                                    Map<String, List<String>> sourceGroups,
                                    Map<String, List<String>> resourceGroups,
                                    Map<String, List<String>> mixinGroups) {
         rejectUnknown(patch, TARGET_KEYS, origin + " for target '" + target + "'");
         if (patch.containsKey("source")) {
             state.sources = collection("source", patch.get("source"), state.sources,
-                layerNames, layerNames, sourceGroups, origin, target);
+                sourceCatalog, sourceCatalog, sourceGroups, origin, target);
         }
         if (patch.containsKey("resource")) {
             state.resources = collection("resource", patch.get("resource"), state.resources,
-                layerNames, layerNames, resourceGroups, origin, target);
+                resourceCatalog, resourceCatalog, resourceGroups, origin, target);
         }
         if (patch.containsKey("mixin")) {
-            mixin(state.mixin, table(patch.get("mixin")), origin, target, classNames, mixinGroups);
+            mixin(state.mixin, table(patch.get("mixin")), origin, target, mixinCatalog, mixinGroups);
         }
     }
 
@@ -488,10 +474,6 @@ public final class BuildTargets {
         return root;
     }
 
-    public boolean strict() {
-        return strict;
-    }
-
     public String mixinTemplate() {
         return mixinTemplate;
     }
@@ -525,15 +507,13 @@ public final class BuildTargets {
 
     private record TargetId(String loader, String game) {}
 
+    private record LayerCatalog(Set<String> names, Map<String, String> layers) {}
+
+    private record MixinCatalog(String template, Set<String> names) {}
+
     private record RuleEntry(String condition, ConditionalProcessor.Expression expression, Map<String, Object> patch) {}
 
     private record RuleFile(String label, Map<String, Map<String, List<String>>> groups, List<RuleEntry> rules) {}
-
-    private record Defaults(List<String> sources, List<String> resources, MutableMixin mixin) {
-        private MutableTarget state() {
-            return new MutableTarget(new ArrayList<>(sources), new ArrayList<>(resources), mixin.copy());
-        }
-    }
 
     private static final class MutableTarget {
         private List<String> sources;
@@ -558,10 +538,6 @@ public final class BuildTargets {
             this.refmap = refmap;
             this.plugin = plugin;
             this.mixins = mixins;
-        }
-
-        private MutableMixin copy() {
-            return new MutableMixin(injectors, refmap, plugin, new ArrayList<>(mixins));
         }
 
         private MixinConfig freeze() {

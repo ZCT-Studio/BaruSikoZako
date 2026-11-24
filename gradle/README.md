@@ -30,11 +30,12 @@ loaders=fabric,forge,neoforge
 
 | 文件 | 用途 |
 | --- | --- |
-| `targets.json5` | 目标注册（`jdk`）、源码层 `layers`、规则文件列表 `rules` 与可选的单目标覆盖 `targets`。 |
-| `sources.json5`、`resources.json5`、`mixins.json5` | 所有目标的公共默认源码层、资源层与 Mixin 开关。 |
+| `targets.json5` | 目标注册（`jdk`）、规则文件列表 `rules` 与可选的单目标覆盖 `targets`。 |
+| `sources.json5`、`resources.json5` | 可选源码层、资源层目录：层名到 `platforms/` 相对路径的映射，不提供默认值。 |
+| `mixins.json5` | Mixin 模板路径（`template`）与可选 Mixin 类名目录（`mixins`），不提供默认值。 |
 | `.rules/*.json5` | 命名分组与条件规则。 |
 
-`layers` 路径相对 `platforms/`，目录下可有 `java/` 与 `resources/`；目标键为 `<加载器>@<Minecraft版本>`，Java 版本由 `targets.json5` 的 `jdk` 映射给出。规则文件在 `groups` 中定义 `source`、`resource`、`mixin` 分组，在 `rule` 中按条件选择分组或单项：
+`layers` 中的路径相对 `platforms/`，目录下可有 `java/` 与 `resources/`；同名层在 `sources.json5` 与 `resources.json5` 中必须使用相同路径。目标键为 `<加载器>@<Minecraft版本>`，Java 版本由 `targets.json5` 的 `jdk` 映射给出。规则文件在 `groups` 中定义 `source`、`resource`、`mixin` 分组，在 `rule` 中按条件选择分组或单项：
 
 ```json5
 {
@@ -47,7 +48,7 @@ loaders=fabric,forge,neoforge
 }
 ```
 
-规则按 `rules` 列表和文件内声明顺序应用；所有匹配规则都生效，后面的规则覆盖前面的字段。集合默认替换，也可用 `{ groups: [...], add: [...], remove: [...] }` 追加或移除；未声明的字段继承已有值，布尔开关可显式开启或关闭。规则文件路径相对 `.lists/.rules/`。后声明的层优先；仓库启用 `layout.strict = true`，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
+规则按 `rules` 列表和文件内声明顺序应用；所有匹配规则都生效，后面的规则覆盖前面的字段。集合默认替换，也可用 `{ groups: [...], add: [...], remove: [...] }` 追加或移除；未声明的字段继承已有值，布尔开关可显式开启或关闭。目标初始为空（无源码层、无资源层、无 Mixin），因此规则必须显式选择源码层与 Mixin；`sources.json5`/`resources.json5`/`mixins.json5` 只是可选内容白名单，规则不能引用其中未登记的名称。规则文件路径相对 `.lists/.rules/`。后声明的层优先；各目标的有效源码层必须互不相交，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
 
 小范围差异用注释式条件编译：
 

@@ -60,6 +60,35 @@ final class BuildTargetsTest {
     }
 
     @Test
+    void layerOutsideCatalogCannotBeSelected() throws IOException {
+        writeWorkspace();
+        write(".lists/sources.json5", """
+            { layers: { common: "common", legacy: "legacy" } }
+            """);
+        IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
+        assertTrue(error.getMessage().contains("Unknown source group or item 'extra'"), error.getMessage());
+    }
+
+    @Test
+    void layerPathsMustMatchBetweenCatalogs() throws IOException {
+        writeWorkspace();
+        write(".lists/resources.json5", """
+            { layers: { common: "legacy" } }
+            """);
+        IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
+        assertTrue(error.getMessage().contains("has different paths"), error.getMessage());
+    }
+
+    @Test
+    void catalogsDoNotProvideDefaults() throws IOException {
+        writeWorkspace();
+        write(".lists/.rules/first.json5", "{ rule: {} }");
+        write(".lists/.rules/second.json5", "{ rule: {} }");
+        IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
+        assertTrue(error.getMessage().contains("resolved no source layers"), error.getMessage());
+    }
+
+    @Test
     void unknownGroupOrLayerIsReported() throws IOException {
         writeWorkspace();
         write(".lists/.rules/first.json5", """
@@ -92,8 +121,6 @@ final class BuildTargetsTest {
         writeWorkspace();
         write(".lists/targets.json5", """
             {
-              version: 1,
-              layers: { common: "common" },
               rules: ["absent.json5"],
               jdk: { "fabric@26.3": 25 },
             }
@@ -176,13 +203,6 @@ final class BuildTargetsTest {
             """);
         write(".lists/targets.json5", """
             {
-              version: 1,
-              layout: { strict: true },
-              layers: {
-                common: "common",
-                legacy: "legacy",
-                extra: "extra",
-              },
               rules: ["first.json5", "second.json5"],
               jdk: {
                 "fabric@1.20.1": 17,
@@ -195,13 +215,19 @@ final class BuildTargetsTest {
             }
             """);
         write(".lists/sources.json5", """
-            { sources: ["common"] }
+            {
+              layers: {
+                common: "common",
+                legacy: "legacy",
+                extra: "extra",
+              },
+            }
             """);
         write(".lists/resources.json5", """
-            { resources: ["common"] }
+            { layers: { common: "common" } }
             """);
         write(".lists/mixins.json5", """
-            { injectors: false, refmap: false, mixins: ["A"] }
+            { template: "mixin.json5", mixins: ["A", "B", "C", "D"] }
             """);
         write(".lists/.rules/first.json5", """
             {
@@ -212,11 +238,13 @@ final class BuildTargetsTest {
               rule: {
                 "mc < 26": {
                   source: ["Legacy"],
+                  resource: ["common"],
                   mixin: { groups: ["Base"], injectors: true },
                 },
                 "mc >= 26": {
                   source: ["common"],
-                  mixin: { add: ["C", "A"] },
+                  resource: ["common"],
+                  mixin: { mixins: ["A", "C"] },
                 },
               },
             }
@@ -244,9 +272,6 @@ final class BuildTargetsTest {
         for (String layer : List.of("common", "legacy", "extra")) {
             Files.createDirectories(root.resolve("platforms").resolve(layer).resolve("java"));
             write("platforms/" + layer + "/java/keep.txt", layer);
-        }
-        for (String name : List.of("A", "B", "C", "D")) {
-            write("platforms/common/java/pkg/" + name + ".java", "package pkg; final class " + name + " {}");
         }
     }
 

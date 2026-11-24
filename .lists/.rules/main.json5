@@ -1,17 +1,21 @@
 {
   groups: {
     source: {
-      FabricModern: ["main", "modernJava", "fabric"],
-      FabricLegacy: ["main", "legacyJava", "fabric", "fabricLegacy"],
+      LegacyBase: ["main", "legacyJava"],
+      ModernBase: ["main", "modernJava"],
 
-      ForgeModern: ["main", "modernJava", "forgeModern"],
-      ForgeLegacy1201: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "forgeSrg"],
-      ForgeLegacy1211: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "officialLegacy"],
-      ForgeLegacyTyped: ["main", "legacyJava", "forgeLegacy", "forgeTypedBus", "officialLegacy"],
+      FabricLegacy: ["LegacyBase", "fabric", "fabricLegacy"],
+      FabricModern: ["ModernBase", "fabric"],
 
-      NeoForgeModern: ["main", "modernJava", "neoforge"],
-      NeoForgeLegacy1211: ["main", "legacyJava", "neoforge", "officialLegacy", "neoforge1211"],
-      NeoForgeLegacy: ["main", "legacyJava", "neoforge", "officialLegacy"],
+      ForgeLegacy: ["LegacyBase", "forgeLegacy"],
+      ForgeLegacy1201: ["ForgeLegacy", "forgeClassicBus", "forgeSrg"],
+      ForgeLegacy1211: ["ForgeLegacy", "forgeClassicBus", "officialLegacy"],
+      ForgeLegacyTyped: ["ForgeLegacy", "forgeTypedBus", "officialLegacy"],
+      ForgeModern: ["ModernBase", "forgeModern"],
+
+      NeoForgeLegacy: ["LegacyBase", "neoforge", "officialLegacy"],
+      NeoForgeLegacy1211: ["NeoForgeLegacy", "neoforge1211"],
+      NeoForgeModern: ["ModernBase", "neoforge"],
     },
 
     resource: {
@@ -19,23 +23,9 @@
     },
 
     mixin: {
-      Modern: [
-        "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
-        "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
-        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
-        "EntityStorageAccess", "PoiStorageAccess",
-      ],
-
       Legacy1201: [
         "SavedDataObservation", "LegacyRegionWriteFailure", "LegacyChunkSerializationFailure",
         "LegacyPoiSerializationFailure", "PlayerFileObservation", "ClientLanguageObservation",
-        "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
-        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
-        "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
-      ],
-
-      Legacy1211: [
-        "SavedDataObservation", "ServerSaveObservation", "PlayerFileObservation",
         "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
         "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
         "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
@@ -47,24 +37,47 @@
         "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess", "EntityStorageAccess",
         "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
       ],
+      Legacy1211: ["SavedDataObservation", "NeoForge1211"],
 
-      Legacy12110: [
+      ModernHead: [
         "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
-        "PlayerFileObservation", "AuxiliaryPlayerObservation", "PlayerStatsObservation",
-        "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess",
-        "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess", "LegacyChunkStorageAccess",
+        "PlayerFileObservation", "AuxiliaryPlayerObservation",
       ],
+      ModernTail: [
+        "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation",
+        "LevelEntityAccess", "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess",
+      ],
+      Legacy12110: ["ModernHead", "PlayerStatsObservation", "ModernTail", "LegacyChunkStorageAccess"],
 
-      Legacy12111: [
-        "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
-        "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
-        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
-        "EntityStorageAccess", "PoiStorageAccess",
-      ],
+      Modern: ["ModernHead", "ModernTail"],
     },
   },
 
   rule: {
+    "mc < 26": {
+      mixin: { injectors: true },
+    },
+    "mc >= 26": {
+      mixin: { groups: ["Modern"], injectors: false },
+    },
+
+    "mc == 1.20.1": {
+      mixin: { groups: ["Legacy1201"] },
+    },
+    "mc == 1.21.1 && loader != 'neoforge'": {
+      mixin: { groups: ["Legacy1211"] },
+    },
+    "mc == 1.21.10": {
+      mixin: { groups: ["Legacy12110"] },
+    },
+    "mc == 1.21.11": {
+      mixin: { groups: ["Modern"] },
+    },
+
+    "loader != 'fabric'": {
+      resource: ["main"],
+    },
+
     "loader == 'fabric' && mc < 26": {
       source: ["FabricLegacy"],
       resource: ["Fabric"],
@@ -100,26 +113,6 @@
     },
     "loader == 'neoforge' && mc >= 26": {
       source: ["NeoForgeModern"],
-    },
-
-    "mc >= 26": {
-      mixin: { groups: ["Modern"], injectors: false },
-    },
-    "mc == 1.20.1": {
-      mixin: { groups: ["Legacy1201"] },
-    },
-    "mc == 1.21.1 && loader != 'neoforge'": {
-      mixin: { groups: ["Legacy1211"] },
-    },
-    "mc == 1.21.10": {
-      mixin: { groups: ["Legacy12110"] },
-    },
-    "mc == 1.21.11": {
-      mixin: { groups: ["Legacy12111"] },
-    },
-
-    "mc < 26": {
-      mixin: { injectors: true },
     },
   },
 }
