@@ -23,7 +23,7 @@ tasks.register<ActivateTarget>("activateTarget") {
 
 tasks.register("checkTargetSources") {
     group = "verification"
-    description = "Validates every selected build target against targets.json5"
+    description = "Validates every selected build target against .lists/targets.json5"
 }
 subprojects {
     tasks.matching { it.name == "checkTargetSources" }.configureEach {
@@ -111,10 +111,10 @@ subprojects {
     val agentGame = property("agentGameVersion") ?: local("agentGameVersion") ?: selectedGames.firstOrNull() ?: "26.3"
     val bukkitGame = property("bukkitGameVersion") ?: local("bukkitGameVersion") ?: agentGame
     
-    // 读取versions.json5进行版本解析
+    // 读取 .lists/version.json5 进行版本解析
     val versionTable: Map<String, Any?> = try {
         @Suppress("UNCHECKED_CAST")
-        Json5Reader(rootProject.projectDir.resolve("versions.json5").readText()).read() as Map<String, Any?>
+        Json5Reader(rootProject.projectDir.resolve(".lists/version.json5").readText()).read() as Map<String, Any?>
     } catch (e: Exception) {
         emptyMap()
     }

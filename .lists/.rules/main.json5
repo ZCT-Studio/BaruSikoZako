@@ -1,0 +1,125 @@
+{
+  groups: {
+    source: {
+      FabricModern: ["main", "modernJava", "fabric"],
+      FabricLegacy: ["main", "legacyJava", "fabric", "fabricLegacy"],
+
+      ForgeModern: ["main", "modernJava", "forgeModern"],
+      ForgeLegacy1201: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "forgeSrg"],
+      ForgeLegacy1211: ["main", "legacyJava", "forgeLegacy", "forgeClassicBus", "officialLegacy"],
+      ForgeLegacyTyped: ["main", "legacyJava", "forgeLegacy", "forgeTypedBus", "officialLegacy"],
+
+      NeoForgeModern: ["main", "modernJava", "neoforge"],
+      NeoForgeLegacy1211: ["main", "legacyJava", "neoforge", "officialLegacy", "neoforge1211"],
+      NeoForgeLegacy: ["main", "legacyJava", "neoforge", "officialLegacy"],
+    },
+
+    resource: {
+      Fabric: ["main", "fabric"],
+    },
+
+    mixin: {
+      Modern: [
+        "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+        "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+        "EntityStorageAccess", "PoiStorageAccess",
+      ],
+
+      Legacy1201: [
+        "SavedDataObservation", "LegacyRegionWriteFailure", "LegacyChunkSerializationFailure",
+        "LegacyPoiSerializationFailure", "PlayerFileObservation", "ClientLanguageObservation",
+        "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+        "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+      ],
+
+      Legacy1211: [
+        "SavedDataObservation", "ServerSaveObservation", "PlayerFileObservation",
+        "AuxiliaryPlayerObservation", "PlayerStatsObservation", "RootFileObservation",
+        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+        "EntityStorageAccess", "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+      ],
+
+      NeoForge1211: [
+        "ServerSaveObservation", "PlayerFileObservation", "AuxiliaryPlayerObservation",
+        "PlayerStatsObservation", "RootFileObservation", "ReplacementObservation",
+        "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess", "EntityStorageAccess",
+        "LegacyPoiWrites", "PoiStorageAccess", "LegacyChunkStorageAccess",
+      ],
+
+      Legacy12110: [
+        "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+        "PlayerFileObservation", "AuxiliaryPlayerObservation", "PlayerStatsObservation",
+        "RootFileObservation", "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess",
+        "EntityManagerAccess", "EntityStorageAccess", "PoiStorageAccess", "LegacyChunkStorageAccess",
+      ],
+
+      Legacy12111: [
+        "EmptyServerCaptureMixin", "SavedDataObservation", "SavedDataQueue", "ServerSaveObservation",
+        "PlayerFileObservation", "AuxiliaryPlayerObservation", "RootFileObservation",
+        "ReplacementObservation", "ChunkUnloadObservation", "LevelEntityAccess", "EntityManagerAccess",
+        "EntityStorageAccess", "PoiStorageAccess",
+      ],
+    },
+  },
+
+  rule: {
+    "loader == 'fabric' && mc < 26": {
+      source: ["FabricLegacy"],
+      resource: ["Fabric"],
+    },
+    "loader == 'fabric' && mc >= 26": {
+      source: ["FabricModern"],
+      resource: ["Fabric"],
+    },
+
+    "loader == 'forge' && mc == 1.20.1": {
+      source: ["ForgeLegacy1201"],
+      mixin: { refmap: true },
+    },
+    "loader == 'forge' && mc == 1.21.1": {
+      source: ["ForgeLegacy1211"],
+    },
+    "loader == 'forge' && (mc == 1.21.10 || mc == 1.21.11)": {
+      source: ["ForgeLegacyTyped"],
+    },
+    "loader == 'forge' && mc >= 26": {
+      source: ["ForgeModern"],
+    },
+
+    "loader == 'neoforge' && mc == 1.21.1": {
+      source: ["NeoForgeLegacy1211"],
+      mixin: {
+        groups: ["NeoForge1211"],
+        plugin: "io.github.zct_studio.barusikozako.fabric.NeoForgeSavedDataMixins",
+      },
+    },
+    "loader == 'neoforge' && (mc == 1.21.10 || mc == 1.21.11)": {
+      source: ["NeoForgeLegacy"],
+    },
+    "loader == 'neoforge' && mc >= 26": {
+      source: ["NeoForgeModern"],
+    },
+
+    "mc >= 26": {
+      mixin: { groups: ["Modern"], injectors: false },
+    },
+    "mc == 1.20.1": {
+      mixin: { groups: ["Legacy1201"] },
+    },
+    "mc == 1.21.1 && loader != 'neoforge'": {
+      mixin: { groups: ["Legacy1211"] },
+    },
+    "mc == 1.21.10": {
+      mixin: { groups: ["Legacy12110"] },
+    },
+    "mc == 1.21.11": {
+      mixin: { groups: ["Legacy12111"] },
+    },
+
+    "mc < 26": {
+      mixin: { injectors: true },
+    },
+  },
+}

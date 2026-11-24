@@ -110,6 +110,9 @@ def code_changed(paths):
             return True
         if path.startswith(".github/scripts/") and Path(path).suffix in {".py", ".ps1", ".sh"}:
             return True
+        if (path.startswith(".lists/") and Path(path).suffix == ".json5"
+                and path not in (".lists/version.json5", ".lists/release.json5")):
+            return True
         if path.startswith(("gradle/", "app/", "api/", "backends/", "engine/", "platforms/", "build-logic/", ".github/scripts/")):
             if Path(path).suffix in {".java", ".kt", ".kts", ".toml", ".xml", ".json", ".yml", ".yaml",
                                      ".lockfile", ".properties", ".jar"} or "/META-INF/services/" in path:
@@ -142,7 +145,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     selected = targets(release_table)
     flags = commit_flags(message)
     force_release = requests_forced_release(flags)
-    catalog_changed = any(path in ("versions.json5", "releases.json5") for path in changed)
+    catalog_changed = any(path in (".lists/version.json5", ".lists/release.json5") for path in changed)
     storefronts = [name for name in ("modrinth", "curseforge") if f"no-{name}" not in flags]
     allow_release = (bool(storefronts) and not build_only and not force_build
                      and "no-release" not in flags and (catalog_changed or force_release))
@@ -214,7 +217,10 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
 def previous_catalog(base):
     if not base:
         return None
-    old_versions = git("show", f"{base}:versions.json5", missing=True)
+    old_versions = git("show", f"{base}:.lists/version.json5", missing=True)
+    if not old_versions:
+        # 清单迁入 .lists/ 之前的提交仍从旧路径读取，用于跨迁移比较。
+        old_versions = git("show", f"{base}:versions.json5", missing=True)
     table = read_table(old_versions) if old_versions else {}
     if "mod" in table:
         return table
@@ -250,8 +256,8 @@ def main():
         markdown = Path("CHANGELOG.md").read_text(encoding="utf-8")
     except FileNotFoundError:
         markdown = ""
-    result = plan(read_table(Path("versions.json5").read_text(encoding="utf-8")),
-                  read_table(Path("releases.json5").read_text(encoding="utf-8")), old,
+    result = plan(read_table(Path(".lists/version.json5").read_text(encoding="utf-8")),
+                  read_table(Path(".lists/release.json5").read_text(encoding="utf-8")), old,
                   message, changed, markdown,
                   build_only=build_only, force_build=force_build)
     if result["should_release"]:

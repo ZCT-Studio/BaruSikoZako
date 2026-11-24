@@ -48,9 +48,23 @@ jobs:
           path: release-plan.json
           retention-days: 7
 
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Test build manifests and rules
+        run: ./gradlew -p build-logic test --console=plain
+
   build:
     name: build for ${{ matrix.target }}
-    needs: plan
+    needs: [ plan, manifest ]
     if: needs.plan.outputs.should_build == 'true'
     strategy:
       fail-fast: false

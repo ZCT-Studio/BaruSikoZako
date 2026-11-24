@@ -1,6 +1,6 @@
 # 版本表维护指南
 
-`releases.json5` 定义杂鱼备份的支持范围。每个条目都由 **Minecraft 版本、平台和支持标记**组成。一个 Minecraft 版本可以同时有多种标记，每个平台在该版本下只填一种。
+`.lists/release.json5` 定义杂鱼备份的支持范围。每个条目都由 **Minecraft 版本、平台和支持标记**组成。一个 Minecraft 版本可以同时有多种标记，每个平台在该版本下只填一种。
 
 版本表用于确定发布和 CI 的候选范围。平台是否已有可用产物，以及备份、校验和恢复是否通过实服验收，见[验收矩阵](benchmarks/server-acceptance/matrix.md)。CI 直接读取此表。组件版本、渠道门槛和触发规则见 [版本与发布](versions.README.md)。
 

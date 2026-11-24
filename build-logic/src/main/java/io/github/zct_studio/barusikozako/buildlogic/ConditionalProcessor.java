@@ -9,14 +9,23 @@ import java.util.List;
 /**
  * 最小注释式条件编译器。
  *
- * <p>指令以注释形式出现在行首：{@code //? if <expr>}、{@code //? else}、{@code //? end}
- * （也接受尾部花括号与 {@code //?}} 写法）。非活跃分支的每一行加上 {@link #INACTIVE}
- * 前缀，因此文件始终是合法 Java，IDEA 可以直接索引和编辑原始文件。处理器先去掉前缀
- * 得到规范形式再重新计算，保证幂等。
+ * <p>行级指令以注释形式出现在行首：{@code //? if <expr>}、{@code //? else}、
+ * {@code //? end}（也接受尾部花括号与 {@code //?}} 写法）。非活跃分支的每一行加上
+ * {@link #INACTIVE} 前缀，因此文件始终是合法 Java，IDEA 可以直接索引和编辑原始文件。
+ *
+ * <p>行内小改动可以使用块注释指令：以 {@code /*?} 开始的注释作为指令，分支内容位于
+ * 指令之间，结束指令写作 {@code /*?}}。非活跃片段用 {@code /*?~} 与 {@code *&#47;}
+ * 包裹，同样保持文件为合法 Java。块注释分支暂不支持嵌套。
  */
 public final class ConditionalProcessor {
     /** 非活跃行前缀；前缀后紧跟原始行内容（含缩进）。 */
     public static final String INACTIVE = "//?~ ";
+
+    /** 非活跃行内片段前缀；用于块注释条件的小范围分支。 */
+    private static final String INLINE_INACTIVE = "/*?~ ";
+
+    /** 非活跃行内片段后缀。 */
+    private static final String INLINE_INACTIVE_END = " */";
 
     private ConditionalProcessor() {}
 
@@ -31,11 +40,27 @@ public final class ConditionalProcessor {
     }
 
     public static boolean containsDirectives(String text) {
-        return text.contains("//?");
+        return text.contains("//?") || text.contains("/*?");
     }
 
-    /** 去掉非活跃行前缀，得到规范形式。 */
+    /** 去掉非活跃行前缀与行内片段包裹，得到规范形式。 */
     public static String canonical(String text) {
+        return canonicalInline(canonicalLines(text));
+    }
+
+    /** 判断当前文本是否已经按上下文解析（用于 IDE 活跃目标判断）。 */
+    public static boolean isResolved(String text, Context context) {
+        if (!containsDirectives(text)) return true;
+        return apply(text, context).equals(text);
+    }
+
+    /** 按上下文生成带非活跃前缀的文本。 */
+    public static String apply(String text, Context context) {
+        String base = canonical(text);
+        return applyLines(applyInline(base, context), context);
+    }
+
+    private static String canonicalLines(String text) {
         String separator = lineSeparator(text);
         List<String> lines = split(text);
         StringBuilder out = new StringBuilder(text.length());
@@ -49,14 +74,7 @@ public final class ConditionalProcessor {
         return out.toString();
     }
 
-    /** 判断当前文本是否已经按上下文解析（用于 IDE 活跃目标判断）。 */
-    public static boolean isResolved(String text, Context context) {
-        if (!containsDirectives(text)) return true;
-        return apply(canonical(text), context).equals(text);
-    }
-
-    /** 按上下文生成带非活跃前缀的文本。 */
-    public static String apply(String text, Context context) {
+    private static String applyLines(String text, Context context) {
         String separator = lineSeparator(text);
         List<String> lines = split(text);
         List<Frame> stack = new ArrayList<>();
@@ -120,9 +138,15 @@ public final class ConditionalProcessor {
         return body;
     }
 
-    /** 校验指令结构，返回错误列表。 */
+    /** 校验行级与行内指令结构，返回错误列表。 */
     public static List<String> validate(String text) {
         List<String> errors = new ArrayList<>();
+        validateLines(text, errors);
+        validateInline(text, errors);
+        return errors;
+    }
+
+    private static void validateLines(String text, List<String> errors) {
         List<String> lines = split(text);
         int depth = 0;
         for (int i = 0; i < lines.size(); i++) {
@@ -150,8 +174,251 @@ public final class ConditionalProcessor {
             }
         }
         if (depth != 0) errors.add("unclosed conditional block");
-        return errors;
     }
+
+    private static void validateInline(String text, List<String> errors) {
+        if (!text.contains("/*?")) return;
+        int depth = 0;
+        for (InlineDirective directive : inlineDirectives(text)) {
+            try {
+                String body = inlineBody(directive.content(), directive.line());
+                if (body.startsWith("if ")) {
+                    if (depth > 0) errors.add("line " + directive.line() + ": nested inline conditional is not supported");
+                    Expression.parse(body.substring(3));
+                    depth++;
+                } else if (body.equals("else")) {
+                    if (depth == 0) errors.add("line " + directive.line() + ": 'else' without inline 'if'");
+                } else if (body.startsWith("elif ")) {
+                    if (depth == 0) errors.add("line " + directive.line() + ": 'elif' without inline 'if'");
+                    Expression.parse(body.substring(5));
+                } else if (body.equals("end") || body.isEmpty()) {
+                    if (depth == 0) errors.add("line " + directive.line() + ": inline 'end' without 'if'");
+                    else depth--;
+                } else {
+                    errors.add("line " + directive.line() + ": unknown inline directive '" + body + "'");
+                }
+            } catch (DirectiveException e) {
+                errors.add("line " + directive.line() + ": " + e.getMessage());
+            }
+        }
+        if (depth != 0) errors.add("unclosed inline conditional block");
+    }
+
+    private static String applyInline(String text, Context context) {
+        if (!text.contains("/*?")) return text;
+        List<InlineDirective> directives = inlineDirectives(text);
+        if (directives.isEmpty()) return text;
+        List<Frame> stack = new ArrayList<>();
+        boolean active = true;
+        int last = 0;
+        StringBuilder out = new StringBuilder(text.length() + 64);
+        for (InlineDirective directive : directives) {
+            emitInline(out, text.substring(last, directive.start()), active, directive.line());
+            out.append(text, directive.start(), directive.end());
+            String body = inlineBody(directive.content(), directive.line());
+            if (body.startsWith("if ")) {
+                if (!stack.isEmpty()) {
+                    throw new DirectiveException("Nested inline conditional at line "
+                        + directive.line() + " is not supported");
+                }
+                boolean value = Expression.parse(body.substring(3)).evaluate(context);
+                stack.add(new Frame(active, value));
+                active = active && value;
+            } else if (body.equals("else")) {
+                Frame frame = requireFrame(stack, "else", directive.line());
+                frame.current = !frame.taken;
+                frame.taken = true;
+                active = frame.parentActive && frame.current;
+            } else if (body.startsWith("elif ")) {
+                Frame frame = requireFrame(stack, "elif", directive.line());
+                boolean value = !frame.taken && Expression.parse(body.substring(5)).evaluate(context);
+                frame.current = value;
+                frame.taken = frame.taken || value;
+                active = frame.parentActive && value;
+            } else if (body.equals("end") || body.isEmpty()) {
+                requireFrame(stack, "end", directive.line());
+                stack.remove(stack.size() - 1);
+                active = stack.isEmpty() || (stack.get(stack.size() - 1).parentActive
+                    && stack.get(stack.size() - 1).current);
+            } else {
+                throw new DirectiveException("Unknown inline directive '" + body + "' at line " + directive.line());
+            }
+            last = directive.end();
+        }
+        emitInline(out, text.substring(last), active, lineAt(text, last));
+        if (!stack.isEmpty()) throw new DirectiveException("Unclosed inline conditional block");
+        return out.toString();
+    }
+
+    private static void emitInline(StringBuilder out, String region, boolean active, int line) {
+        if (active || region.isBlank()) {
+            out.append(region);
+            return;
+        }
+        if (!isBlockCommentSafe(region)) {
+            throw new DirectiveException("Inline conditional branch at line " + line
+                + " cannot be disabled because it contains '*/'");
+        }
+        out.append(INLINE_INACTIVE).append(region).append(INLINE_INACTIVE_END);
+    }
+
+    private static boolean isBlockCommentSafe(String text) {
+        return !text.contains("*/");
+    }
+
+    private static String canonicalInline(String text) {
+        if (!text.contains(INLINE_INACTIVE)) return text;
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '"') {
+                int next = text.startsWith("\"\"\"", i) ? skipTextBlock(text, i) : skipQuoted(text, i, '"');
+                out.append(text, i, next);
+                i = next;
+                continue;
+            }
+            if (c == '\'') {
+                int next = skipQuoted(text, i, '\'');
+                out.append(text, i, next);
+                i = next;
+                continue;
+            }
+            if (c == '/' && i + 1 < text.length()) {
+                char next = text.charAt(i + 1);
+                if (next == '/') {
+                    int end = skipLineComment(text, i);
+                    out.append(text, i, end);
+                    i = end;
+                    continue;
+                }
+                if (next == '*') {
+                    int end = text.indexOf("*/", i + 2);
+                    if (end < 0) {
+                        out.append(text, i, text.length());
+                        break;
+                    }
+                    if (text.startsWith(INLINE_INACTIVE, i)) {
+                        String content = text.substring(i + INLINE_INACTIVE.length(), end);
+                        if (content.endsWith(" ")) content = content.substring(0, content.length() - 1);
+                        out.append(content);
+                    } else {
+                        out.append(text, i, end + 2);
+                    }
+                    i = end + 2;
+                    continue;
+                }
+            }
+            out.append(c);
+            i++;
+        }
+        return out.toString();
+    }
+
+    private static String inlineBody(String content, int line) {
+        String body = content.strip();
+        if (body.startsWith("}")) body = body.substring(1).strip();
+        if (body.endsWith("{")) {
+            body = body.substring(0, body.length() - 1).strip();
+        } else if (body.endsWith("}")) {
+            body = body.substring(0, body.length() - 1).strip();
+        }
+        if (body.startsWith("if") && !body.equals("if") && !Character.isWhitespace(body.charAt(2))) {
+            throw new DirectiveException("Invalid inline 'if' directive at line " + line);
+        }
+        return body;
+    }
+
+    private static List<InlineDirective> inlineDirectives(String text) {
+        List<InlineDirective> result = new ArrayList<>();
+        int i = 0;
+        int line = 1;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\n') {
+                line++;
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                i = text.startsWith("\"\"\"", i) ? skipTextBlock(text, i) : skipQuoted(text, i, '"');
+                continue;
+            }
+            if (c == '\'') {
+                i = skipQuoted(text, i, '\'');
+                continue;
+            }
+            if (c == '/' && i + 1 < text.length()) {
+                char next = text.charAt(i + 1);
+                if (next == '/') {
+                    i = skipLineComment(text, i);
+                    continue;
+                }
+                if (next == '*') {
+                    int end = text.indexOf("*/", i + 2);
+                    if (end < 0) break;
+                    if (text.startsWith("/*?", i) && !text.startsWith(INLINE_INACTIVE, i)) {
+                        result.add(new InlineDirective(i, end + 2, text.substring(i + 3, end), line));
+                    }
+                    line += newlines(text, i, end + 2);
+                    i = end + 2;
+                    continue;
+                }
+            }
+            i++;
+        }
+        return result;
+    }
+
+    private static int skipQuoted(String text, int start, char quote) {
+        int i = start + 1;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == quote) return i + 1;
+            i++;
+        }
+        return text.length();
+    }
+
+    private static int skipTextBlock(String text, int start) {
+        int i = start + 3;
+        while (i < text.length()) {
+            if (text.charAt(i) == '\\') {
+                i += 2;
+                continue;
+            }
+            if (text.startsWith("\"\"\"", i)) return i + 3;
+            i++;
+        }
+        return text.length();
+    }
+
+    private static int skipLineComment(String text, int start) {
+        int end = text.indexOf('\n', start);
+        return end < 0 ? text.length() : end;
+    }
+
+    private static int newlines(String text, int from, int to) {
+        int count = 0;
+        for (int i = from; i < to; i++) {
+            if (text.charAt(i) == '\n') count++;
+        }
+        return count;
+    }
+
+    private static int lineAt(String text, int offset) {
+        int line = 1;
+        for (int i = 0; i < offset && i < text.length(); i++) {
+            if (text.charAt(i) == '\n') line++;
+        }
+        return line;
+    }
+
+    private record InlineDirective(int start, int end, String content, int line) {}
 
     private static String lineSeparator(String text) {
         return text.contains("\r\n") ? "\r\n" : "\n";

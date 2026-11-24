@@ -77,7 +77,7 @@ class TestReleasePlan(unittest.TestCase):
 
     def test_bundled_zstd_version_change_builds_without_publishing(self):
         current = dict(self.sample_versions, backend={"zstd": {"version": "1.0.1", "overrides": {}}})
-        result = plan(current, self.sample_releases, self.sample_versions, "", ["versions.json5"])
+        result = plan(current, self.sample_releases, self.sample_versions, "", [".lists/version.json5"])
         self.assertTrue(result["should_build"])
         self.assertFalse(result["should_release"])
         for job in result["build_jobs"]:
@@ -92,7 +92,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.0]\n\nInitial release.\n")
             
             old = None
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 self.sample_versions, self.sample_releases, old,
                 "feat: bump version", changed,
@@ -103,7 +103,7 @@ class TestReleasePlan(unittest.TestCase):
     def test_build_only_keeps_fml_targets(self):
         self.sample_releases["versions"]["1.20.1"] = {"latest": ["fabric", "quilt", "forge"]}
         result = plan(self.sample_versions, self.sample_releases, None, "bump version",
-                      ["versions.json5"], build_only=True)
+                      [".lists/version.json5"], build_only=True)
         self.assertEqual({job["loader"] for job in result["build_jobs"]}, {"fabric", "quilt", "forge"})
         self.assertFalse(result["should_release"])
 
@@ -126,7 +126,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.0]\n\nInitial release.\n")
             
             old = None
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 self.sample_versions, self.sample_releases, old,
                 "feat: bump version [no-release]", changed,
@@ -163,7 +163,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.0-beta]\n\nBeta release.\n")
             
             old = None
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 versions_with_beta, self.sample_releases, old,
                 "feat: bump version", changed,
@@ -209,7 +209,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.1]\n\nPatch release.\n")
             
             old = self.sample_versions  # 1.0.0
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 current_versions, self.sample_releases, old,
                 "feat: bump version", changed,
@@ -234,7 +234,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.1]\n\nPatch release.\n")
             
             old = self.sample_versions
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 current_versions, self.sample_releases, old,
                 "feat: bump version [no-build]", changed,
@@ -259,7 +259,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.1]\n\nPatch release.\n")
             
             old = self.sample_versions
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 current_versions, self.sample_releases, old,
                 "feat: bump version [no-release]", changed + ["platforms/fabric/src/main/java/Foo.java"],
@@ -334,7 +334,7 @@ class TestReleasePlan(unittest.TestCase):
                 "api": {"version": "1.0.0", "overrides": {}},
                 "backend": {"zstd": {"version": "1.0.0", "overrides": {}}}
             }
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 versions_with_api, self.sample_releases, old,
                 "feat: bump mod version", changed,
@@ -364,7 +364,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.1]\n\nPatch.\n")
             
             old = self.sample_versions
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 current_versions, self.sample_releases, old,
                 "feat: bump version", changed,
@@ -401,7 +401,7 @@ class TestReleasePlan(unittest.TestCase):
             (tmpdir / "CHANGELOG.md").write_text("## [1.0.1]\n\nPatch.\n")
             
             old = self.sample_versions
-            changed = ["versions.json5"]
+            changed = [".lists/version.json5"]
             result = plan(
                 current_versions, releases_with_agent, old,
                 "feat: bump version", changed,
@@ -416,7 +416,7 @@ class TestReleasePlan(unittest.TestCase):
     def test_prerelease_filters_and_build_plan_covers_release_assets(self):
         current = dict(self.sample_versions, mod={"version": "1.1.0-ALPHA.1", "overrides": {}})
         args = (current, self.sample_releases, self.sample_versions)
-        changed = ["versions.json5", "platforms/fabric/src/main/java/Foo.java"]
+        changed = [".lists/version.json5", "platforms/fabric/src/main/java/Foo.java"]
         result = plan(*args, "Bump alpha", changed)
         builds = {job["target"]: job for job in result["build_jobs"]}
         self.assertEqual(set(builds), {"fabric1.20.1", "quilt1.20.1"})
@@ -501,8 +501,8 @@ class TestReleasePlan(unittest.TestCase):
                 output = Path(directory) / "plan.json"
                 commit = "a" * 40
                 changelog = "## [1.0.0]\n\nInitial release." if "force-relaese" in message else ""
-                files = {"versions.json5": json.dumps(self.sample_versions),
-                         "releases.json5": json.dumps(self.sample_releases), "CHANGELOG.md": changelog}
+                files = {"version.json5": json.dumps(self.sample_versions),
+                         "release.json5": json.dumps(self.sample_releases), "CHANGELOG.md": changelog}
 
                 def git_missing_base(*args, **_):
                     if args[0] == "log":
@@ -537,7 +537,7 @@ class TestReleasePlan(unittest.TestCase):
 
     def test_version_table_edit_without_effective_version_change_is_a_no_op(self):
         result = plan(self.sample_versions, self.sample_releases, self.sample_versions,
-                      "Reformat version tables", ["versions.json5", "releases.json5"])
+                      "Reformat version tables", [".lists/version.json5", ".lists/release.json5"])
         self.assertFalse(result["should_release"])
         self.assertFalse(result["should_build"])
 
@@ -548,6 +548,13 @@ class TestReleasePlan(unittest.TestCase):
     def test_ci_scripts_are_build_inputs(self):
         self.assertTrue(code_changed([".github/scripts/release_plan.py"]))
         self.assertTrue(code_changed([".github/scripts/build_target.ps1"]))
+
+    def test_lists_build_manifests_are_build_inputs(self):
+        self.assertTrue(code_changed([".lists/targets.json5"]))
+        self.assertTrue(code_changed([".lists/sources.json5"]))
+        self.assertTrue(code_changed([".lists/.rules/main.json5"]))
+        self.assertFalse(code_changed([".lists/version.json5"]))
+        self.assertFalse(code_changed([".lists/release.json5"]))
 
 
 if __name__ == "__main__":

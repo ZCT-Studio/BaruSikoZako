@@ -1,0 +1,66 @@
+{
+  version: 1,
+  layout: { strict: true },
+  // 相对于仓库根目录
+  mixinTemplate: "platforms/minecraft/src/mixin/barusikozako.mixins.json",
+
+  // 源码层：路径相对于 platforms/，目录下可有 java/ 与 resources/。
+  // main 只保留所有目标共用的文件；版本差异用条件编译，加载器差异用独占层。
+  layers: {
+    main: "minecraft/src/main",
+    modernJava: "minecraft/src/modernJava",
+    legacyJava: "minecraft/src/legacyJava",
+    fabric: "fabric/src/main",
+    fabricLegacy: "fabric-legacy/src/main",
+    forgeModern: "fml/src/forgeModern",
+    forgeLegacy: "fml/src/forgeLegacy",
+    forgeClassicBus: "fml/src/forgeClassicBus",
+    forgeTypedBus: "fml/src/forgeTypedBus",
+    forgeSrg: "fml/src/forgeSrg",
+    officialLegacy: "fml/src/officialLegacy",
+    neoforge: "fml/src/neoforge",
+    neoforge1211: "fml/src/neoforge1211",
+  },
+
+  // 外部规则文件，路径相对于 .lists/.rules/，按列表顺序加载。
+  rules: [
+    "main.json5",
+  ],
+
+  // 构建目标注册：目标 ID 同时给出加载器与 Minecraft 版本，值为 Java release。
+  jdk: {
+    // ---------------------------------------------------------------- Fabric 现代
+    "fabric@26.1.2": 25,
+    "fabric@26.2": 25,
+    "fabric@26.3": 25,
+
+    // ---------------------------------------------------------------- Fabric 旧版
+    "fabric@1.20.1": 17,
+    "fabric@1.21.1": 21,
+    "fabric@1.21.10": 21,
+    "fabric@1.21.11": 21,
+
+    // ---------------------------------------------------------------- Forge
+    "forge@1.20.1": 17,
+    "forge@1.21.1": 21,
+    "forge@1.21.10": 21,
+    "forge@1.21.11": 21,
+    "forge@26.1.2": 25,
+    "forge@26.2": 25,
+    "forge@26.3": 25,
+
+    // ---------------------------------------------------------------- NeoForge
+    "neoforge@1.21.1": 21,
+    "neoforge@1.21.10": 21,
+    "neoforge@1.21.11": 21,
+    "neoforge@26.1.2": 25,
+    "neoforge@26.2": 25,
+    "neoforge@26.3": 25,
+  },
+
+  // 可选的单个目标显式覆盖，优先级最高。键必须已在上面的 jdk 中注册；
+  // 字段与规则文件一致（source / resource / mixin）。
+  // targets: {
+  //   "fabric@26.3": { mixin: { refmap: true } },
+  // },
+}

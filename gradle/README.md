@@ -22,11 +22,32 @@ loaders=fabric,forge,neoforge
 | `engine/mod-runtime` | 从同一套源码生成主模组内部类型，以独立包名随主模组分发。 |
 | `engine`、`backends` | Core；后端 SPI、压缩和 Zstd 实现。加载器专用的 Zstd 打包由本体入口管理。 |
 
-项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `releases.json5` 声明，组件版本由 `versions.json5` 提供。详见[版本与发布](../versions.README.md)。
+项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `.lists/release.json5` 声明，组件版本由 `.lists/version.json5` 提供。详见[版本与发布](../versions.README.md)。
 
 ## 多版本源码管理
 
-`targets.json5`（仓库根目录）是源码层、资源层、Java 版本与 Mixin 配置的唯一清单。`layers` 路径相对 `platforms/`，目录下可有 `java/` 与 `resources/`；目标键为 `<加载器>@<Minecraft版本>`。后声明的层优先；仓库启用 `layout.strict = true`，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
+构建清单位于仓库根目录 `.lists/`：
+
+| 文件 | 用途 |
+| --- | --- |
+| `targets.json5` | 目标注册（`jdk`）、源码层 `layers`、规则文件列表 `rules` 与可选的单目标覆盖 `targets`。 |
+| `sources.json5`、`resources.json5`、`mixins.json5` | 所有目标的公共默认源码层、资源层与 Mixin 开关。 |
+| `.rules/*.json5` | 命名分组与条件规则。 |
+
+`layers` 路径相对 `platforms/`，目录下可有 `java/` 与 `resources/`；目标键为 `<加载器>@<Minecraft版本>`，Java 版本由 `targets.json5` 的 `jdk` 映射给出。规则文件在 `groups` 中定义 `source`、`resource`、`mixin` 分组，在 `rule` 中按条件选择分组或单项：
+
+```json5
+{
+  groups: {
+    source: { Modern: ["main", "modernJava"] },
+  },
+  rule: {
+    "mc >= 26": { source: ["Modern"], mixin: { injectors: false } },
+  },
+}
+```
+
+规则按 `rules` 列表和文件内声明顺序应用；所有匹配规则都生效，后面的规则覆盖前面的字段。集合默认替换，也可用 `{ groups: [...], add: [...], remove: [...] }` 追加或移除；未声明的字段继承已有值，布尔开关可显式开启或关闭。规则文件路径相对 `.lists/.rules/`。后声明的层优先；仓库启用 `layout.strict = true`，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
 
 小范围差异用注释式条件编译：
 
@@ -40,6 +61,14 @@ return player.clientInformation().language();
 
 指令支持 `//? if`、`//? elif`、`//? else`、`//? end`，表达式可用 `mc`、`loader`、`java`。非活跃行以 `//?~ ` 前缀保留，文件始终可被 IDEA 解析。
 
+行内小改动可用块注释指令，避免把整行拆成两份：
+
+```java
+int permission = /*? if mc < 1.21.11 {*/3/*?} else {*/4/*?}*/;
+```
+
+分支内容位于块注释指令之间，支持 `else`/`elif`，结束指令写作 `/*?}`。非活跃片段以 `/*?~ ` 与 ` */` 包裹，文件仍为合法 Java。块注释分支暂不支持嵌套；被禁用的片段不能包含 `*/`。
+
 切换 IDEA 活跃目标（原地重写当前分支并更新 `gradle/local-target.properties`），然后执行 **Reload All Gradle Projects**：
 
 ```powershell
@@ -48,7 +77,7 @@ return player.clientInformation().language();
 
 同一操作也在任务树中提供：`targets → <版本> → Tasks → ide → activateFabric / activateForge / activateNeoForge`。切换后仍需 Reload，才能更新参与导入的项目集合；Quilt 复用 Fabric 的清单目标。
 
-`checkTargetSources` 校验清单、层目录、条件指令、活跃分支与 Mixin 类。构建非活跃目标时自动生成 `build/target-sources/<目标>/java` 视图，因此切换活跃目标只影响 IDE 视图，不影响矩阵构建。
+`checkTargetSources` 校验 `.lists/` 清单、层目录、条件指令、活跃分支与 Mixin 类。构建非活跃目标时自动生成 `build/target-sources/<目标>/java` 视图，因此切换活跃目标只影响 IDE 视图，不影响矩阵构建。
 
 ## 常用命令
 

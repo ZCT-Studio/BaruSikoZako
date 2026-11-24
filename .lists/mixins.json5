@@ -1,0 +1,6 @@
+{
+  // 所有目标默认的 Mixin 开关。规则文件通过 mixin 按字段覆盖。
+  injectors: false,
+  refmap: false,
+  mixins: [],
+}

@@ -220,7 +220,7 @@ class Json5Reader(text: String) {
 
 val versionTable: Map<String, Any?> = runCatching {
     @Suppress("UNCHECKED_CAST")
-    Json5Reader(rootDir.resolve("versions.json5").readText()).read() as Map<String, Any?>
+    Json5Reader(rootDir.resolve(".lists/version.json5").readText()).read() as Map<String, Any?>
 }.getOrElse { emptyMap() }
 
 @Suppress("UNCHECKED_CAST")

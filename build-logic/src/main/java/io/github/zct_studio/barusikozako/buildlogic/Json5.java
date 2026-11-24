@@ -14,19 +14,26 @@ import java.util.Map;
  */
 public final class Json5 {
     private final String source;
+    private final boolean rejectDuplicateKeys;
     private int at;
 
-    private Json5(String text) {
+    private Json5(String text, boolean rejectDuplicateKeys) {
         this.source = stripComments(text);
+        this.rejectDuplicateKeys = rejectDuplicateKeys;
     }
 
     public static Object parse(String text) {
-        return new Json5(text).read();
+        return new Json5(text, false).read();
     }
 
     @SuppressWarnings("unchecked")
     public static Map<String, Object> parseObject(String text) {
-        Object value = parse(text);
+        return parseObject(text, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> parseObject(String text, boolean rejectDuplicateKeys) {
+        Object value = new Json5(text, rejectDuplicateKeys).read();
         if (!(value instanceof Map<?, ?> map)) throw new IllegalArgumentException("JSON5 root must be an object");
         return (Map<String, Object>) map;
     }
@@ -93,6 +100,9 @@ public final class Json5 {
             skip();
             if (at >= source.length() || source.charAt(at) != ':') throw new IllegalArgumentException("Expected ':' at offset " + at);
             at++;
+            if (rejectDuplicateKeys && result.containsKey(key)) {
+                throw new IllegalArgumentException("Duplicate key '" + key + "' at offset " + at);
+            }
             result.put(key, value());
             skip();
             if (at < source.length() && source.charAt(at) == ',') {
