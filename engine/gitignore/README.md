@@ -1,6 +1,6 @@
 # 世界备份排除规则
 
-世界备份启动后，从 `config/barusikozako/world.gitignore` 读取 UTF-8 规则。新文件不存在时先尝试重命名原来的 `save.gitignore`，都不存在时生成只有注释的模板。已存在的 `world.gitignore` 优先。当前只备份世界，游戏根目录不会参与扫描。
+世界备份启动后，从 `config/barusikozako/world.gitignore` 读取 UTF-8 规则。新文件不存在时先尝试重命名原来的 `save.gitignore`，都不存在时生成只有注释的模板，并默认排除 `session.lock`。已存在的 `world.gitignore` 优先。当前只备份世界，游戏根目录不会参与扫描。
 
 世界内的 `local.gitignore` 从已捕获的读取视图取得。每份文件的规则以所在目录为基准，只作用于该目录下的条目。全局规则先判定，同文件内最后一条匹配规则优先，较深目录的局部规则可覆盖较浅层的普通规则。父目录被排除后，位于该目录里的规则和子项例外不会打开它。[Gitignore 规范](https://git-scm.com/docs/gitignore#_pattern_format)
 

@@ -36,6 +36,7 @@ public final class FabricEntrypoint implements ModInitializer {
                     .toList();
             }
         });
+        BaruSikoZakoServer.bootstrapConfig();
         var runtime = new BaruSikoZakoServer();
         CommandRegistrationCallback.EVENT.register((dispatcher, access, environment) -> runtime.registerCommands(dispatcher));
         ServerLifecycleEvents.SERVER_STARTED.register(runtime::onServerStarted);

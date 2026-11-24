@@ -19,6 +19,18 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+## [1.0.3-alpha.1] - 2026-11-25
+
+### Changed / 变更
+
+- Configuration files are now created during mod initialization instead of after the server finishes starting.(Thanks for me:( )
+<br> 配置文件现在会在模组初始化时创建，不再等到服务器启动完成。(感谢我在自己的专用服务器发现这个问题，它可能会使很多人不知道有备份排除)
+- The default world ignore rules now exclude `session.lock`.
+<br> 默认世界忽略规则现在增加排除项 `session.lock`。
+
+>**_This Changelog isn't AIGC_**
+><br>**_本次更新日志为非AI生成内容_**
+
 ## [1.0.2-hotfix] - 2026-11-25
 
 ### Fixed / 修复

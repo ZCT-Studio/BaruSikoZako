@@ -28,6 +28,7 @@ public final class MainMod {
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null)))
                 .toList()));
+        BaruSikoZakoServer.bootstrapConfig();
         var runtime = new BaruSikoZakoServer();
         RegisterCommandsEvent.BUS.addListener(event -> runtime.registerCommands(event.getDispatcher()));
         ServerStartedEvent.BUS.addListener(event -> runtime.onServerStarted(event.getServer()));

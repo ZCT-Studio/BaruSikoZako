@@ -24,6 +24,7 @@ public final class MainMod {
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null)))
                 .toList()));
+        BaruSikoZakoServer.bootstrapConfig();
         ForgeEvents.bind(new BaruSikoZakoServer());
     }
 }

@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako;
 
+import io.github.zct_studio.barusikozako.core.BackupExclusions;
 import io.github.zct_studio.barusikozako.runtime.BackupIntegration;
 import io.github.zct_studio.barusikozako.runtime.BackupRequest;
 import io.github.zct_studio.barusikozako.runtime.BackupService;
@@ -322,6 +323,20 @@ public final class BaruSikoZakoServer {
     private static String taskLabel(CommandSourceStack source, TaskState state) {
         return Translations.text(source, "task.operation." + state.operation().name().toLowerCase(Locale.ROOT)) + " · " +
             Translations.text(source, "task.phase." + state.phase().name().toLowerCase(Locale.ROOT));
+    }
+
+    /** 在模组初始化阶段创建默认配置，无需等待服务器启动完成。 */
+    public static void bootstrapConfig() {
+        try {
+            ServerConfig.load(true);
+        } catch (IOException | RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not create server configuration", failure);
+        }
+        try {
+            BackupExclusions.ensureConfig(LoaderBridge.configDirectory().resolve("barusikozako"));
+        } catch (IOException | RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not create backup ignore configuration", failure);
+        }
     }
 
     public synchronized void onServerStarted(MinecraftServer server) {

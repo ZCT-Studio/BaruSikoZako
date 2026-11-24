@@ -67,6 +67,18 @@ public final class BackupExclusions {
         throws IOException {
         Path source = captureRoot.toAbsolutePath().normalize();
         if (source.getFileName() == null) throw new IOException("Backup source has no world name");
+        var world = prepareConfig(configDirectory);
+        synchronized (BackupExclusions.class) {
+            return new BackupExclusions(source.getFileName().toString(), worldContainer, world, Map.copyOf(REGISTERED));
+        }
+    }
+
+    /** 启动阶段创建忽略规则模板，不读取世界。 */
+    public static void ensureConfig(Path configDirectory) throws IOException {
+        prepareConfig(configDirectory);
+    }
+
+    private static GitIgnoreRules prepareConfig(Path configDirectory) throws IOException {
         Files.createDirectories(configDirectory);
         Path legacy = configDirectory.resolve("save.gitignore");
         Path current = configDirectory.resolve("world.gitignore");
@@ -77,17 +89,15 @@ public final class BackupExclusions {
                 // 另一项任务已经建立新的配置
             }
         }
-        var world = readConfig(configDirectory, "world.gitignore", "world directory");
-        synchronized (BackupExclusions.class) {
-            return new BackupExclusions(source.getFileName().toString(), worldContainer, world, Map.copyOf(REGISTERED));
-        }
+        return readConfig(configDirectory, "world.gitignore", "world directory");
     }
 
     private static GitIgnoreRules readConfig(Path directory, String fileName, String scope) throws IOException {
         Path path = directory.resolve(fileName);
         if (Files.notExists(path, NOFOLLOW)) {
             try {
-                Files.writeString(path, "# Gitignore rules relative to the " + scope + "\n", StandardOpenOption.CREATE_NEW);
+                Files.writeString(path, "# Gitignore rules relative to the " + scope + "\nsession.lock\n",
+                    StandardOpenOption.CREATE_NEW);
             } catch (FileAlreadyExistsException concurrentCreation) {
                 // 并发任务已经创建配置
             }
