@@ -1,5 +1,6 @@
 import java.util.Properties
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
+import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 
 plugins {
@@ -25,6 +26,7 @@ val runtimeProjects = listOf(":engine:mod-runtime", ":platforms:spi", ":backends
 val backendRuntimeSuffix = if (runtimeMinecraft == minecraftVersion) "" else "-$runtimeMinecraft"
 val backendArchive = "barusikozako_backendzstd-fabric$backendRuntimeSuffix-${extra["zstdVersion"]}.jar"
 val packageTarget = "${extra["fabricPackageLoader"]}$runtimeMinecraft"
+val mixinConfig = MinecraftSourcesPlugin.target(project, MinecraftSourcesPlugin.load(project)).mixinConfigName()
 
 repositories {
     mavenCentral()
@@ -60,6 +62,7 @@ tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
         "minecraftVersions" to supportedMinecraft.joinToString("\",\""),
         "loaderRequirement" to project.extra["fabricLoaderRequirement"],
+        "mixinConfig" to mixinConfig,
         "modDescription" to if (releaseAlpha) "BaruSikoZako backup engine for Fabric dedicated servers (Alpha)."
             else "BaruSikoZako server integration development build.")
     @Suppress("UNCHECKED_CAST")

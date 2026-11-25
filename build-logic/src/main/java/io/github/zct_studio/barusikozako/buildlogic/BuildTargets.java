@@ -37,15 +37,23 @@ public final class BuildTargets {
 
     /** 单个构建目标。 */
     public record Target(String key, String game, String loader, int javaRelease,
-                         List<String> sources, List<String> resources, MixinConfig mixin) {
+                         List<String> sources, List<String> resources, boolean merged, MixinConfig mixin) {
         public ConditionalProcessor.Context conditionContext() {
             return new ConditionalProcessor.Context(game, loader, javaRelease);
+        }
+
+        /**
+         * Mixin 配置文件名。合并发布的目标按 Loader 区分，避免多个 Loader 的配置在合并 jar 中同名冲突；
+         * 其余目标保持原有的单一文件名。
+         */
+        public String mixinConfigName() {
+            return merged ? "barusikozako." + loader + ".mixins.json" : "barusikozako.mixins.json";
         }
     }
 
     private static final String LISTS = ".lists";
     private static final String RULES = ".rules";
-    private static final Set<String> TOP_KEYS = Set.of("rules", "jdk", "targets");
+    private static final Set<String> TOP_KEYS = Set.of("rules", "jdk", "targets", "merge");
     private static final Set<String> TARGET_KEYS = Set.of("source", "resource", "mixin");
     private static final Set<String> MIXIN_KEYS = Set.of("injectors", "plugin", "refmap", "mixins", "groups", "add", "remove");
     private static final Set<String> COLLECTION_KEYS = Set.of("groups", "add", "remove");
@@ -82,6 +90,7 @@ public final class BuildTargets {
         Set<String> sourceCatalog = sourceLayers.names();
         Set<String> resourceCatalog = resourceLayers.names();
         Set<String> mixinCatalog = mixins.names();
+        Set<String> mergeGames = uniqueNames(document.get("merge"), ".lists/targets.json5.merge");
         Map<String, Object> overrides = table(document.get("targets"));
         for (String key : overrides.keySet()) {
             if (!jdk.containsKey(key)) {
@@ -137,7 +146,8 @@ public final class BuildTargets {
             }
             validateCompatibility(key, id.game, id.loader, compatibility);
             Target target = new Target(key, id.game, id.loader, java,
-                List.copyOf(state.sources), List.copyOf(state.resources), state.mixin.freeze());
+                List.copyOf(state.sources), List.copyOf(state.resources), mergeGames.contains(id.game),
+                state.mixin.freeze());
             if (targets.put(key, target) != null) throw new IllegalStateException("Duplicate target '" + key + "'");
         }
         if (targets.isEmpty()) throw new IllegalStateException(".lists/targets.json5 registers no build targets");

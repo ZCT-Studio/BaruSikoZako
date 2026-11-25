@@ -21,6 +21,8 @@ TIERS = {
     "shift": {"alpha", "beta", "rc", "release"},
     "latest": {"snapshot", "alpha", "beta", "rc", "release"},
 }
+TIER_ORDER = {"lts": 0, "nlts": 1, "shift": 2, "latest": 3}
+MERGE_LOADERS = ("fabric", "forge", "neoforge")
 IDS = {"mod": "barusikozako", "api": "barusikozako_api"}
 BUILDERS = {"fabric", "quilt", "forge", "neoforge", "agent"}
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
@@ -133,7 +135,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|merge-jars|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
         message, re.IGNORECASE)}
 
 
@@ -141,12 +143,17 @@ def requests_forced_release(flags):
     return bool(flags & {"force-release", "force-relaese"})
 
 
-def plan(current, release_table, previous, message, changed, markdown="", *, build_only=False, force_build=False):
+def plan(current, release_table, previous, message, changed, markdown="", *, build_only=False, force_build=False,
+         merge_games=frozenset()):
     selected = targets(release_table)
     flags = commit_flags(message)
     force_release = requests_forced_release(flags)
     build_all = "build-all" in flags
     build_lts = "build-lts" in flags
+    # 合并构建与合并发布都是可选的，只有提交信息带 [merge-jars] 才启用
+    merge_build = "merge-jars" in flags
+    if not merge_build:
+        merge_games = frozenset()
     # [build-all]/[build-lts] 只规划构建，不生成发布；[no-build] 仍然优先。
     if (build_all or build_lts) and "no-build" not in flags:
         force_build = True
@@ -165,8 +172,8 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     if "release-latest" in flags:
         narrowed.add("latest")
 
-    def job(game, platforms, versions, components, build_only, require_notes=False):
-        loader = platforms[0]
+    def job(game, platforms, versions, components, build_only, require_notes=False, loader=None):
+        loader = loader or platforms[0]
         target = loader + game
         assets = []
         for component in components:
@@ -183,17 +190,35 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         return {"game": game, "loader": loader, "platforms": platforms, "target": target,
                 "versions": versions, "assets": assets, "build_only": build_only}
 
+    units = []
+    for game in sorted({game for game, _ in selected}):
+        members = sorted(platform for (candidate, platform) in selected if candidate == game)
+        merge_members = [platform for platform in members if platform in MERGE_LOADERS]
+        if game in merge_games and len(merge_members) >= 2:
+            tier = max((selected[(game, platform)] for platform in merge_members), key=TIER_ORDER.__getitem__)
+            # Quilt 直接兼容 Fabric 实现，随合并产物一起分发，避免额外生成重复的 Fabric 包
+            units.append((game, merge_members + [platform for platform in members if platform == "quilt"], tier))
+        else:
+            units.extend((game, [platform], selected[(game, platform)]) for platform in members)
+
     if force_build or "no-build" not in flags:
-        for (game, platform), tier in sorted(selected.items()):
-            versions = resolve(current, platform, game)
-            before = resolve(previous, platform, game) if catalog_changed and previous else {}
-            zstd = bundled_zstd_version(current, platform, game)
-            previous_zstd = bundled_zstd_version(previous, platform, game) if catalog_changed and previous else None
-            requested = "no-build" not in flags and (build_all or (build_lts and tier == "lts"))
+        for game, platforms, tier in units:
+            merged = len(platforms) > 1
+            loader = "universal" if merged else platforms[0]
+            versions = resolve(current, platforms[0], game)
+            if merged:
+                for platform in platforms[1:]:
+                    if resolve(current, platform, game) != versions:
+                        raise ValueError(f"Cannot merge {', '.join(platforms)} for {game}: component versions differ")
+            before = resolve(previous, platforms[0], game) if catalog_changed and previous else {}
+            zstd = bundled_zstd_version(current, platforms[0], game)
+            previous_zstd = bundled_zstd_version(previous, platforms[0], game) if catalog_changed and previous else None
+            requested = "no-build" not in flags and (
+                build_all or (build_lts and tier == "lts") or (merge_build and merged))
             automatic = not build_all and not build_lts and tier == "latest"
             if requested or (automatic and
                              (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd)))):
-                build = job(game, [platform], versions, versions, True)
+                build = job(game, platforms, versions, versions, True, loader=loader)
                 build_jobs[build["target"]] = build
             bypass_tier = "release-all" in flags
             if not allow_release or (not bypass_tier and narrowed and tier not in narrowed):
@@ -202,17 +227,22 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
                             if (force_release or before.get(component) != value) and
                             (bypass_tier or channel(value) in TIERS[tier]))
             if emitted:
-                loader_group = "fabric" if platform in ("fabric", "quilt") else platform
+                loader_group = ("universal" if merged else
+                                "fabric" if platforms[0] in ("fabric", "quilt") else platforms[0])
                 key = (game, loader_group, tuple(versions.items()), zstd, emitted)
-                grouped.setdefault(key, []).append(platform)
+                grouped.setdefault(key, []).append((platforms, loader))
 
-    for (game, _, version_entries, _, emitted), platforms in grouped.items():
+    for (game, _, version_entries, _, emitted), members in grouped.items():
         versions = dict(version_entries)
+        platforms = []
+        loader = members[0][1]
+        for entry_platforms, _ in members:
+            platforms.extend(entry_platforms)
         is_agent = platforms[0] == "agent"
         if not is_agent:
-            release_jobs.append(job(game, platforms, versions, emitted, False, require_notes=True))
+            release_jobs.append(job(game, platforms, versions, emitted, False, require_notes=True, loader=loader))
         # 即使仅发布一个组件，验收也需要当前的配套 JAR
-        build = job(game, platforms, versions, versions, is_agent)
+        build = job(game, platforms, versions, versions, is_agent, loader=loader)
         build_jobs[build["target"]] = build
 
     return {
@@ -223,6 +253,14 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         "should_release": bool(release_jobs),
         "force_release": force_release and bool(release_jobs),
     }
+
+
+def merge_games():
+    try:
+        table = read_table(Path(".lists/targets.json5").read_text(encoding="utf-8"))
+    except (OSError, KeyError, ValueError):
+        return frozenset()
+    return frozenset(str(game) for game in table.get("merge", []))
 
 
 def previous_catalog(base):
@@ -270,7 +308,7 @@ def main():
     result = plan(read_table(Path(".lists/version.json5").read_text(encoding="utf-8")),
                   read_table(Path(".lists/release.json5").read_text(encoding="utf-8")), old,
                   message, changed, markdown,
-                  build_only=build_only, force_build=force_build)
+                  build_only=build_only, force_build=force_build, merge_games=merge_games())
     if result["should_release"]:
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
         repository = os.environ.get("GITHUB_REPOSITORY", "ZCT-Studio/BaruSikoZako")

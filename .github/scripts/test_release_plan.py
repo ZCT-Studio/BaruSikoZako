@@ -17,6 +17,7 @@ NOTES = "## [1.0.0]\n\nInitial release.\n"
 sys.path.insert(0, str(Path(__file__).parent))
 
 import release_plan
+import publish_release
 from release_plan import (
     read_table, channel, resolve, targets, code_changed,
     changelogs, asset_names, plan, previous_catalog,
@@ -602,6 +603,90 @@ class TestReleasePlan(unittest.TestCase):
         self.assertTrue(code_changed([".lists/.rules/main.json5"]))
         self.assertFalse(code_changed([".lists/version.json5"]))
         self.assertFalse(code_changed([".lists/release.json5"]))
+
+    def test_merge_games_plan_one_merged_unit(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.3": {"latest": ["mod"]}},
+        }
+        result = plan(self.sample_versions, releases, self.sample_versions,
+                      "chore: verify merged target [build-all] [merge-jars]", [], merge_games=frozenset({"26.3"}))
+        self.assertEqual([job["target"] for job in result["build_jobs"]], ["universal26.3"])
+        job = result["build_jobs"][0]
+        self.assertEqual(job["loader"], "universal")
+        # Quilt 复用 Fabric 实现，随合并产物一起分发
+        self.assertEqual(job["platforms"], ["fabric", "forge", "neoforge", "quilt"])
+        self.assertEqual({asset["component"] for asset in job["assets"]}, {"mod", "api"})
+        self.assertEqual([path for asset in job["assets"] for path in asset["paths"]],
+                         ["mod/barusikozako-v1.0.0+universal26.3.jar",
+                          "api/barusikozako_api-v1.0.0+universal26.3.jar"])
+
+    def test_merge_only_applies_to_listed_versions(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.2": {"shift": ["mod"]}, "1.20.1": {"lts": ["forge", "mod_fabric"]}},
+        }
+        result = plan(self.sample_versions, releases, self.sample_versions,
+                      "chore: verify targets [build-all] [merge-jars]", [], merge_games=frozenset({"26.2"}))
+        self.assertEqual({job["target"] for job in result["build_jobs"]},
+                         {"universal26.2", "fabric1.20.1", "quilt1.20.1", "forge1.20.1"})
+
+    def test_merge_requires_commit_flag(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.3": {"latest": ["mod"]}},
+        }
+        result = plan(self.sample_versions, releases, self.sample_versions,
+                      "chore: verify targets [build-all]", [], merge_games=frozenset({"26.3"}))
+        targets = {job["target"] for job in result["build_jobs"]}
+        self.assertNotIn("universal26.3", targets)
+        self.assertLessEqual({"fabric26.3", "forge26.3", "neoforge26.3"}, targets)
+
+    def test_merge_flag_triggers_merged_build(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.3": {"latest": ["mod"]}},
+        }
+        result = plan(self.sample_versions, releases, self.sample_versions,
+                      "chore: verify merged [merge-jars]", [], merge_games=frozenset({"26.3"}))
+        self.assertEqual([job["target"] for job in result["build_jobs"]], ["universal26.3"])
+        self.assertEqual(result["build_jobs"][0]["loader"], "universal")
+
+    def test_merged_unit_requires_matching_component_versions(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.3": {"latest": ["mod"]}},
+        }
+        current = dict(self.sample_versions, api={"version": "1.0.0", "overrides": {"neoforge26.3": "1.0.1"}})
+        with self.assertRaises(ValueError):
+            plan(current, releases, None, "chore: verify targets [build-all] [merge-jars]", [],
+                 merge_games=frozenset({"26.3"}))
+
+
+class TestPublishRelease(unittest.TestCase):
+    MERGED = {"target": "universal26.3", "game": "26.3", "loader": "universal",
+              "platforms": ["fabric", "forge", "neoforge", "quilt"]}
+
+    def test_storefront_loaders_accept_merged_target(self):
+        self.assertEqual(publish_release.storefront_loaders(self.MERGED), self.MERGED["platforms"])
+
+    def test_storefront_loaders_reject_invalid_merged_selection(self):
+        for platforms in ([], ["fabric"], ["fabric", "bukkit"]):
+            with self.subTest(platforms=platforms), self.assertRaises(ValueError):
+                publish_release.storefront_loaders(dict(self.MERGED, platforms=platforms))
+
+    def test_merged_curseforge_versions_cover_every_platform(self):
+        self.assertEqual(publish_release.curseforge_versions(self.MERGED),
+                         ["26.3", "Fabric", "Forge", "NeoForge", "Quilt", "Client", "Server"])
+
+    def test_ordered_storefront_accepts_merged_jobs(self):
+        entry = {"component": "mod", "version": "1.0.0", "paths": [], "notes": "", "channel": "release"}
+        self.assertEqual(len(publish_release.ordered_storefront([(self.MERGED, entry, [])])), 1)
 
 
 if __name__ == "__main__":

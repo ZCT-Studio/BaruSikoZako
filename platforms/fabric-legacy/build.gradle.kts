@@ -1,5 +1,6 @@
 import java.util.Properties
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
+import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 import net.fabricmc.loom.task.RemapJarTask
 
@@ -15,6 +16,7 @@ val compatibility = Properties().apply {
 }
 val game = parent!!.name.removePrefix("mc").replace('_', '.')
 val packageTarget = "${extra["fabricPackageLoader"]}$game"
+val mixinConfig = MinecraftSourcesPlugin.target(project, MinecraftSourcesPlugin.load(project)).mixinConfigName()
 val backendArchive = "barusikozako_backendzstd-fabric-$game-${extra["zstdVersion"]}.jar"
 val apiVersion = requireNotNull(compatibility.getProperty("fabric.legacy.api.$game")) {
     "No reviewed Fabric API input for Minecraft $game"
@@ -55,7 +57,7 @@ dependencies {
 
 tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
-        "minecraftVersions" to game, "javaVersion" to runtimeJava,
+        "minecraftVersions" to game, "javaVersion" to runtimeJava, "mixinConfig" to mixinConfig,
         "loaderRequirement" to project.extra["fabricLoaderRequirement"], "modDescription" to "BaruSikoZako remapped server development build.")
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["mod"] as Map<String, Any?>

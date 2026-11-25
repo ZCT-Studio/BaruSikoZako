@@ -22,7 +22,7 @@ loaders=fabric,forge,neoforge
 | `engine/mod-runtime` | 从同一套源码生成主模组内部类型，以独立包名随主模组分发。 |
 | `engine`、`backends` | Core；后端 SPI、压缩和 Zstd 实现。加载器专用的 Zstd 打包由本体入口管理。 |
 
-项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `.lists/release.json5` 声明，组件版本由 `.lists/version.json5` 提供。详见[版本与发布](../versions.README.md)。
+项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `.lists/release.json5` 声明，组件版本由 `.lists/version.json5` 提供。
 
 ## 多版本源码管理
 

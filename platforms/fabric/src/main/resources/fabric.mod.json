@@ -11,7 +11,7 @@
   "entrypoints": {
     "main": ["io.github.zct_studio.barusikozako.fabric.FabricEntrypoint"]
   },
-  "mixins": ["barusikozako.mixins.json"],
+  "mixins": ["${mixinConfig}"],
   "depends": {
     "fabricloader": "${loaderRequirement}",
     "minecraft": ["${minecraftVersions}"],
