@@ -9,16 +9,21 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public record Snapshot(UUID id, Instant createdAt, String source, Optional<Trigger> trigger) {
+public record Snapshot(UUID id, Instant createdAt, String source, Consistency consistency, Optional<Trigger> trigger) {
     public Snapshot {
         Objects.requireNonNull(id);
         Objects.requireNonNull(createdAt);
+        Objects.requireNonNull(consistency);
         Objects.requireNonNull(trigger);
         if (source.isBlank()) throw new IllegalArgumentException("missing logical source identifier");
     }
 
+    public Snapshot(UUID id, Instant createdAt, String source, Optional<Trigger> trigger) {
+        this(id, createdAt, source, Consistency.STRICT, trigger);
+    }
+
     public Snapshot(UUID id, Instant createdAt, String source) {
-        this(id, createdAt, source, Optional.empty());
+        this(id, createdAt, source, Consistency.STRICT, Optional.empty());
     }
 
     public record Trigger(String source, String reason, Map<String, String> metadata) {

@@ -94,17 +94,26 @@ public interface BackupService {
     record RepositoryInfo(String id, String displayName) {}
 
     record SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId,
-                        Optional<BackupRequest.Trigger> trigger) {
+                        Consistency consistency, Optional<BackupRequest.Trigger> trigger) {
         public SnapshotInfo {
+            Objects.requireNonNull(consistency);
             Objects.requireNonNull(trigger);
         }
 
+        public SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId,
+                            Optional<BackupRequest.Trigger> trigger) {
+            this(snapshot, createdAt, sourceId, Consistency.STRICT, trigger);
+        }
+
         public SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId) {
-            this(snapshot, createdAt, sourceId, Optional.empty());
+            this(snapshot, createdAt, sourceId, Consistency.STRICT, Optional.empty());
         }
     }
 
     record CapabilityState(BackupRequest.Kind operation, Availability availability) {}
+
+    /** 快照捕获时的一致性等级；旧快照按 strict 处理 */
+    enum Consistency { STRICT, RELAXED }
 
     enum Availability { AVAILABLE, TEMPORARILY_UNAVAILABLE, UNSUPPORTED }
 }

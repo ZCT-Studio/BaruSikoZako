@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako.zstd;
 
+import io.github.zct_studio.barusikozako.backend.Consistency;
 import io.github.zct_studio.barusikozako.backend.Entry;
 import io.github.zct_studio.barusikozako.backend.Repository;
 import io.github.zct_studio.barusikozako.backend.Snapshot;
@@ -18,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonGenerator;
@@ -32,6 +34,7 @@ final class Manifest {
     static final long CHUNK_FORMAT = 2L;
     private static final String FIXED_CHUNKS = "sha256-fixed-65536";
     private static final String TRIGGER_METADATA = "trigger-metadata";
+    private static final String CAPTURE_CONSISTENCY = "capture-consistency";
     private static final int LINE_LIMIT = 64 * 1024;
     private static final JsonFactory JSON = JsonFactory.builder()
         .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
@@ -49,10 +52,12 @@ final class Manifest {
             json.writeStringProperty("id", snapshot.id().toString());
             json.writeStringProperty("createdAt", snapshot.createdAt().toString());
             json.writeStringProperty("source", snapshot.source());
+            json.writeStringProperty("consistency", snapshot.consistency().name().toLowerCase(java.util.Locale.ROOT));
             json.writeName("requiredFeatures");
             json.writeStartArray();
             if (format == CHUNK_FORMAT) json.writeString(FIXED_CHUNKS);
             if (snapshot.trigger().isPresent()) json.writeString(TRIGGER_METADATA);
+            json.writeString(CAPTURE_CONSISTENCY);
             json.writeEndArray();
             if (snapshot.trigger().isPresent()) writeTrigger(json, snapshot.trigger().orElseThrow());
         });
@@ -77,14 +82,19 @@ final class Manifest {
             !Long.valueOf(format).equals(fields.remove("format")) || !id.toString().equals(fields.remove("id")))
             throw new IOException("unsupported manifest header");
         var features = fields.remove("requiredFeatures");
-        var plain = format == CHUNK_FORMAT ? List.of(FIXED_CHUNKS) : List.of();
-        var tagged = format == CHUNK_FORMAT ? List.of(FIXED_CHUNKS, TRIGGER_METADATA) : List.of(TRIGGER_METADATA);
-        if (!plain.equals(features) && !tagged.equals(features)) throw new IOException("unsupported manifest feature");
+        if (!(features instanceof List<?> declared) || declared.size() != new java.util.HashSet<>(declared).size() ||
+            !Set.of(FIXED_CHUNKS, TRIGGER_METADATA, CAPTURE_CONSISTENCY).containsAll(declared))
+            throw new IOException("unsupported manifest feature");
+        boolean fixed = declared.contains(FIXED_CHUNKS);
+        boolean tagged = declared.contains(TRIGGER_METADATA);
+        boolean consistency = declared.contains(CAPTURE_CONSISTENCY);
+        if (fixed != (format == CHUNK_FORMAT)) throw new IOException("unsupported manifest feature");
         try {
-            Optional<Snapshot.Trigger> trigger = tagged.equals(features)
+            Optional<Snapshot.Trigger> trigger = tagged
                 ? Optional.of(readTrigger(fields)) : Optional.empty();
+            var mode = consistency ? Consistency.parse(string(fields.remove("consistency"))) : Consistency.STRICT;
             var snapshot = new Snapshot(id, Instant.parse(string(fields.remove("createdAt"))),
-                string(fields.remove("source")), trigger);
+                string(fields.remove("source")), mode, trigger);
             if (!fields.isEmpty()) throw new IOException("unknown manifest header fields");
             return snapshot;
         } catch (RuntimeException e) {

@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako.core;
 
+import io.github.zct_studio.barusikozako.backend.Consistency;
 import io.github.zct_studio.barusikozako.platform.ReadView;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,11 +36,22 @@ public final class StagedDirectoryView implements ReadView {
     private static final Pattern ABANDONED_NAME = Pattern.compile("\\.barusikozako-view-([0-9]{1,20}|" +
         "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
     private final Path root;
+    private final List<String> tolerated;
     private int sessions;
     private boolean closed;
 
     private StagedDirectoryView(Path root) {
+        this(root, List.of());
+    }
+
+    private StagedDirectoryView(Path root, List<String> tolerated) {
         this.root = root;
+        this.tolerated = List.copyOf(tolerated);
+    }
+
+    /** 宽松捕获中被接受的时间点差异文件；严格捕获始终为空 */
+    public List<String> relaxedChanges() {
+        return tolerated;
     }
 
     /**
@@ -88,16 +100,36 @@ public final class StagedDirectoryView implements ReadView {
                                               BackupEngine.Checkpoint checkpoint, FileClone cloner,
                                               long readBytesPerSecond, int retries, int retryDelayMillis,
                                               java.util.function.Predicate<Path> includeFile) throws IOException {
+        return copyLive(source, destinationParent, budget, checkpoint, cloner, readBytesPerSecond, retries,
+            retryDelayMillis, includeFile, Consistency.STRICT);
+    }
+
+    /** 只接受已完整复制的文件，宽松模式下允许其内容对应不同时间点 */
+    public static StagedDirectoryView copyLive(Path source, Path destinationParent, CopyBudget budget,
+                                              BackupEngine.Checkpoint checkpoint, FileClone cloner,
+                                              long readBytesPerSecond, int retries, int retryDelayMillis,
+                                              java.util.function.Predicate<Path> includeFile,
+                                              Consistency consistency) throws IOException {
         if (retries < 0 || retries > 20 || retryDelayMillis < 0 || retryDelayMillis > 1000)
             throw new IllegalArgumentException("Invalid live copy retry policy");
         return copy(source, destinationParent, budget, checkpoint, cloner, true, readBytesPerSecond,
-            retries, retryDelayMillis, java.util.Objects.requireNonNull(includeFile));
+            retries, retryDelayMillis, java.util.Objects.requireNonNull(includeFile),
+            java.util.Objects.requireNonNull(consistency));
     }
 
     private static StagedDirectoryView copy(Path source, Path destinationParent, CopyBudget budget,
                                             BackupEngine.Checkpoint checkpoint, FileClone cloner, boolean live,
                                             long readBytesPerSecond, int retries, int retryDelayMillis,
                                             java.util.function.Predicate<Path> includeFile)
+        throws IOException {
+        return copy(source, destinationParent, budget, checkpoint, cloner, live, readBytesPerSecond, retries,
+            retryDelayMillis, includeFile, Consistency.STRICT);
+    }
+
+    private static StagedDirectoryView copy(Path source, Path destinationParent, CopyBudget budget,
+                                            BackupEngine.Checkpoint checkpoint, FileClone cloner, boolean live,
+                                            long readBytesPerSecond, int retries, int retryDelayMillis,
+                                            java.util.function.Predicate<Path> includeFile, Consistency consistency)
         throws IOException {
         var pacing = new BackupEngine.ReadPacing(readBytesPerSecond);
         Path sourceRoot = source.toRealPath();
@@ -106,6 +138,7 @@ public final class StagedDirectoryView implements ReadView {
         if (!Files.isDirectory(sourceRoot)) throw new IOException("snapshot source must be a directory");
         checkpoint.check();
         Path stage = Files.createTempDirectory(destination, PREFIX);
+        var tolerated = new ArrayList<String>();
         try {
             Files.walkFileTree(sourceRoot, new SimpleFileVisitor<>() {
                 private ByteBuffer copyBuffer;
@@ -148,9 +181,17 @@ public final class StagedDirectoryView implements ReadView {
                             copyFile(file, relative, output);
                             break;
                         } catch (SourceChanged | NoSuchFileException | AccessDeniedException changed) {
-                            Files.deleteIfExists(output);
+                            boolean complete = changed instanceof SourceChanged source && source.complete();
+                            boolean exhausted = !live || attempt == retries;
                             checkpoint.check();
-                            if (!live || attempt == retries) throw changed;
+                            if (complete && exhausted && consistency == Consistency.RELAXED) {
+                                // 只接受完整复制自身内容的文件，绝不保留截断或未完成的副本
+                                tolerated.add(relative.toString());
+                                bytes += Files.size(output);
+                                break;
+                            }
+                            Files.deleteIfExists(output);
+                            if (exhausted) throw changed;
                             try {
                                 Thread.sleep((long) retryDelayMillis * (attempt + 1));
                             } catch (InterruptedException interrupted) {
@@ -184,12 +225,12 @@ public final class StagedDirectoryView implements ReadView {
                             copyPayload(channel, output, length, relative);
                         }
                         if (channel.size() != length)
-                            throw new SourceChanged("File changed size during capture: " + relative);
+                            throw new SourceChanged("File changed size during capture: " + relative, true);
                     }
                     var actual = unchanged(relative, initial, length);
                     if (live) {
                         if (!MessageDigest.isEqual(hash(file, length), hash(output, length)))
-                            throw new SourceChanged("File contents changed during capture: " + relative);
+                            throw new SourceChanged("File contents changed during capture: " + relative, true);
                         actual = unchanged(relative, initial, length);
                     }
                     Files.setLastModifiedTime(output, actual.lastModifiedTime());
@@ -203,7 +244,7 @@ public final class StagedDirectoryView implements ReadView {
                     if (!actual.isRegularFile() || actual.size() != length ||
                         !initial.lastModifiedTime().equals(actual.lastModifiedTime()) ||
                         !java.util.Objects.equals(initial.fileKey(), actual.fileKey()))
-                        throw new SourceChanged("File was replaced or changed during capture: " + relative);
+                        throw new SourceChanged("File was replaced or changed during capture: " + relative, true);
                     return actual;
                 }
 
@@ -216,13 +257,13 @@ public final class StagedDirectoryView implements ReadView {
                             pacing.beforeRead(checkpoint);
                             int request = pacing.requestSize((int) Math.min(remaining, hashBuffer.length));
                             int count = input.read(hashBuffer, 0, request);
-                            if (count < 0) throw new SourceChanged("File shrank during verification: " + path);
+                            if (count < 0) throw new SourceChanged("File shrank during verification: " + path, true);
                             digest.update(hashBuffer, 0, count);
                             remaining -= count;
                             if (count > 0) pacing.consumed(count);
                         }
                         pacing.beforeRead(checkpoint);
-                        if (input.read() != -1) throw new SourceChanged("File grew during verification: " + path);
+                        if (input.read() != -1) throw new SourceChanged("File grew during verification: " + path, true);
                     }
                     return digest.digest();
                 }
@@ -269,7 +310,7 @@ public final class StagedDirectoryView implements ReadView {
                 }
             });
             checkpoint.check();
-            return new StagedDirectoryView(stage);
+            return new StagedDirectoryView(stage, tolerated);
         } catch (IOException | RuntimeException failure) {
             try {
                 BackupEngine.deleteStage(stage);
@@ -281,7 +322,13 @@ public final class StagedDirectoryView implements ReadView {
     }
 
     private static final class SourceChanged extends IOException {
-        private SourceChanged(String message) { super(message); }
+        private final boolean complete;
+        private SourceChanged(String message) { this(message, false); }
+        private SourceChanged(String message, boolean complete) {
+            super(message);
+            this.complete = complete;
+        }
+        boolean complete() { return complete; }
     }
 
     @FunctionalInterface

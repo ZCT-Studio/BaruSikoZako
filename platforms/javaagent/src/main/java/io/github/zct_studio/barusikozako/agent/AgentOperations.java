@@ -89,6 +89,9 @@ final class AgentOperations implements BackupApiHost.Operations {
             var snapshots = opened.snapshots(page.continuation().map(AgentOperations::snapshotId), page.limit(), LIMITS.archiveBytes());
             return new Page<>(snapshots.entries().stream().map(snapshot -> new SnapshotInfo(
                 new SnapshotRef(REPOSITORY_ID, snapshot.id().toString()), snapshot.createdAt(), snapshot.source(),
+                snapshot.consistency() == io.github.zct_studio.barusikozako.backend.Consistency.STRICT
+                    ? Consistency.STRICT
+                    : Consistency.RELAXED,
                 snapshot.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata()))
             )).toList(), snapshots.next().map(UUID::toString));
         }

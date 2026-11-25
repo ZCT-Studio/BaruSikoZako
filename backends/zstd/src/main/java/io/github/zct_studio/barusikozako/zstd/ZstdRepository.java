@@ -350,11 +350,14 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
     public void rebuild(UUID source, Snapshot independent, UUID operation, Preparation limits, CommitGate gate)
         throws IOException {
         if (writeMode != WriteMode.FULL) throw new IOException("rebuild requires a full writer");
+        var chain = checkedChain(source, limits.checkpoint());
+        var first = chain.get(0);
+        var origin = readMetadata(first.folder(), first.id(), first.commit(), 128L << 20, limits.checkpoint());
+        if (!origin.source().equals(independent.source())) throw new IOException("rebuild source differs from snapshot source");
+        if (origin.consistency() != independent.consistency())
+            independent = new Snapshot(independent.id(), independent.createdAt(), independent.source(),
+                origin.consistency(), independent.trigger());
         try (var writer = prepare(independent, operation, limits)) {
-            var chain = checkedChain(source, limits.checkpoint());
-            var first = chain.get(0);
-            if (!readMetadata(first.folder(), first.id(), first.commit(), 128L << 20, limits.checkpoint()).source()
-                .equals(independent.source())) throw new IOException("rebuild source differs from snapshot source");
             try (var reader = openReader(chain, 0, limits.archiveBytes(), new ZstdOverlay.MemoryBudget(), limits.checkpoint())) {
                 ZstdOverlay.copyVerified(reader, limits, writer);
             }

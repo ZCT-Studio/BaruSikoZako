@@ -79,6 +79,7 @@ public final class PublicApi {
         @Override public CompletionStage<Page<SnapshotInfo>> snapshots(String repositoryId, PageRequest page) {
             return runtime.snapshots(repositoryId, page(page)).thenApply(result -> new Page<>(result.items().stream()
                 .map(info -> new SnapshotInfo(snapshot(info.snapshot()), info.createdAt(), info.sourceId(),
+                    BackupService.Consistency.valueOf(info.consistency().name()),
                     info.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata()))))
                 .toList(), result.next()));
         }

@@ -28,7 +28,7 @@ import net.minecraft.server.level.ServerLevel;
 final class WorldCapture implements io.github.zct_studio.barusikozako.platform.CaptureSource, AutoCloseable {
     enum Edge { TICK_START, TICK_END, EMPTY_PAUSE }
 
-    private static final System.Logger LOG = System.getLogger("BaruSikoZako");
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(WorldCapture.class);
     private static FileLock stageLifetime;
     private static Path ownedStagingParent;
     private final Path world;
@@ -54,11 +54,11 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
             try {
                 strategy = LinuxReflink.probe(world, stagingParent);
             } catch (IOException | RuntimeException | LinkageError failure) {
-                LOG.log(System.Logger.Level.WARNING, "File clone probe failed. Using bounded Java staging.", failure);
+                LOG.warn("File clone probe failed. Using bounded Java staging.", failure);
             }
         }
         reflink = strategy;
-        LOG.log(System.Logger.Level.INFO, "Capture strategy: {0}", reflink == null ? "Java copy" : "XFS file clone with Java fallback");
+        LOG.info("Capture strategy: {}", reflink == null ? "Java copy" : "XFS file clone with Java fallback");
     }
 
     private static synchronized void ownStagingParent(Path parent) throws IOException {
@@ -92,6 +92,37 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
 
     @Override
     public StagedDirectoryView acquire(BooleanSupplier authorized) throws IOException {
+        IOException failure = null;
+        for (int attempt = 0; attempt <= config.captureRetries(); attempt++) {
+            if (attempt > 0) {
+                if (!authorized.getAsBoolean() || stopped) break;
+                LOG.warn("Capture attempt {} failed ({}); capturing again", attempt, failure == null ? "unknown" : failure.getMessage());
+                pauseBeforeRetry(authorized);
+            }
+            try {
+                return acquireOnce(authorized);
+            } catch (IOException failed) {
+                failure = failed;
+            }
+        }
+        if (failure != null) throw failure;
+        throw new InterruptedIOException("Capture was cancelled or the server stopped");
+    }
+
+    private void pauseBeforeRetry(BooleanSupplier authorized) throws InterruptedIOException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(200);
+        while (System.nanoTime() < deadline) {
+            if (!authorized.getAsBoolean() || stopped) throw new InterruptedIOException("Capture retry was cancelled");
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new InterruptedIOException("Capture retry was interrupted");
+            }
+        }
+    }
+
+    private StagedDirectoryView acquireOnce(BooleanSupplier authorized) throws IOException {
         var request = new Request(authorized, TimeUnit.MILLISECONDS.toNanos(config.preparationMillis()));
         if (!available() || !pending.compareAndSet(null, request)) throw new IOException("Capture is occupied or unavailable");
         try {
@@ -189,7 +220,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
                 long start = System.nanoTime();
                 long[] cloned = {0};
                 try {
-                    LOG.log(System.Logger.Level.INFO, "Best-effort background capture started at world tick {0}", worldTick);
+                    LOG.info("Best-effort background capture started at world tick {}", worldTick);
                     var limits = config.readLimits();
                     view = StagedDirectoryView.copyLive(world, stagingParent,
                         new StagedDirectoryView.CopyBudget(limits.contentBytes(), limits.entries(), 128), () -> {
@@ -201,16 +232,20 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
                             if (reflink == null || !reflink.tryClone(file, target, size)) return false;
                             cloned[0] += size;
                             return true;
-                        }, config.backupReadBytesPerSecond(), config.fileRetries(), config.fileRetryDelayMillis());
+                        }, config.backupReadBytesPerSecond(), config.fileRetries(), config.fileRetryDelayMillis(),
+                        path -> true, config.consistency());
+                    if (!view.relaxedChanges().isEmpty())
+                        LOG.warn("Relaxed capture accepted {} files with point-in-time differences: {}",
+                            view.relaxedChanges().size(), view.relaxedChanges());
                     if (!request.mayContinue() || stopped || WorldWrites.unresolvedFailure() != null)
                         throw new InterruptedIOException("Capture was cancelled, stopped or observed a save failure");
                     if (request.result.complete(view)) {
                         view = null;
-                        LOG.log(System.Logger.Level.INFO,
-                            "Best-effort capture prepared: save {0} ms, background copy {1} ms, edge {2}, world tick {3}, cloned bytes {4}",
+                        LOG.info("Best-effort capture prepared: save {} ms, background copy {} ms, edge {}, world tick {}, cloned bytes {}",
                             millis(fence.saveNanos), millis(System.nanoTime() - start), edge, worldTick, cloned[0]);
                     }
                 } catch (IOException | RuntimeException | LinkageError failure) {
+                    if (request.mayContinue()) LOG.warn("Capture failed: {}", failure.getMessage(), failure);
                     request.result.completeExceptionally(failure);
                 } finally {
                     closeView(view);
@@ -228,7 +263,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
         try {
             view.close();
         } catch (IOException failure) {
-            LOG.log(System.Logger.Level.ERROR, "Could not remove a capture stage", failure);
+            LOG.error("Could not remove a capture stage", failure);
         }
     }
 
@@ -243,7 +278,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
     void awaitCleanup() {
         try {
             if (!disk.awaitTermination(250, TimeUnit.MILLISECONDS))
-                LOG.log(System.Logger.Level.WARNING, "A capture still owns staging. Cleanup will resume at startup.");
+                LOG.warn("A capture still owns staging. Cleanup will resume at startup.");
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
         }

@@ -19,6 +19,20 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+### Added / 新增
+
+- New `capture.consistency` option (`strict` by default, or `relaxed`). Strict refuses a backup when files change during capture; relaxed accepts fully copied files that may come from slightly different moments, never truncated or damaged copies.
+<br> 新增 `capture.consistency` 配置（默认 `strict`，可选 `relaxed`）。严格模式发现文件在捕获期间变化就拒绝备份；宽松模式接受完整复制但来自不同时间点的文件，绝不接受截断或损坏的副本。
+- Snapshot metadata now records the consistency level used at capture time, `/list` shows it, and restoring a relaxed snapshot prints a warning first.
+<br> 快照元数据现在永久记录捕获时的一致性等级，`/list` 会显示该等级，恢复宽松模式快照前会先弹出警告。
+
+### Changed / 变更
+
+- Online backups retry each changed file more times, and retry the whole capture once when it still fails, greatly improving success on busy servers.
+<br> 在线备份会以更多次数重试发生变化的文件，整次捕获仍失败时还会重新捕获一次，显著提升繁忙服务器上的成功率。
+- Capture failures now log the concrete reason to the server log instead of only reporting that the source was unavailable.
+<br> 捕获失败现在会把具体原因写入服务器日志，不再只报告来源不可用。
+
 ## [1.0.3] - 2026-11-25
 
 ### Added / 新增

@@ -125,12 +125,16 @@ public final class BaruSikoZakoServer {
             }))
             .then(Commands.literal("backup")
                 .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty())))
-            .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshotId())))
+            .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshot().snapshotId())))
                 .executes(context -> list(context.getSource(), Optional.empty())))
             .then(snapshotCommand("verify",
                 snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
             .then(snapshotCommand("delete", BackupRequest.Delete::new))
-            .then(snapshotCommand("restore", snapshot -> new BackupRequest.Restore(snapshot, SOURCE)))
+            .then(snapshotSelection("restore", (source, snapshot) -> {
+                if (snapshot.consistency() == BackupService.Consistency.RELAXED)
+                    source.sendSuccess(() -> Component.literal(Translations.text(source, "notice.relaxed_restore")), false);
+                return submit(source, new BackupRequest.Restore(snapshot.snapshot(), SOURCE));
+            }))
             .then(taskCommand("cancel", true))
             .then(taskCommand("task", false).executes(context -> listTasks(context.getSource())));
         for (var provider : BackendRegistry.registered().values()) {
@@ -140,7 +144,7 @@ public final class BaruSikoZakoServer {
                 var node = Commands.literal(command.keyword());
                 if (command.needsBaseline()) {
                     node = snapshotSelection(command.keyword(), (source, baseline) ->
-                        backendBackup(source, provider.keyword(), mode, Optional.of(baseline)));
+                        backendBackup(source, provider.keyword(), mode, Optional.of(baseline.snapshot())));
                 } else {
                     node.executes(context -> backendBackup(context.getSource(), provider.keyword(), mode, Optional.empty()));
                 }
@@ -173,11 +177,11 @@ public final class BaruSikoZakoServer {
 
     private LiteralArgumentBuilder<CommandSourceStack> snapshotCommand(
             String name, Function<SnapshotRef, BackupRequest> request) {
-        return snapshotSelection(name, (source, snapshot) -> submit(source, request.apply(snapshot)));
+        return snapshotSelection(name, (source, snapshot) -> submit(source, request.apply(snapshot.snapshot())));
     }
 
     private LiteralArgumentBuilder<CommandSourceStack> snapshotSelection(
-            String name, ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+            String name, ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         return Commands.literal(name)
             .then(snapshotUuid(action))
             .then(Commands.literal("fullname").then(Commands.argument("folder", StringArgumentType.word())
@@ -189,11 +193,10 @@ public final class BaruSikoZakoServer {
     }
 
     private LiteralArgumentBuilder<CommandSourceStack> snapshotUuid(
-            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+            ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         return Commands.literal("fromuuid").then(Commands.argument("uuid", StringArgumentType.word())
             .suggests((context, builder) -> suggestSnapshots(builder, item -> item.snapshot().snapshotId()))
-            .executes(context -> withId(context.getSource(), StringArgumentType.getString(context, "uuid"),
-                id -> action.applyAsInt(context.getSource(), new SnapshotRef(REPOSITORY, id)))));
+            .executes(context -> withId(context.getSource(), StringArgumentType.getString(context, "uuid"), action)));
     }
 
     private CompletableFuture<Suggestions> suggestSnapshots(
@@ -213,7 +216,7 @@ public final class BaruSikoZakoServer {
     }
 
     private int withSnapshotTime(CommandSourceStack source, String text,
-            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+            ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         final Instant time;
         try {
             time = Instant.parse(text);
@@ -231,7 +234,7 @@ public final class BaruSikoZakoServer {
     }
 
     private int withSnapshotFolder(CommandSourceStack source, String name,
-            ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+            ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         int separator = name.lastIndexOf("--");
         int time = name.indexOf('T') + 1;
         if (time > 0 && separator > time) {
@@ -251,12 +254,12 @@ public final class BaruSikoZakoServer {
     }
 
     private int resolveSnapshot(CommandSourceStack source, Predicate<BackupService.SnapshotInfo> match,
-            String notFound, ToIntBiFunction<CommandSourceStack, SnapshotRef> action) {
+            String notFound, ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         var service = service(source);
         if (service == null) return 0;
-        var matches = new ArrayList<SnapshotRef>(2);
+        var matches = new ArrayList<BackupService.SnapshotInfo>(2);
         scanSnapshots(service, Optional.empty(), snapshot -> {
-            if (match.test(snapshot)) matches.add(snapshot.snapshot());
+            if (match.test(snapshot)) matches.add(snapshot);
             return matches.size() == 2;
         }).whenComplete((result, failure) -> source.getServer().executeIfPossible(() -> {
             if (operator != service) return;
@@ -727,7 +730,9 @@ public final class BaruSikoZakoServer {
             }
             var message = new StringBuilder(Translations.text(source, "command.snapshots_list"));
             for (var entry : page.items())
-                message.append('\n').append(entry.snapshot().snapshotId()).append("  ").append(entry.createdAt());
+                message.append('\n').append(entry.snapshot().snapshotId()).append("  ").append(entry.createdAt())
+                    .append("  ").append(Translations.text(source,
+                        "consistency." + entry.consistency().name().toLowerCase(Locale.ROOT)));
             page.next().ifPresent(id -> message.append('\n').append(Translations.format(source, "command.snapshots_next", id)));
             reply(source, page.items().isEmpty() ? Translations.text(source, "command.snapshots_empty") : message.toString(), false);
         });
@@ -852,14 +857,16 @@ public final class BaruSikoZakoServer {
         return service;
     }
 
-    private static int withId(CommandSourceStack source, String text, java.util.function.ToIntFunction<String> action) {
+    private int withId(CommandSourceStack source, String text,
+            ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         try {
             FabricOperations.parseId(text);
         } catch (IllegalArgumentException invalid) {
             source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot")));
             return 0;
         }
-        return action.applyAsInt(text);
+        return resolveSnapshot(source, snapshot -> snapshot.snapshot().snapshotId().equals(text),
+            "command.snapshot_not_found", action);
     }
 
     private static void reply(CommandSourceStack source, String message, boolean failure) {

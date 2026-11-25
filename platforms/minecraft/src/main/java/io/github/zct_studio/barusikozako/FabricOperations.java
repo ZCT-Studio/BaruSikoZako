@@ -39,7 +39,7 @@ final class FabricOperations implements BackupApiHost.Operations {
     }
     static final String REPOSITORY_ID = "local";
     static final String SOURCE_ID = "world";
-    private static final System.Logger LOG = System.getLogger("BaruSikoZako");
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(FabricOperations.class);
     private final ServerConfig config;
     private final Path world;
     private final BackendProvider.Settings backend;
@@ -130,11 +130,15 @@ final class FabricOperations implements BackupApiHost.Operations {
                 config.manifestBudget());
             return new Page<>(snapshots.entries().stream()
                 .map(snapshot -> new SnapshotInfo(new SnapshotRef(REPOSITORY_ID, snapshot.id().toString()),
-                    snapshot.createdAt(), snapshot.source(), snapshot.trigger().map(trigger ->
+                    snapshot.createdAt(), snapshot.source(), snapshot.consistency()
+                        == io.github.zct_studio.barusikozako.backend.Consistency.STRICT
+                        ? io.github.zct_studio.barusikozako.runtime.BackupService.Consistency.STRICT
+                        : io.github.zct_studio.barusikozako.runtime.BackupService.Consistency.RELAXED,
+                    snapshot.trigger().map(trigger ->
                         new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata())))).toList(),
                 snapshots.next().map(UUID::toString));
         } catch (IOException | LinkageError failure) {
-            LOG.log(System.Logger.Level.WARNING, "Snapshot query failed", failure);
+            LOG.warn("Snapshot query failed", failure);
             throw new IOException("Snapshot query failed");
         }
     }
@@ -147,7 +151,7 @@ final class FabricOperations implements BackupApiHost.Operations {
         try (var current = open()) {
             return current.snapshotDirectory(id, config.manifestBudget());
         } catch (IOException | LinkageError failure) {
-            LOG.log(System.Logger.Level.WARNING, "Snapshot directory query failed", failure);
+            LOG.warn("Snapshot directory query failed", failure);
             throw new IOException("Snapshot directory query failed");
         }
     }
@@ -198,7 +202,7 @@ final class FabricOperations implements BackupApiHost.Operations {
                 }, bytes -> control.progress(bytes, OptionalLong.empty()));
                 return new TaskResult.VerificationComplete(verify.level(), result.entries(), result.bytes());
             } catch (IOException | LinkageError failure) {
-                if (control.mayContinue()) LOG.log(System.Logger.Level.WARNING, "Full verification failed", failure);
+                if (control.mayContinue()) LOG.warn("Full verification failed", failure);
                 return new TaskResult.Failed(TaskResult.Failure.IO);
             }
         }
@@ -214,10 +218,10 @@ final class FabricOperations implements BackupApiHost.Operations {
             });
             return new TaskResult.Deleted(request.snapshot());
         } catch (ManagedRepository.CommitUncertain uncertain) {
-            LOG.log(System.Logger.Level.WARNING, "Snapshot deletion outcome could not be confirmed", uncertain);
+            LOG.warn("Snapshot deletion outcome could not be confirmed", uncertain);
             return new TaskResult.CommitUncertain();
         } catch (IOException | LinkageError failure) {
-            if (control.mayContinue()) LOG.log(System.Logger.Level.WARNING, "Snapshot deletion rejected", failure);
+            if (control.mayContinue()) LOG.warn("Snapshot deletion rejected", failure);
             return new TaskResult.Failed(TaskResult.Failure.IO);
         }
     }
@@ -236,10 +240,10 @@ final class FabricOperations implements BackupApiHost.Operations {
                 });
             return new TaskResult.BackupCommitted(new SnapshotRef(REPOSITORY_ID, saved.id().toString()));
         } catch (ManagedRepository.CommitUncertain uncertain) {
-            LOG.log(System.Logger.Level.WARNING, "Snapshot rebuild outcome could not be confirmed", uncertain);
+            LOG.warn("Snapshot rebuild outcome could not be confirmed", uncertain);
             return new TaskResult.CommitUncertain();
         } catch (IOException | LinkageError failure) {
-            if (control.mayContinue()) LOG.log(System.Logger.Level.WARNING, "Snapshot rebuild failed", failure);
+            if (control.mayContinue()) LOG.warn("Snapshot rebuild failed", failure);
             return new TaskResult.Failed(TaskResult.Failure.IO);
         }
     }
@@ -257,7 +261,7 @@ final class FabricOperations implements BackupApiHost.Operations {
         } catch (WindowsDirectorySync.Failure failure) {
             return directorySyncFailure(failure);
         } catch (IOException failure) {
-            LOG.log(System.Logger.Level.WARNING, "Could not prepare the backup repository", failure);
+            LOG.warn("Could not prepare the backup repository", failure);
             return new TaskResult.Failed(TaskResult.Failure.IO);
         }
         ReadView captured;
@@ -267,13 +271,14 @@ final class FabricOperations implements BackupApiHost.Operations {
             exclusions = BackupExclusions.load(configRoot.resolve("barusikozako"), world, false);
             captured = capture.acquire(control::mayContinue);
         } catch (IOException | LinkageError failure) {
-            if (control.mayContinue()) LOG.log(System.Logger.Level.WARNING, "Online capture failed", failure);
+            if (control.mayContinue() && !(failure instanceof InterruptedIOException))
+                LOG.warn("Online capture failed: {}", failure.getMessage(), failure);
             return new TaskResult.Failed(TaskResult.Failure.SOURCE_UNAVAILABLE);
         }
         var bytes = new java.util.concurrent.atomic.AtomicLong();
         try {
             var view = captured;
-            var snapshot = new Snapshot(UUID.randomUUID(), Instant.now(), request.sourceId(),
+            var snapshot = new Snapshot(UUID.randomUUID(), Instant.now(), request.sourceId(), config.consistency(),
                 Optional.of(new Snapshot.Trigger(trigger.source(), trigger.reason(), trigger.metadata())));
             if (!canonical.equals(ServerRepository.checkPath(repository, world)))
                 throw new IOException("Repository path changed during capture");
@@ -294,35 +299,35 @@ final class FabricOperations implements BackupApiHost.Operations {
                 } catch (IOException | LinkageError failure) {
                     if (failure instanceof ManagedRepository.CommitUncertain) throw failure;
                     if (!zstd.isCommitted(snapshot.id(), operation)) throw failure;
-                    LOG.log(System.Logger.Level.WARNING, "Archive committed with later cleanup failure", failure);
+                    LOG.warn("Archive committed with later cleanup failure", failure);
                 }
                 try {
                     archiveBytes = zstd.archiveBytes(snapshot.id());
                 } catch (IOException failure) {
-                    LOG.log(System.Logger.Level.WARNING, "Backup committed but stored size could not be read", failure);
+                    LOG.warn("Backup committed but stored size could not be read", failure);
                 }
             }
             return new TaskResult.BackupCommitted(new SnapshotRef(REPOSITORY_ID, snapshot.id().toString()),
                 OptionalLong.of(bytes.get()), archiveBytes, Optional.of(java.time.Duration.ofNanos(System.nanoTime() - started)));
         } catch (ManagedRepository.CommitUncertain failure) {
-            LOG.log(System.Logger.Level.WARNING, "Backup commit outcome could not be confirmed", failure);
+            LOG.warn("Backup commit outcome could not be confirmed", failure);
             return new TaskResult.CommitUncertain();
         } catch (WindowsDirectorySync.Failure failure) {
             return directorySyncFailure(failure);
         } catch (IOException | LinkageError failure) {
-            if (control.mayContinue()) LOG.log(System.Logger.Level.WARNING, "Backup did not confirm publication", failure);
+            if (control.mayContinue()) LOG.warn("Backup did not confirm publication", failure);
             return new TaskResult.Failed(TaskResult.Failure.IO);
         } finally {
             try {
                 captured.close();
             } catch (IOException failure) {
-                LOG.log(System.Logger.Level.WARNING, "Backup staging cleanup failed", failure);
+                LOG.warn("Backup staging cleanup failed", failure);
             }
         }
     }
 
     private static TaskResult directorySyncFailure(WindowsDirectorySync.Failure failure) {
-        org.slf4j.LoggerFactory.getLogger(FabricOperations.class).warn(failure.getMessage(), failure);
+        LOG.warn(failure.getMessage(), failure);
         return new TaskResult.Failed(failure.denied ? TaskResult.Failure.NATIVE_ACCESS_DENIED :
             TaskResult.Failure.DIRECTORY_SYNC_FAILED);
     }
@@ -337,7 +342,7 @@ final class FabricOperations implements BackupApiHost.Operations {
             long reclaimed = zstd.collectUnreferencedBlocks(1_000_000, config.manifestBudget(), () -> {
                 if (!mayContinue.getAsBoolean()) throw new InterruptedIOException("Maintenance yielded");
             });
-            if (reclaimed > 0) LOG.log(System.Logger.Level.INFO, "Reclaimed {0} bytes of unreferenced blocks", reclaimed);
+            if (reclaimed > 0) LOG.info("Reclaimed {} bytes of unreferenced blocks", reclaimed);
         }
     }
 
