@@ -1,9 +1,11 @@
 import groovy.json.JsonOutput
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
+import io.github.zct_studio.barusikozako.buildlogic.JarMerge
 import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PrepareFmlRuntime
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.file.RegularFile
 import java.util.Properties
 
 plugins {
@@ -32,7 +34,8 @@ val legacyMinecraft = minecraft.startsWith("1.")
 val forgeSrg = minecraft == "1.20.1"
 val runtimeJava = if (forgeSrg) 17 else if (legacyMinecraft) 21 else 25
 val synchronousSavedData = forgeSrg || minecraft == "1.21.1"
-val isolateBackendCommons = synchronousSavedData || targetLoader == "forge"
+// 合并构建要求两个 FML 后端结构一致，统一重定位 Commons；其余场景保持原有策略
+val isolateBackendCommons = rootProject.hasProperty("mergeJars") || synchronousSavedData || targetLoader == "forge"
 val buildTargets = MinecraftSourcesPlugin.load(project)
 val ownComponents = listOf(":engine:mod-runtime", ":backends:spi", ":platforms:spi", ":engine:core")
 val backendComponents = listOf(":backends:zstd", ":backends:compression-zstd")
@@ -80,13 +83,13 @@ fun Jar.copyComponents(components: List<String>) {
     }
 }
 
-fun Jar.loaderManifest(module: String, mixin: Boolean = false) {
+fun Jar.loaderManifest(module: String, mixinConfig: String? = null) {
     manifest.attributes("Automatic-Module-Name" to module, "Implementation-Version" to archiveVersion.get())
-    if (mixin) manifest.attributes("MixinConfigs" to "barusikozako.mixins.json")
+    if (mixinConfig != null) manifest.attributes("MixinConfigs" to mixinConfig)
     from(rootProject.file("LICENSE")) { into("META-INF") }
 }
 
-fun metadata(loader: String, id: String, displayName: String, mixin: Boolean = false): String = buildString {
+fun metadata(loader: String, id: String, displayName: String, mixinConfig: String? = null): String = buildString {
     val neo = loader == "neoforge"
     val modernNeoArtwork = neo && supportsNeoBanner
     val version = when (id) {
@@ -131,9 +134,9 @@ fun metadata(loader: String, id: String, displayName: String, mixin: Boolean = f
     dependency(loader, "[${versions.getValue(loader).removePrefix("$minecraft-")},)")
     if (id == "barusikozako_api") dependency("barusikozako", "[0,)")
     if (id == "barusikozako_backendzstd") dependency("barusikozako", "[$modVersion]")
-    if (neo && mixin) {
+    if (neo && mixinConfig != null) {
         appendLine("[[mixins]]")
-        appendLine("config=\"barusikozako.mixins.json\"")
+        appendLine("config=\"$mixinConfig\"")
     }
 }
 
@@ -159,8 +162,8 @@ fun notices(task: String, vararg libraries: Configuration) = tasks.register<Coll
 val hostNotices = notices("collectHostNotices", hostLibraries)
 val backendNotices = notices("collectBackendNotices", backendLibraries, isolatedCommons)
 
-fun jarJarMetadata(name: String, libraries: Configuration, nestedBackend: TaskProvider<out Jar>? = null): TaskProvider<Task> {
-    val archive = nestedBackend?.flatMap { it.archiveFile }
+fun jarJarMetadata(name: String, libraries: Configuration, nestedBackend: Provider<RegularFile>? = null): TaskProvider<Task> {
+    val archive = nestedBackend
     val descriptors = libraries.incoming.artifacts.resolvedArtifacts
     val output = layout.buildDirectory.file("metadata/$name/jarjar/metadata.json")
     val content = descriptors.map { results ->
@@ -176,20 +179,39 @@ fun jarJarMetadata(name: String, libraries: Configuration, nestedBackend: TaskPr
         }))
     }
     return tasks.register("${name}JarJar") {
+        if (archive != null) inputs.files(archive)
         inputs.property("metadata", content)
         outputs.file(output)
         doLast { output.get().asFile.apply { parentFile.mkdirs(); writeText(content.get(), Charsets.UTF_8) } }
     }
 }
 
-fun Jar.attachLibraries(libraries: Configuration, descriptor: TaskProvider<Task>, nestedBackend: TaskProvider<out Jar>?) {
-    val archive = nestedBackend?.flatMap { it.archiveFile }
+fun Jar.attachLibraries(libraries: Configuration, descriptor: TaskProvider<Task>, nestedBackend: Provider<RegularFile>?) {
     from(descriptor) { into("META-INF/jarjar") }
     from(libraries) { into("META-INF/jarjar") }
-    if (archive != null) {
-        dependsOn(nestedBackend)
-        from(archive) { into("META-INF/jarjar") }
+    if (nestedBackend != null) {
+        from(nestedBackend) { into("META-INF/jarjar") }
     }
+}
+
+// 合并目标下 Forge 与 NeoForge 共用一份后端 jar，避免同一后端在合并产物中重复出现
+fun mergedBackendArchive(node: String): Provider<RegularFile> {
+    val key = "mergedBackendJar$node"
+    val inherited = rootProject.extensions.extraProperties.properties[key]
+    if (inherited is Provider<*>) {
+        @Suppress("UNCHECKED_CAST")
+        return inherited as Provider<RegularFile>
+    }
+    val merged = rootProject.tasks.register<JarMerge>("mergeBackendJars$node") {
+        for (loader in listOf("forge", "neoforge")) {
+            inputJars.from(rootProject.project(":app:$node:$loader").tasks.named<Jar>("${loader}BackendJar")
+                .flatMap { it.archiveFile })
+        }
+        outputJar.set(rootProject.layout.buildDirectory.file(
+            "merged/barusikozako_backendzstd-$minecraft-$zstdVersion-merged.jar"))
+    }.flatMap { it.outputJar }
+    rootProject.extensions.extraProperties.set(key, merged)
+    return merged
 }
 
 for ((loader, version) in versions) {
@@ -384,8 +406,14 @@ for ((loader, version) in versions) {
             } else manifest.attributes("Multi-Release" to true)
         }
     }
-    val descriptor = metadataFile("${loader}BundledMetadata", toml, metadata(loader, "barusikozako", "BaruSikoZako", true))
-    val jarJar = jarJarMetadata("${loader}Bundled", hostLibraries, backendJar)
+    val descriptor = metadataFile("${loader}BundledMetadata", toml, metadata(loader, "barusikozako", "BaruSikoZako", target.mixinConfigName()))
+    // 合并目标且 Forge/NeoForge 同时参与构建时，两者嵌入同一份合并后端
+    val node = parent!!.name
+    val backendArchive = if (rootProject.hasProperty("mergeJars") && target.merged &&
+        listOf("forge", "neoforge").all { rootProject.findProject(":app:$node:$it") != null }) {
+        mergedBackendArchive(node)
+    } else backendJar.flatMap { it.archiveFile }
+    val jarJar = jarJarMetadata("${loader}Bundled", hostLibraries, backendArchive)
     val named = tasks.register<Jar>("${loader}BundledJar") {
         if (forgePack != null) from(forgePack)
         from(rootProject.file("resource/barusikozako/icon.png"))
@@ -401,8 +429,8 @@ for ((loader, version) in versions) {
         if (mixinTask != null) from(mixinTask)
         from(descriptor) { into("META-INF") }
         copyComponents(ownComponents)
-        loaderManifest("barusikozako", mixin = loader == "forge")
-        attachLibraries(hostLibraries, jarJar, backendJar)
+        loaderManifest("barusikozako", if (loader == "forge") target.mixinConfigName() else null)
+        attachLibraries(hostLibraries, jarJar, backendArchive)
         from(hostNotices.flatMap { it.collected }) { into("META-INF/third-party") }
     }
     val (source, producer) = if (forgeSrg) {

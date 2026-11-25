@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 ZCT Studio
+
+// 把同一 Minecraft 版本下多个 Loader 的产物合并成一个 jar（Forgix）。
+// 由根 build.gradle.kts 在 -PmergeJars=true 且选中的目标属于 .lists/targets.json5 的 merge 列表时应用。
+// 使用 Groovy 是因为 Forgix 仅提供 Groovy 风格的动态扩展。
+
+apply plugin: 'io.github.pacifistmc.forgix'
+
+def game = project.ext.forgixGame
+def loaders = project.ext.forgixLoaders
+def node = 'mc' + game.replace('.', '_')
+
+gradle.projectsEvaluated {
+    def jars = [:]
+    if (loaders.contains('fabric')) {
+        jars.fabric = project(":app:${node}:fabric").tasks.named('jar')
+    }
+    if (loaders.contains('forge')) {
+        jars.forge = project(":app:${node}:forge").tasks.named('forgeBundledJar')
+    }
+    if (loaders.contains('neoforge')) {
+        jars.neoforge = project(":app:${node}:neoforge").tasks.named('neoforgeBundledJar')
+    }
+
+    def version = project(":app:${node}:${loaders[0]}").version
+    def destination = project.layout.buildDirectory.dir('forgix')
+    def product = "barusikozako-v${version}+universal${game}.jar"
+    // 合并产物按普通加载器的方式落到 build_product/mod
+    def stage = project.tasks.register('stageUniversalMod', Copy) {
+        from(destination.map { it.file("barusikozako-${game}-${version}-merged.jar") })
+        into(project.rootProject.layout.projectDirectory.dir('build_product/mod'))
+        rename { product }
+    }
+    // Forgix 只把 inputJar 当普通文件读取，需显式声明任务依赖，避免使用旧产物
+    project.tasks.named('mergeJars').configure {
+        dependsOn jars.values()
+        finalizedBy stage
+    }
+
+    forgix {
+        archiveBaseName = "barusikozako-$game"
+        archiveClassifier = 'merged'
+        archiveVersion = version
+        destinationDirectory = destination
+        if (jars.fabric != null) fabric { inputJar = jars.fabric.flatMap { it.archiveFile } }
+        if (jars.forge != null) forge { inputJar = jars.forge.flatMap { it.archiveFile } }
+        if (jars.neoforge != null) neoforge { inputJar = jars.neoforge.flatMap { it.archiveFile } }
+    }
+}

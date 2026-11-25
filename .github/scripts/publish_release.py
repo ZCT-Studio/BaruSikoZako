@@ -22,16 +22,22 @@ FIELDS = {"mod": "MOD", "api": "API"}
 MAIN_SLUG = "barusikozako"
 REQUIRED_PROJECTS = {"api": ("mod",), "mod": ()}
 LOADERS = {"fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge"}
+MERGED_LOADERS = {"fabric", "quilt", "forge", "neoforge"}
 MODRINTH_ENVIRONMENT = "server_only"
 
 
 def storefront_loaders(job):
     loaders = job["platforms"]
     target_loader = job["loader"]
-    if (job["target"] != target_loader + job["game"] or not loaders or loaders[0] != target_loader
-            or len(set(loaders)) != len(loaders)
-            or any(loader not in LOADERS for loader in loaders)
-            or (len(loaders) > 1 and set(loaders) != {"fabric", "quilt"})):
+    if not loaders or len(set(loaders)) != len(loaders) or any(loader not in LOADERS for loader in loaders):
+        raise ValueError(f"Invalid storefront loader selection for {job['target']}: {loaders}")
+    if target_loader == "universal":
+        valid = (job["target"] == target_loader + job["game"] and len(loaders) > 1
+                 and set(loaders) <= MERGED_LOADERS)
+    else:
+        valid = (job["target"] == target_loader + job["game"] and loaders[0] == target_loader
+                 and (len(loaders) == 1 or set(loaders) == {"fabric", "quilt"}))
+    if not valid:
         raise ValueError(f"Invalid storefront loader selection for {job['target']}: {loaders}")
     return loaders
 
@@ -263,7 +269,7 @@ def curseforge_has_hash(old, expected):
 
 
 def ordered_storefront(entries):
-    loader_order = ("forge", "fabric", "quilt", "neoforge")
+    loader_order = ("universal", "forge", "fabric", "quilt", "neoforge")
     component_order = ("mod", "api")
 
     def release_key(entry):

@@ -156,7 +156,7 @@ public final class MinecraftSourcesPlugin implements Plugin<Project> {
         validateMixins(project, targets, target, resolved);
         return project.getTasks().register(MIXIN_TASK, GenerateMixinConfig.class, task -> {
             task.setGroup("build");
-            task.setDescription("Generates barusikozako.mixins.json for " + target.key());
+            task.setDescription("Generates " + target.mixinConfigName() + " for " + target.key());
             task.getTemplate().set(project.getRootProject().getLayout().getProjectDirectory()
                 .file(targets.mixinTemplate()).getAsFile());
             task.getInjectors().set(target.mixin().injectors());
@@ -164,7 +164,7 @@ public final class MinecraftSourcesPlugin implements Plugin<Project> {
             task.getPluginClass().set(target.mixin().plugin() == null ? "" : target.mixin().plugin());
             task.getMixins().set(target.mixin().mixins());
             task.getOutputFile().set(project.getLayout().getBuildDirectory()
-                .file("generated/mixin/" + target.key() + "/barusikozako.mixins.json"));
+                .file("generated/mixin/" + target.key() + "/" + target.mixinConfigName()));
         });
     }
 

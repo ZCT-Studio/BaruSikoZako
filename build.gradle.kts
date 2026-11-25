@@ -1,10 +1,13 @@
 import org.gradle.api.Project
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import io.github.zct_studio.barusikozako.buildlogic.ActivateTarget
+import io.github.zct_studio.barusikozako.buildlogic.JarMerge
 
 plugins {
     base
     id("barusikozako.java17-library") apply false
+    id("io.github.pacifistmc.forgix") version "2.0.0" apply false
 }
 
 tasks.register("buildProducts") {
@@ -41,6 +44,12 @@ val selectableGames = (
         listOfNotNull(compatibilityTargets.getProperty("fabric.development.minecraft"))
     ).distinct().sorted()
 
+val mergedGames: Set<String> = runCatching {
+    @Suppress("UNCHECKED_CAST")
+    val table = Json5Reader(rootProject.file(".lists/targets.json5").readText()).read() as Map<String, Any?>
+    (table["merge"] as? List<*>)?.map { it.toString() }?.toSet() ?: emptySet()
+}.getOrElse { emptySet() }
+
 for (game in selectableGames) {
     val loaders = listOf("fabric", "quilt") + listOf("forge", "neoforge").filter {
         compatibilityTargets.containsKey("fml.runtime.$it.$game")
@@ -62,6 +71,18 @@ for (game in selectableGames) {
             getGame().set(game)
             getLoader().set(loader)
             getRootDirectory().set(rootProject.layout.projectDirectory)
+        }
+    }
+    // 合并目标在任务树中始终可见，无需先切换活跃目标
+    val mergeLoaders = loaders.filter { it in setOf("fabric", "forge", "neoforge") }
+    if (game in mergedGames && mergeLoaders.size >= 2) {
+        targetsProject.tasks.register<Exec>("universal") {
+            group = "build"
+            description = "Builds the universal (fabric+forge+neoforge) product for Minecraft $game"
+            workingDir = rootDir
+            val wrapper = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
+            commandLine(wrapper, "-PgameVersion=$game", "-Ploaders=${mergeLoaders.joinToString(",")}",
+                "-PmergeJars=true", "mergeJars", "mergeApiJars")
         }
     }
     /* 暂停在 Gradle 目标列表提供 JavaAgent 构建
@@ -320,6 +341,45 @@ class Json5Reader(text: String) {
             token.startsWith("0x") || token.startsWith("0X") -> token.substring(2).toLong(16)
             token.any { it == '.' || it == 'e' || it == 'E' } -> token.toDouble()
             else -> token.toLongOrNull() ?: token
+        }
+    }
+}
+
+// --- 合并 Loader 产物（仅非 LTS 目标） -----------------------------------------
+
+fun rootProperty(name: String): String? = providers.gradleProperty(name).orNull
+
+fun rootLocal(name: String): String? = java.util.Properties().let { properties ->
+    val file = rootProject.file("gradle/local-target.properties")
+    if (file.isFile) file.inputStream().use { properties.load(it) }
+    properties.getProperty(name)
+}
+
+val mergeGame = (rootProperty("gameVersion") ?: rootLocal("gameVersion"))
+    .orEmpty().split(',').map { it.trim() }.firstOrNull { it in mergedGames }
+val mergeLoaders = (rootProperty("loaders") ?: rootLocal("loaders"))
+    .orEmpty().split(',').map { it.trim().lowercase() }
+    .filter { it in setOf("fabric", "forge", "neoforge") }.distinct()
+
+// 合并构建是可选行为：只有显式传入 -PmergeJars=true 才会注册合并任务
+if (mergeGame != null && mergeLoaders.size >= 2 && hasProperty("mergeJars")) {
+    extra.set("forgixGame", mergeGame)
+    extra.set("forgixLoaders", mergeLoaders)
+    apply(from = "gradle/merge-jars.gradle")
+
+    // API 产物类字节在各 Loader 间一致，只有元数据不同，用去重合并即可。
+    val root = project
+    val node = "mc" + mergeGame.replace('.', '_')
+    gradle.projectsEvaluated {
+        val apiJars = mergeLoaders.map { loader -> root.project(":api:$node:$loader").tasks.named<Jar>("jar") }
+        val apiVersion = root.project(":api:$node:${mergeLoaders.first()}").version
+        root.tasks.register<JarMerge>("mergeApiJars") {
+            group = "build"
+            description = "Merges the $mergeGame API jars of ${mergeLoaders.joinToString()} into one jar"
+            dependsOn(apiJars)
+            inputJars.from(apiJars.map { jar -> jar.flatMap { it.archiveFile } })
+            outputJar.set(root.layout.projectDirectory.file(
+                "build_product/api/barusikozako_api-v$apiVersion+universal$mergeGame.jar"))
         }
     }
 }

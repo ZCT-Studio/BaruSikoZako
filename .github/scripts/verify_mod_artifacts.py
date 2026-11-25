@@ -48,7 +48,7 @@ def metadata(archive, loader, mod_id):
 
 
 def verify(job, directory):
-    loader = job["loader"]
+    loaders = job["platforms"] if job["loader"] == "universal" else [job["loader"]]
     game = job["game"]
     java = 17 if game.startswith("1.20.") else 21 if game.startswith("1.21.") else 25
     paths = {asset["component"]: asset["paths"] for asset in job["assets"]}
@@ -58,23 +58,26 @@ def verify(job, directory):
                 verify_bytecode(archive, name, java)
     for name in paths["mod"]:
         with ZipFile(directory / name) as archive:
-            required, nested = metadata(archive, loader, MAIN_ID)
-            if API_ID in required or any(Path(path).name.startswith(f"{API_ID}-") for path in nested):
-                raise ValueError(f"{name} requires or embeds the standalone API mod")
             classes = set(archive.namelist())
-            for path in nested:
-                with ZipFile(BytesIO(archive.read(path))) as jar:
-                    classes.update(jar.namelist())
+            for loader in loaders:
+                required, nested = metadata(archive, loader, MAIN_ID)
+                if API_ID in required or any(Path(path).name.startswith(f"{API_ID}-") for path in nested):
+                    raise ValueError(f"{name} requires or embeds the standalone API mod")
+                for path in nested:
+                    with ZipFile(BytesIO(archive.read(path))) as jar:
+                        classes.update(jar.namelist())
             if BASE + "runtime/BackupService.class" not in classes or any(
                     path.startswith(BASE + "api/") and path.endswith(".class") for path in classes):
                 raise ValueError(f"{name} must contain the internal service without public API classes")
     for name in paths["api"]:
         with ZipFile(directory / name) as archive:
-            required, _ = metadata(archive, loader, API_ID)
-            if MAIN_ID not in required or BASE + "api/BackupService.class" not in archive.namelist():
-                raise ValueError(f"{name} must declare the main mod and provide the public API for compilation")
-            if loader not in FABRIC_LOADERS and BASE + f"api/{loader}/ZakoBakIntegration.class" not in archive.namelist():
-                raise ValueError(f"{name} is missing the {loader} integration extension")
+            classes = set(archive.namelist())
+            for loader in loaders:
+                required, _ = metadata(archive, loader, API_ID)
+                if MAIN_ID not in required or BASE + "api/BackupService.class" not in classes:
+                    raise ValueError(f"{name} must declare the main mod and provide the public API for compilation")
+                if loader not in FABRIC_LOADERS and BASE + f"api/{loader}/ZakoBakIntegration.class" not in classes:
+                    raise ValueError(f"{name} is missing the {loader} integration extension")
 
 
 def main():
