@@ -64,7 +64,7 @@ switch ($loader) {
     'agent' { $flags += @('-PjavaAgent=true', '-Ploaders=agent') }
     { $_ -in 'fabric','quilt' } { $flags += @("-Ploaders=$loader", "-PdistributionLoader=$loader") }
     { $_ -in 'forge','neoforge' } { $flags += @("-Ploaders=$loader", (Install-FmlRuntime $loader $game)) }
-    'universal' {
+    { $_ -in 'universal','fml' } {
         $platforms = @($job.platforms)
         $flags += @('-PmergeJars=true', "-Ploaders=$($platforms -join ',')")
         foreach ($platform in $platforms) {
@@ -77,7 +77,7 @@ $wrapper = if ($IsWindows) { './gradlew.bat' } else { './gradlew' }
 if (!$IsWindows) { chmod +x $wrapper }
 $tasks = @('buildProducts', ':engine:core:check', ':engine:gitignore:check', ':backends:zstd:check', ':api:host:check')
 if ($loader -eq 'agent') { $tasks += ':platforms:javaagent:check' }
-if ($loader -eq 'universal') { $tasks += @('mergeJars', 'mergeApiJars') }
+if ($loader -in @('universal','fml')) { $tasks += @('mergeJars', 'mergeApiJars') }
 # 仅对仓库限流重试，普通编译和测试失败直接返回
 $PSNativeCommandUseErrorActionPreference = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {

@@ -23,6 +23,7 @@ TIERS = {
 }
 TIER_ORDER = {"lts": 0, "nlts": 1, "shift": 2, "latest": 3}
 MERGE_LOADERS = ("fabric", "forge", "neoforge")
+FML_LOADERS = ("forge", "neoforge")
 IDS = {"mod": "barusikozako", "api": "barusikozako_api"}
 BUILDERS = {"fabric", "quilt", "forge", "neoforge", "agent"}
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
@@ -135,7 +136,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|merge-jars|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|merge-jars|merge-fml-jars|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
         message, re.IGNORECASE)}
 
 
@@ -150,9 +151,10 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
     force_release = requests_forced_release(flags)
     build_all = "build-all" in flags
     build_lts = "build-lts" in flags
-    # 合并构建与合并发布都是可选的，只有提交信息带 [merge-jars] 才启用
+    # 合并构建与合并发布都是可选的，只有提交信息带 [merge-jars]/[merge-fml-jars] 才启用
     merge_build = "merge-jars" in flags
-    if not merge_build:
+    merge_fml_build = "merge-fml-jars" in flags and not merge_build
+    if not merge_build and not merge_fml_build:
         merge_games = frozenset()
     # [build-all]/[build-lts] 只规划构建，不生成发布；[no-build] 仍然优先。
     if (build_all or build_lts) and "no-build" not in flags:
@@ -197,6 +199,18 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
     for game in sorted({game for game, _ in selected}):
         members = sorted(platform for (candidate, platform) in selected if candidate == game)
         merge_members = [platform for platform in members if platform in MERGE_LOADERS]
+        if merge_fml_build:
+            fml_members = [platform for platform in members if platform in FML_LOADERS]
+            if game in merge_games:
+                if len(fml_members) >= 2:
+                    tier = max((selected[(game, platform)] for platform in fml_members), key=TIER_ORDER.__getitem__)
+                    units.append((game, fml_members, tier))
+                    # 只合并 Forge/NeoForge，Fabric 与 Quilt 继续单独分发
+                    units.extend((game, [platform], selected[(game, platform)])
+                                 for platform in members if platform not in fml_members)
+                else:
+                    units.extend((game, [platform], selected[(game, platform)]) for platform in members)
+                continue
         if game in merge_games and len(merge_members) >= 2:
             tier = max((selected[(game, platform)] for platform in merge_members), key=TIER_ORDER.__getitem__)
             # Quilt 直接兼容 Fabric 实现，随合并产物一起分发，避免额外生成重复的 Fabric 包
@@ -207,7 +221,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
     if force_build or "no-build" not in flags:
         for game, platforms, tier in units:
             merged = len(platforms) > 1
-            loader = "universal" if merged else platforms[0]
+            loader = ("fml" if merge_fml_build else "universal") if merged else platforms[0]
             versions = resolve(current, platforms[0], game)
             if merged:
                 for platform in platforms[1:]:
@@ -217,7 +231,8 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
             zstd = bundled_zstd_version(current, platforms[0], game)
             previous_zstd = bundled_zstd_version(previous, platforms[0], game) if catalog_changed and previous else None
             requested = "no-build" not in flags and (
-                build_all or (build_lts and tier == "lts") or (merge_build and merged))
+                build_all or (build_lts and tier == "lts") or (merge_build and merged)
+                or (merge_fml_build and game in merge_games))
             automatic = not build_all and not build_lts and tier == "latest"
             if requested or (automatic and
                              (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd)))):
@@ -230,7 +245,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
                             if (force_release or before.get(component) != value) and
                             (bypass_tier or channel(value) in TIERS[tier]))
             if emitted:
-                loader_group = ("universal" if merged else
+                loader_group = (loader if merged else
                                 "fabric" if platforms[0] in ("fabric", "quilt") else platforms[0])
                 key = (game, loader_group, tuple(versions.items()), zstd, emitted)
                 grouped.setdefault(key, []).append((platforms, loader))

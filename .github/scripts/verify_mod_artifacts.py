@@ -48,7 +48,7 @@ def metadata(archive, loader, mod_id):
 
 
 def verify(job, directory):
-    loaders = job["platforms"] if job["loader"] == "universal" else [job["loader"]]
+    loaders = job["platforms"] if job["loader"] in ("universal", "fml") else [job["loader"]]
     game = job["game"]
     java = 17 if game.startswith("1.20.") else 21 if game.startswith("1.21.") else 25
     paths = {asset["component"]: asset["paths"] for asset in job["assets"]}

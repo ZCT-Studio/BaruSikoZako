@@ -75,14 +75,23 @@ for (game in selectableGames) {
     }
     // 合并目标在任务树中始终可见，无需先切换活跃目标
     val mergeLoaders = loaders.filter { it in setOf("fabric", "forge", "neoforge") }
+    val wrapper = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
     if (game in mergedGames && mergeLoaders.size >= 2) {
         targetsProject.tasks.register<Exec>("universal") {
             group = "build"
             description = "Builds the universal (fabric+forge+neoforge) product for Minecraft $game"
             workingDir = rootDir
-            val wrapper = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
             commandLine(wrapper, "-PgameVersion=$game", "-Ploaders=${mergeLoaders.joinToString(",")}",
                 "-PmergeJars=true", "mergeJars", "mergeApiJars")
+        }
+        if ("forge" in mergeLoaders && "neoforge" in mergeLoaders) {
+            targetsProject.tasks.register<Exec>("fml") {
+                group = "build"
+                description = "Builds the merged Forge+NeoForge product for Minecraft $game"
+                workingDir = rootDir
+                commandLine(wrapper, "-PgameVersion=$game", "-Ploaders=forge,neoforge",
+                    "-PmergeJars=true", "mergeJars", "mergeApiJars")
+            }
         }
     }
 }
@@ -351,8 +360,11 @@ val mergeLoaders = (rootProperty("loaders") ?: rootLocal("loaders"))
 
 // 合并构建是可选行为：只有显式传入 -PmergeJars=true 才会注册合并任务
 if (mergeGame != null && mergeLoaders.size >= 2 && hasProperty("mergeJars")) {
+    // 含 Fabric 的合并产物标记为 universal，仅 Forge/NeoForge 的合并产物标记为 fml
+    val mergeLabel = if ("fabric" in mergeLoaders) "universal" else "fml"
     extra.set("forgixGame", mergeGame)
     extra.set("forgixLoaders", mergeLoaders)
+    extra.set("forgixLabel", mergeLabel)
     apply(from = "gradle/merge-jars.gradle")
 
     // API 产物类字节在各 Loader 间一致，只有元数据不同，用去重合并即可。
@@ -367,7 +379,7 @@ if (mergeGame != null && mergeLoaders.size >= 2 && hasProperty("mergeJars")) {
             dependsOn(apiJars)
             inputJars.from(apiJars.map { jar -> jar.flatMap { it.archiveFile } })
             outputJar.set(root.layout.projectDirectory.file(
-                "build_product/api/barusikozako_api-v$apiVersion+universal$mergeGame.jar"))
+                "build_product/api/barusikozako_api-v$apiVersion+$mergeLabel$mergeGame.jar"))
         }
     }
 }

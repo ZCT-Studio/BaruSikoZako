@@ -632,6 +632,22 @@ class TestReleasePlan(unittest.TestCase):
         self.assertEqual([job["target"] for job in result["build_jobs"]], ["universal26.3"])
         self.assertEqual(result["build_jobs"][0]["loader"], "universal")
 
+    def test_merge_fml_flag_merges_only_forge_and_neoforge(self):
+        releases = {
+            "policy": {"maxShiftVersions": 5},
+            "platformGroups": {"mod_fabric": ["fabric", "quilt"], "mod": ["mod_fabric", "forge", "neoforge"]},
+            "versions": {"26.3": {"shift": ["mod"]}},
+        }
+        result = plan(self.sample_versions, releases, self.sample_versions,
+                      "chore: verify merged [merge-fml-jars]", [], merge_games=frozenset({"26.3"}))
+        jobs = {job["target"]: job for job in result["build_jobs"]}
+        self.assertEqual(set(jobs), {"fml26.3", "fabric26.3", "quilt26.3"})
+        self.assertEqual(jobs["fml26.3"]["loader"], "fml")
+        self.assertEqual(jobs["fml26.3"]["platforms"], ["forge", "neoforge"])
+        self.assertEqual(jobs["fml26.3"]["assets"][0]["paths"], ["mod/barusikozako-v1.0.0+fml26.3.jar"])
+        self.assertEqual(jobs["fabric26.3"]["platforms"], ["fabric"])
+        self.assertEqual(jobs["quilt26.3"]["platforms"], ["quilt"])
+
     def test_merged_unit_requires_matching_component_versions(self):
         releases = {
             "policy": {"maxShiftVersions": 5},
@@ -647,9 +663,14 @@ class TestReleasePlan(unittest.TestCase):
 class TestPublishRelease(unittest.TestCase):
     MERGED = {"target": "universal26.3", "game": "26.3", "loader": "universal",
               "platforms": ["fabric", "forge", "neoforge", "quilt"]}
+    FML = {"target": "fml26.3", "game": "26.3", "loader": "fml",
+           "platforms": ["forge", "neoforge"]}
 
     def test_storefront_loaders_accept_merged_target(self):
         self.assertEqual(publish_release.storefront_loaders(self.MERGED), self.MERGED["platforms"])
+
+    def test_storefront_loaders_accept_fml_target(self):
+        self.assertEqual(publish_release.storefront_loaders(self.FML), ["forge", "neoforge"])
 
     def test_storefront_loaders_reject_invalid_merged_selection(self):
         for platforms in ([], ["fabric"], ["fabric", "bukkit"]):

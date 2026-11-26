@@ -34,6 +34,9 @@ def storefront_loaders(job):
     if target_loader == "universal":
         valid = (job["target"] == target_loader + job["game"] and len(loaders) > 1
                  and set(loaders) <= MERGED_LOADERS)
+    elif target_loader == "fml":
+        valid = (job["target"] == target_loader + job["game"]
+                 and set(loaders) == {"forge", "neoforge"})
     else:
         valid = (job["target"] == target_loader + job["game"] and loaders[0] == target_loader
                  and (len(loaders) == 1 or set(loaders) == {"fabric", "quilt"}))
@@ -269,7 +272,7 @@ def curseforge_has_hash(old, expected):
 
 
 def ordered_storefront(entries):
-    loader_order = ("universal", "forge", "fabric", "quilt", "neoforge")
+    loader_order = ("universal", "fml", "forge", "fabric", "quilt", "neoforge")
     component_order = ("mod", "api")
 
     def release_key(entry):

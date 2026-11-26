@@ -379,6 +379,7 @@ for ((loader, version) in versions) {
 
                 public final class PlatformVersions {
                     public static final String MINIMUM_API_VERSION = "$minimum";
+                    public static final String ZSTD_VERSION = "$zstdVersion";
                     private PlatformVersions() {}
                 }
             """.trimIndent() + "\n", Charsets.UTF_8)

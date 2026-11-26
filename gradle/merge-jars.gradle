@@ -9,6 +9,7 @@ apply plugin: 'io.github.pacifistmc.forgix'
 
 def game = project.ext.forgixGame
 def loaders = project.ext.forgixLoaders
+def label = project.ext.forgixLabel ?: (loaders.contains('fabric') ? 'universal' : 'fml')
 def node = 'mc' + game.replace('.', '_')
 
 gradle.projectsEvaluated {
@@ -25,7 +26,7 @@ gradle.projectsEvaluated {
 
     def version = project(":app:${node}:${loaders[0]}").version
     def destination = project.layout.buildDirectory.dir('forgix')
-    def product = "barusikozako-v${version}+universal${game}.jar"
+    def product = "barusikozako-v${version}+${label}${game}.jar"
     // 合并产物按普通加载器的方式落到 build_product/mod
     def stage = project.tasks.register('stageUniversalMod', Copy) {
         from(destination.map { it.file("barusikozako-${game}-${version}-merged.jar") })
