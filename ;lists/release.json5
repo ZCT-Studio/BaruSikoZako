@@ -45,24 +45,20 @@
         "neoforge",
         "mod_fabric",
       ],
-      shift: ["agent"],
     },
     "26.1.2": {
       shift: [
         "mod",
-        "agent",
       ]
     },
     "26.2": {
       shift: [
         "mod",
-        "agent",
       ]
     },
     "26.3": {
       latest: [
         "mod",
-        "agent",
       ]
     },
   },
