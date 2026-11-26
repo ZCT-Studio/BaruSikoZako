@@ -58,6 +58,7 @@ dependencies {
 tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
         "minecraftVersions" to game, "javaVersion" to runtimeJava, "mixinConfig" to mixinConfig,
+        "minimumApiVersion" to project.extra["minimumApiVersion"],
         "loaderRequirement" to project.extra["fabricLoaderRequirement"], "modDescription" to "BaruSikoZako remapped server development build.")
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["mod"] as Map<String, Any?>

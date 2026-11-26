@@ -1,6 +1,6 @@
 {
   "mod": {
-    "description": "A simple backup MOD, but it added a lot of extensibility\n一条杂鱼，帮你备份",
+    "description": "A simple backup MOD, but it added a lot of extensibility\n一条杂鱼，可靠地、快速地帮你备份",
     "authors": [
       "WJiangzhi",
       "zichuan-az",
@@ -11,7 +11,7 @@
     "issues": "https://github.com/ZCT-Studio/BaruSikoZako/issues/new?title=%5BMod%5D%7C"
   },
   "api": {
-    "description": "Public API for integrating with BaruSikoZako\n杂鱼备份的拓展",
+    "description": "Public API for integrating with BaruSikoZako\n杂鱼备份的拓展接口",
     "authors": [
       "WJiangzhi"
     ],
@@ -21,12 +21,12 @@
   },
   "backend": {
     "zstd": {
-      "description": "Zstandard backup backend for BaruSikoZako\n杂鱼的默认后端Zstd",
+      "description": "Zstandard backup backend for BaruSikoZako\n杂鱼的默认备份后端Zstd",
       "authors": [
         "WJiangzhi",
         "tingia-tilia"
       ],
-      "homepage": "https://modrinth.com/mod/barusikozako-zstd",
+      "homepage": "https://modrinth.com/mod/barusikozako",
       "sources": "https://github.com/ZCT-Studio/BaruSikoZako/tree/main/backends/zstd",
       "issues": "https://github.com/ZCT-Studio/BaruSikoZako/issues/new?title=%5BBackend-Zstd%5D%7C"
     }

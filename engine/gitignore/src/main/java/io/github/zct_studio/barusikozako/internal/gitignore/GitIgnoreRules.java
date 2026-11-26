@@ -18,6 +18,7 @@ public final class GitIgnoreRules {
     private static final int MAX_BYTES = 1024 * 1024;
     private final List<FastIgnoreRule> rules;
     private final List<String> patterns;
+    private final java.util.Set<Integer> used = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private GitIgnoreRules(List<FastIgnoreRule> rules, List<String> patterns) {
         this.rules = List.copyOf(rules);
@@ -61,6 +62,14 @@ public final class GitIgnoreRules {
 
     public List<String> patterns() { return patterns; }
 
+    /** 实际参与过匹配的规则，按文件中的顺序返回 */
+    public List<String> usedPatterns() {
+        var result = new ArrayList<String>();
+        for (int index = 0; index < patterns.size(); index++)
+            if (used.contains(index)) result.add(patterns.get(index));
+        return result;
+    }
+
     /** 单条路径的决策，父目录是否可遍历由调用方统一判断 */
     public Match match(String relativePath, boolean directory) {
         return matchEncoded(matchText(relativePath), directory);
@@ -86,7 +95,10 @@ public final class GitIgnoreRules {
     private Match matchEncoded(String path, boolean directory) {
         for (int i = rules.size() - 1; i >= 0; i--) {
             var rule = rules.get(i);
-            if (rule.isMatch(path, directory, true)) return rule.getResult() ? Match.EXCLUDE : Match.INCLUDE;
+            if (rule.isMatch(path, directory, true)) {
+                used.add(i);
+                return rule.getResult() ? Match.EXCLUDE : Match.INCLUDE;
+            }
         }
         return Match.NONE;
     }

@@ -10,6 +10,8 @@ import net.neoforged.fml.common.Mod;
 @Mod(value = "barusikozako_backendzstd")
 public final class ZstdMod {
     public ZstdMod() {
-        NativeEntrypoints.registerBackend(new ZstdProvider());
+        NativeEntrypoints.registerBackend(new ZstdProvider(),
+            net.neoforged.fml.ModList.get().getModContainerById("barusikozako_backendzstd")
+                .map(container -> container.getModInfo().getVersion().toString()).orElse(null));
     }
 }

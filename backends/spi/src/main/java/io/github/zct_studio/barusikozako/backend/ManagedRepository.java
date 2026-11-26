@@ -30,6 +30,9 @@ public interface ManagedRepository extends Repository {
         return java.util.OptionalLong.empty();
     }
 
+    /** 记录展示用的耗时与逻辑体积；不支持的后端可以忽略 */
+    default void recordStats(UUID id, java.time.Duration elapsed, long logicalBytes) throws IOException {}
+
     default void rebuild(UUID source, Snapshot target, UUID operation, Preparation limits, CommitGate gate)
         throws IOException {
         throw new IOException("Snapshot rebuild unsupported");

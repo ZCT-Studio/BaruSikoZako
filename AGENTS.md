@@ -55,6 +55,10 @@
 > 本文件记录**面向用户**的改动，内容会直接用于 Modrinth 和 CurseForge 的发布说明。
 > 纯内部的调整（重构、构建配置、文档整理等）不在此列出。
 
+- 主模组与内置后端的改动写入 `CHANGELOG.md`
+- 公共 API 的改动写入 `CHANGELOG.API.md`，与主模组独立维护版本条目
+- `CHANGELOG.API.md` 同样使用双语格式、`Unreleased` 占位与版本标题
+
 ### 格式要求
 
 - 采用双语格式，基于 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 和 [语义化版本](https://semver.org/lang/zh-CN/)
@@ -112,8 +116,10 @@
 
 - 旧版本按主/次版本号归档至 `changelogs/v<major>/<major>.<minor>.md`
   - 例：`changelogs/v1/1.0.md`
-- 当前开发系列保留在 `CHANGELOG.md`
+- 旧 API 版本按主/次版本号归档至 `changelogs/;api/v<major>/<major>.<minor>.md`
+  - 例：`changelogs/;api/v1/1.0.md`
+- 当前开发系列分别保留在 `CHANGELOG.md` 与 `CHANGELOG.API.md`
 - 仅在维护结束后归档
 - 归档保留原版本号、发布日期、双语条目
-- 不在 `CHANGELOG.md` 重复归档条目
+- 不在当前 changelog 中重复归档条目
 - 归档不得破坏 CI 的发布说明提取

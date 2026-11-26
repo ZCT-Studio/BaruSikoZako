@@ -14,17 +14,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Older changelogs are archived by major and minor versions in the [Changelog Archives](changelogs/README.md).
 <br> 旧版本更新日志按主版本号和次版本号归档，详见[更新日志归档](changelogs/README.md)。
 
+Changes to the public API are tracked separately in [CHANGELOG.API.md](CHANGELOG.API.md).
+<br> 公共 API 的改动单独记录在 [CHANGELOG.API.md](CHANGELOG.API.md)。
+
 Sections appear in this order when applicable: **Added / 新增**, **Changed / 变更**, **Deprecated / 弃用**, **Removed / 移除**, **Fixed / 修复**, **Security / 安全**. Performance improvements are listed under **Changed / 变更**.
 <br> 各分类按以上顺序排列，空分类省略；性能优化归入 **Changed / 变更**。
 
 ## [Unreleased / 未发布]
 
+## [1.1.0] - 2026-11-26
+
 ### Added / 新增
 
+- New separate `progress.yml` displays backup progress in a BossBar, with per-player language, configurable colors, text sections and a result display after the task ends.
+<br> 新增独立的 `progress.yml`，可用 BossBar 显示备份进度，支持按玩家语言渲染、自定义颜色与文本项，并在任务结束后展示结果。
+- Progress display distinguishes backups started by the viewing player from scheduled, console and third-party backups, with configurable audience for the latter.
+<br> 进度显示会区分查看者本人发起的备份与定时、控制台及第三方发起的备份，后者受众可配置。
+- Configuration files include English and Chinese guidance and accept human-readable time and size units.
+<br> 配置文件提供中英文说明，并支持易读的时间和容量单位。
 - New `capture.consistency` option (`strict` by default, or `relaxed`). Strict refuses a backup when files change during capture; relaxed accepts fully copied files that may come from slightly different moments, never truncated or damaged copies.
 <br> 新增 `capture.consistency` 配置（默认 `strict`，可选 `relaxed`）。严格模式发现文件在捕获期间变化就拒绝备份；宽松模式接受完整复制但来自不同时间点的文件，绝不接受截断或损坏的副本。
-- Snapshot metadata now records the consistency level used at capture time, `/list` shows it, and restoring a relaxed snapshot prints a warning first.
-<br> 快照元数据现在永久记录捕获时的一致性等级，`/list` 会显示该等级，恢复宽松模式快照前会先弹出警告。
+- Snapshot metadata records the consistency level used at capture time, `/list` shows it, and restoring a relaxed snapshot prints a warning first.
+<br> 快照元数据永久记录捕获时的一致性等级，`/list` 会显示该等级，恢复宽松模式快照前会先弹出警告。
+- Snapshot and task lists show three lines per item (time, UUID and operator; type or progress; actions), with four items per page and previous/next navigation.
+<br> 快照与任务列表每项显示三行（时间、UUID 与操作人；类型或进度；操作），每页 4 项并支持上一页/下一页。
+- New `/detail` command and a details button on every snapshot, showing capture time, UUID, type, consistency, size, elapsed time, operator and game, mod and backend versions.
+<br> 新增 `/detail` 指令和每个快照的“详细信息”按钮，显示备份时间、UUID、类型、一致性、体积、耗时、操作人以及游戏、模组和后端版本。
+- Tasks record their operator and can be listed, inspected and canceled by submission time or task ID.
+<br> 任务会记录操作人，并支持按提交时间或任务 ID 列出、查看和取消。
+- New `ignore.gitignore` and `ignore.pteroignore` options use world-level `.gitignore` files and the game root `.pteroignore` as exclusion rules.
+<br> 新增 `ignore.gitignore` 与 `ignore.pteroignore` 配置，可将世界内的 `.gitignore` 和游戏根目录的 `.pteroignore` 作为排除规则。
+- Backup and verification completion messages can use separate `template.backup` and `template.verify` layouts, and `progress_simple` shows both sizes in a shared unit.
+<br> 备份与校验的完成提示可分别使用 `template.backup` 与 `template.verify`，`progress_simple` 使用统一单位显示两个体积。
+- Copyable values are yellow and clickable actions are cyan in brackets; hovering a copyable value shows its original text.
+<br> 可复制内容显示为黄色，可点击操作显示为带方括号的青色；悬停可复制内容会显示原始文本。
+- Zstd snapshots record archive size, logical size, elapsed time and layout in their metadata, and `/list` and `/detail` display them.
+<br> Zstd 快照在元数据中记录压缩体积、逻辑体积、耗时与布局，`/list` 与 `/detail` 会显示这些信息。
+- The mod declares a minimum ZakoBak API version (`mod.api_version`); Fabric and NeoForge refuse older API versions at load time, and Forge reports a bilingual `ModLoadingException`.
+<br> 主模组声明最低 ZakoBak API 版本（`mod.api_version`）；Fabric 与 NeoForge 会在加载时拒绝更旧的 API，Forge 则输出双语 `ModLoadingException`。
 
 ### Changed / 变更
 
@@ -32,108 +59,16 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 <br> 在线备份会以更多次数重试发生变化的文件，整次捕获仍失败时还会重新捕获一次，显著提升繁忙服务器上的成功率。
 - Capture failures now log the concrete reason to the server log instead of only reporting that the source was unavailable.
 <br> 捕获失败现在会把具体原因写入服务器日志，不再只报告来源不可用。
+- Ignore-rule notices list only the rules that actually matched and dim the source file.
+<br> 忽略规则提示只列出实际生效的规则，并淡化显示来源文件。
+- Command failures report the concrete rejection or failure reason instead of a generic error.
+<br> 指令失败时会报告具体的拒绝或失败原因，不再只显示通用错误。
+- The first-run notice is sent only to the first administrator who joins, once per mod version.
+<br> 首次启动提示只发送给第一个上线的管理员，每个模组版本仅提示一次。
+- The built-in Zstd backend is now listed as `ZakoBak Zstd (Bundled)`, and its version no longer carries a suffix.
+<br> 内置 Zstd 后端现在显示为 `ZakoBak Zstd (Bundled)`，版本号不再带后缀。
+- Now `server.yml` file is structured instead of flat.
+<br> 现在 `server.yml` 结构化而非扁平化
 
-## [1.0.3] - 2026-11-25
-
-### Added / 新增
-
-- Added `/zakobak` and `/zakobackup` aliases, plus a bilingual `/help` command.
-<br> 新增 `/zakobak`、`/zakobackup` 别名，以及双语言 `/help` 帮助（超多的杂鱼~）
-- `/config` now supports `get` to read a single value.
-<br> `/config` 新增 `get`，可读取单项配置。
-- The first server start and the first player joining now show the configuration path and backup repository, and note that periodic backups are disabled by default.
-<br> 服务器首次启动和首个玩家进入时会显示配置路径与备份仓库，并提示定时备份默认关闭。
-
-### Changed / 变更
-
-- `/status` now shows the backend, repository path, schedule, last backup and configuration path.
-<br> `/status` 现在显示后端、仓库路径、定时备份、上次备份与配置路径。
-- Failed or rejected periodic backups now notify online administrators and log the concrete reason.
-<br> 定时备份失败或被拒绝时会通知在线管理员，并在日志中记录具体原因。
-
->**_This Changelog isn't AIGC_**
-><br>**_本次更新日志为非AI生成内容_**
-
-## [1.0.3-alpha.1] - 2026-11-25
-
-### Changed / 变更
-
-- Configuration files are now created during mod initialization instead of after the server finishes starting.(Thanks for me:( )
-<br> 配置文件现在会在模组初始化时创建，不再等到服务器启动完成。(感谢我在自己的专用服务器发现这个问题，它可能会使很多人不知道有备份排除)
-- The default world ignore rules now exclude `session.lock`.
-<br> 默认世界忽略规则现在增加排除项 `session.lock`。
-
->**_This Changelog isn't AIGC_**
-><br>**_本次更新日志为非AI生成内容_**
-
-## [1.0.2-hotfix] - 2026-11-25
-
-### Fixed / 修复
-
-- Fixed a crash caused by command synchronization when the server context is unavailable as a player joins.
-<br> 修复玩家加入时指令同步缺少服务端上下文导致的崩溃。
-
->**_This Changelog isn't AIGC_**
-><br>**_本次更新日志为非AI生成内容_**
-
-## [1.0.2-patch.2] - 2026-11-24
-
-### Changed / 变更
-
-- Change MAX_DEPTH to 2048 and change DEFAULT_DEPTH to 32.
-<br> 最大增量备份数量提升至2048并且修改默认增量备份数量为32。
-
->**_This Changelog isn't AIGC_**
-><br>**_本次更新日志为非AI生成内容_**
-
-## [1.0.2-patch.1] - 2026-11-24
-
-### Fixed / 修复
-
-- Fixed the issue where backups could not be used in single-player mode without cheats.
-<br> 修复单人游戏下无作弊无法使用备份的问题。
-
-## [1.0.2] - 2026-11-23
-
-### Added / 新增
-
-- Restore, verify, or delete a snapshot by its exact timestamp, with timestamp and UUID completion for all three commands.
-<br> 支持按精确时间回滚、校验或删除快照，三条命令均提供时间和 UUID 补全。
-- Select a snapshot by its complete folder name with `fullname <timestamp--uuid>`.
-<br> 支持用 `fullname <时间--UUID>` 按完整目录名选取快照，并提供补全。
-- Query the actual local path or folder name of a committed snapshot through the public backup API.
-<br> 公共备份 API 支持查询已提交快照当前的本地路径或文件夹名。
-- List recent tasks or look up and cancel tasks by submission time, with time and task ID completion.
-<br> 支持列出近期任务，以及按提交时间查询或取消任务，并补全时间和任务 ID。
-- Notify each player once when they first join the restored world during its first session after rollback. The notice names the world and shows the backup time in UTC.
-<br> 回滚后的第一次开服期间，每位玩家首次进入时会收到通知，显示存档名和恢复点的 UTC 备份时间。
-
-### Changed / 变更
-
-- The main mod now always includes Zstd. Standalone Zstd downloads and the backend-free main mod are no longer published.
-<br> 主模组始终内置 Zstd，停止发布独立 Zstd 后端和无后端版主模组。
-- Localize command feedback, including task results, verification, and configuration messages.
-<br> 指令反馈按玩家语言显示，涵盖任务结果、校验和配置提示。
-- Use `fromuuid <uuid>` in snapshot commands to select by UUID, including pagination and baseline selection. The configuration schema is read-only.
-<br> 快照命令统一用 `fromuuid <uuid>` 指定 UUID，涵盖翻页和基线选择。配置中的 schema 为只读。
-- Zstd names snapshot directories by UTC time and UUID, and migrates previous UUID-only directories on the next backup.
-<br> Zstd 快照目录以 UTC 时间和 UUID 命名，旧 UUID 目录在下一次备份时迁移。
-- Lowered the declared Fabric Loader minimum by Minecraft version and aligned the standalone API and Zstd backend with the main mod.
-<br> 按 Minecraft 版本降低 Fabric Loader 声明下限，同步主模组、独立 API 和 Zstd 后端的要求。
-- Unified the declared Mixin minimum at 0.8.5 across mod loader targets.
-<br> 将各模组加载器目标的 Mixin 声明下限统一为 0.8.5。
-
-### Fixed / 修复
-
-- The Minecraft 1.21.1 NeoForge build supports the synchronous and asynchronous world data save paths in NeoForge 21.1.1 through 21.1.267.
-  <br> Minecraft 1.21.1 的 NeoForge 构建兼容 NeoForge 21.1.1 至 21.1.267 的同步和异步世界数据保存路径。
-
-## [1.0.1] - 2026-11-23
-
-_元数据修复版本_
-The metadata fix Release
-
-## [1.0.0] - 2026-11-23
-
-_首次发布版本_
-The first Release
+>**_This Changelog is AIGC and verified_**
+><br>**_本次更新日志为AI生成内容，并且经过验证_**

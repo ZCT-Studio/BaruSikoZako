@@ -8,6 +8,6 @@
   "icon": "icon.png",
   "description": "${descriptionJson}",
   "environment": "*",
-  "depends": {"barusikozako": "*", "fabricloader": "${loaderRequirement}", "java": ">=17"},
+  "depends": {"barusikozako": ">=${mainModVersion}", "fabricloader": "${loaderRequirement}", "java": ">=17"},
   "license": "MPL-2.0"
 }

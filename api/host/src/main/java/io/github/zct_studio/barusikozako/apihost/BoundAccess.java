@@ -59,6 +59,12 @@ public final class BoundAccess {
         return grant != null && grant.allows(repository, Right.VIEW);
     }
 
+    /** 至少一个仓库具备查看权限；用于服务状态与版本等只读信息 */
+    boolean mayViewAnyRepository() {
+        Grant grant = policy.get();
+        return grant != null && grant.repositories().values().stream().anyMatch(rights -> rights.contains(Right.VIEW));
+    }
+
     boolean maySubscribe(Optional<String> repository) {
         var grant = policy.get();
         if (grant == null) return false;

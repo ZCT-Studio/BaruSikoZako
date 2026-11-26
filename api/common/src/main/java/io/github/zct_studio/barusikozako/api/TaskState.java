@@ -9,11 +9,13 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 public record TaskState(TaskId id, BackupRequest.Kind operation, String repositoryId, Phase phase,
-                        long processedBytes, OptionalLong totalBytes, Optional<TaskResult> result, Duration elapsed) {
+                        long processedBytes, OptionalLong totalBytes, Optional<TaskResult> result, Duration elapsed,
+                        Optional<BackupService.BackupOperator> operator) {
     public TaskState {
         Objects.requireNonNull(id);
         Objects.requireNonNull(operation);
         Objects.requireNonNull(phase);
+        Objects.requireNonNull(operator);
         if (elapsed.isNegative()) throw new IllegalArgumentException("negative task elapsed time");
         if (repositoryId.isBlank()) throw new IllegalArgumentException("missing repository identifier");
         if (processedBytes < 0 || (totalBytes.isPresent() && totalBytes.getAsLong() < processedBytes))
@@ -22,8 +24,13 @@ public record TaskState(TaskId id, BackupRequest.Kind operation, String reposito
     }
 
     public TaskState(TaskId id, BackupRequest.Kind operation, String repositoryId, Phase phase,
+                     long processedBytes, OptionalLong totalBytes, Optional<TaskResult> result, Duration elapsed) {
+        this(id, operation, repositoryId, phase, processedBytes, totalBytes, result, elapsed, Optional.empty());
+    }
+
+    public TaskState(TaskId id, BackupRequest.Kind operation, String repositoryId, Phase phase,
                      long processedBytes, OptionalLong totalBytes, Optional<TaskResult> result) {
-        this(id, operation, repositoryId, phase, processedBytes, totalBytes, result, Duration.ZERO);
+        this(id, operation, repositoryId, phase, processedBytes, totalBytes, result, Duration.ZERO, Optional.empty());
     }
 
     public enum Phase { QUEUED, PREPARING, RUNNING, COMMITTING, TERMINAL }

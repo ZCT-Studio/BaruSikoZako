@@ -1,8 +1,0 @@
-name: barusikozako_api
-main: io.github.zct_studio.barusikozako.bukkit.api.BackupApiPlugin
-version: '${productVersion}'
-api-version: '1.20'
-load: STARTUP
-depend: [barusikozako]
-folia-supported: true
-description: Public backup business API for Bukkit plugins using the BaruSikoZako JavaAgent.

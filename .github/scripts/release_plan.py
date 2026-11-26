@@ -75,7 +75,7 @@ def targets(table):
             for item in groups[key]:
                 yield from expand(item, (*stack, key))
         else:
-            yield "agent" if key == "vanilla" else key
+            yield key
 
     selected = {}
     rolling = 0
@@ -108,12 +108,12 @@ def code_changed(paths):
             return True
         if path.startswith("resource/") and Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".json", ".properties"}:
             return True
-        if path.startswith(("platforms/fabric/third-party/", "platforms/javaagent/third-party/")):
+        if path.startswith("platforms/fabric/third-party/"):
             return True
         if path.startswith(".github/scripts/") and Path(path).suffix in {".py", ".ps1", ".sh"}:
             return True
-        if (path.startswith(".lists/") and Path(path).suffix == ".json5"
-                and path not in (".lists/version.json5", ".lists/release.json5")):
+        if (path.startswith(";lists/") and Path(path).suffix == ".json5"
+                and path not in (";lists/version.json5", ";lists/release.json5")):
             return True
         if path.startswith(("gradle/", "app/", "api/", "backends/", "engine/", "platforms/", "build-logic/", ".github/scripts/")):
             if Path(path).suffix in {".java", ".kt", ".kts", ".toml", ".xml", ".json", ".yml", ".yaml",
@@ -143,8 +143,8 @@ def requests_forced_release(flags):
     return bool(flags & {"force-release", "force-relaese"})
 
 
-def plan(current, release_table, previous, message, changed, markdown="", *, build_only=False, force_build=False,
-         merge_games=frozenset()):
+def plan(current, release_table, previous, message, changed, markdown="", *, api_markdown="", build_only=False,
+         force_build=False, merge_games=frozenset()):
     selected = targets(release_table)
     flags = commit_flags(message)
     force_release = requests_forced_release(flags)
@@ -157,7 +157,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     # [build-all]/[build-lts] 只规划构建，不生成发布；[no-build] 仍然优先。
     if (build_all or build_lts) and "no-build" not in flags:
         force_build = True
-    catalog_changed = any(path in (".lists/version.json5", ".lists/release.json5") for path in changed)
+    catalog_changed = any(path in (";lists/version.json5", ";lists/release.json5") for path in changed)
     storefronts = [name for name in ("modrinth", "curseforge") if f"no-{name}" not in flags]
     allow_release = (bool(storefronts) and not build_only and not force_build
                      and "no-release" not in flags and (catalog_changed or force_release))
@@ -166,6 +166,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
     release_jobs = []
     grouped = collections.OrderedDict()
     notes = changelogs(markdown)
+    api_notes = changelogs(api_markdown) if api_markdown else notes
     narrowed = set()
     if "release-temp" in flags:
         narrowed.update(("nlts", "shift"))
@@ -178,10 +179,12 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
         assets = []
         for component in components:
             version = versions[component]
-            asset_notes = notes.get(version, "").strip()
+            changelog_file = "CHANGELOG.API.md" if component == "api" else "CHANGELOG.md"
+            source_notes = api_notes if component == "api" else notes
+            asset_notes = source_notes.get(version, "").strip()
             if not build_only and not asset_notes:
                 if require_notes and "no-changelog" not in flags:
-                    raise SystemExit(f"No changelog entry for version {version} in CHANGELOG.md; "
+                    raise SystemExit(f"No changelog entry for version {version} in {changelog_file}; "
                                      "add a section or use [no-changelog]")
                 asset_notes = "_No changelog for this release_\n\n_本次发布未找到更新日志_"
             assets.append({"component": component, "version": version,
@@ -257,7 +260,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, bui
 
 def merge_games():
     try:
-        table = read_table(Path(".lists/targets.json5").read_text(encoding="utf-8"))
+        table = read_table(Path(";lists/targets.json5").read_text(encoding="utf-8"))
     except (OSError, KeyError, ValueError):
         return frozenset()
     return frozenset(str(game) for game in table.get("merge", []))
@@ -266,7 +269,10 @@ def merge_games():
 def previous_catalog(base):
     if not base:
         return None
-    old_versions = git("show", f"{base}:.lists/version.json5", missing=True)
+    old_versions = git("show", f"{base}:;lists/version.json5", missing=True)
+    if not old_versions:
+        # 清单从 .lists/ 迁移到 ;lists/ 之前的提交仍从旧路径读取。
+        old_versions = git("show", f"{base}:.lists/version.json5", missing=True)
     if not old_versions:
         # 清单迁入 .lists/ 之前的提交仍从旧路径读取，用于跨迁移比较。
         old_versions = git("show", f"{base}:versions.json5", missing=True)
@@ -305,19 +311,23 @@ def main():
         markdown = Path("CHANGELOG.md").read_text(encoding="utf-8")
     except FileNotFoundError:
         markdown = ""
-    result = plan(read_table(Path(".lists/version.json5").read_text(encoding="utf-8")),
-                  read_table(Path(".lists/release.json5").read_text(encoding="utf-8")), old,
-                  message, changed, markdown,
+    try:
+        api_markdown = Path("CHANGELOG.API.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        api_markdown = ""
+    result = plan(read_table(Path(";lists/version.json5").read_text(encoding="utf-8")),
+                  read_table(Path(";lists/release.json5").read_text(encoding="utf-8")), old,
+                  message, changed, markdown, api_markdown=api_markdown,
                   build_only=build_only, force_build=force_build, merge_games=merge_games())
     if result["should_release"]:
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
         repository = os.environ.get("GITHUB_REPOSITORY", "ZCT-Studio/BaruSikoZako")
         commit = git("rev-parse", "HEAD").strip()
-        footer = ("\n\n---\n\nFull changelog / 完整更新日志:\n\n"
-                  f"[CHANGELOG.md]({server}/{repository}/blob/{commit}/CHANGELOG.md)\n")
         for job in result["jobs"]:
             for asset in job["assets"]:
-                asset["notes"] += footer
+                file = "CHANGELOG.API.md" if asset["component"] == "api" else "CHANGELOG.md"
+                asset["notes"] += ("\n\n---\n\nFull changelog / 完整更新日志:\n\n"
+                                   f"[{file}]({server}/{repository}/blob/{commit}/{file})\n")
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if output := os.environ.get("GITHUB_OUTPUT"):
         with Path(output).open("a", encoding="utf-8") as stream:

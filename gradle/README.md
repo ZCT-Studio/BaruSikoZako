@@ -17,23 +17,25 @@ loaders=fabric,forge,neoforge
 | --- | --- |
 | `app/mc<版本>/<加载器>` | 版本、加载器专属的本体和后端封装构建入口。 |
 | `api/mc<版本>/<加载器>` | 版本、加载器专属的独立公共 API 构建入口。 |
-| `api/shared` | 跨版本共享的 API 打包入口，例如 Fabric、FML 与 Bukkit API。 |
+| `api/shared` | 跨版本共享的 API 打包入口，例如 Fabric 与 FML API。 |
 | `api/common`、`api/host` | 公共 API 契约与服务实现源码。 |
 | `engine/mod-runtime` | 从同一套源码生成主模组内部类型，以独立包名随主模组分发。 |
 | `engine`、`backends` | Core；后端 SPI、压缩和 Zstd 实现。加载器专用的 Zstd 打包由本体入口管理。 |
 
-项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `.lists/release.json5` 声明，组件版本由 `.lists/version.json5` 提供。
+项目名将版本点替换为下划线，例如 `26.3` → `mc26_3`。各版本目录的 README 列出对应 Gradle 项目和共享构建脚本。修改游戏适配时，在 `platforms` 目录复用相关源码，只有实际兼容差异需要独立的实现。支持范围由 `;lists/release.json5` 声明，组件版本由 `;lists/version.json5` 提供。
+
+`mod.api_version` 声明主模组要求的最低 API 版本；留空时使用当前 `api` 版本。低于该版本的 API 会被 Fabric 的 `breaks`、NeoForge 的 `incompatible` 依赖拒绝，Forge 则在加载时抛出双语 `ModLoadingException`。API 自身依赖不低于当前主模组版本。
 
 ## 多版本源码管理
 
-构建清单位于仓库根目录 `.lists/`：
+构建清单位于仓库根目录 `;lists/`：
 
 | 文件 | 用途 |
 | --- | --- |
 | `targets.json5` | 目标注册（`jdk`）、规则文件列表 `rules` 与可选的单目标覆盖 `targets`。 |
 | `sources.json5`、`resources.json5` | 可选源码层、资源层目录：层名到 `platforms/` 相对路径的映射，不提供默认值。 |
 | `mixins.json5` | Mixin 模板路径（`template`）与可选 Mixin 类名目录（`mixins`），不提供默认值。 |
-| `.rules/*.json5` | 命名分组与条件规则。 |
+| `;rules/*.json5` | 命名分组与条件规则。 |
 
 `layers` 中的路径相对 `platforms/`，目录下可有 `java/` 与 `resources/`；同名层在 `sources.json5` 与 `resources.json5` 中必须使用相同路径。目标键为 `<加载器>@<Minecraft版本>`，Java 版本由 `targets.json5` 的 `jdk` 映射给出。规则文件在 `groups` 中定义 `source`、`resource`、`mixin` 分组，在 `rule` 中按条件选择分组或单项：
 
@@ -48,7 +50,7 @@ loaders=fabric,forge,neoforge
 }
 ```
 
-规则按 `rules` 列表和文件内声明顺序应用；所有匹配规则都生效，后面的规则覆盖前面的字段。集合默认替换，也可用 `{ groups: [...], add: [...], remove: [...] }` 追加或移除；未声明的字段继承已有值，布尔开关可显式开启或关闭。目标初始为空（无源码层、无资源层、无 Mixin），因此规则必须显式选择源码层与 Mixin；`sources.json5`/`resources.json5`/`mixins.json5` 只是可选内容白名单，规则不能引用其中未登记的名称。规则文件路径相对 `.lists/.rules/`。后声明的层优先；各目标的有效源码层必须互不相交，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
+规则按 `rules` 列表和文件内声明顺序应用；所有匹配规则都生效，后面的规则覆盖前面的字段。集合默认替换，也可用 `{ groups: [...], add: [...], remove: [...] }` 追加或移除；未声明的字段继承已有值，布尔开关可显式开启或关闭。目标初始为空（无源码层、无资源层、无 Mixin），因此规则必须显式选择源码层与 Mixin；`sources.json5`/`resources.json5`/`mixins.json5` 只是可选内容白名单，规则不能引用其中未登记的名称。规则文件路径相对 `;lists/;rules/`。后声明的层优先；各目标的有效源码层必须互不相交，同一相对路径出现在多层会直接报错，应改用条件编译或独占层。
 
 小范围差异用注释式条件编译：
 
@@ -78,7 +80,7 @@ int permission = /*? if mc < 1.21.11 {*/3/*?} else {*/4/*?}*/;
 
 同一操作也在任务树中提供：`targets → <版本> → Tasks → ide → activateFabric / activateForge / activateNeoForge`。切换后仍需 Reload，才能更新参与导入的项目集合；Quilt 复用 Fabric 的清单目标。
 
-`checkTargetSources` 校验 `.lists/` 清单、层目录、条件指令、活跃分支与 Mixin 类。构建非活跃目标时自动生成 `build/target-sources/<目标>/java` 视图，因此切换活跃目标只影响 IDE 视图，不影响矩阵构建。
+`checkTargetSources` 校验 `;lists/` 清单、层目录、条件指令、活跃分支与 Mixin 类。构建非活跃目标时自动生成 `build/target-sources/<目标>/java` 视图，因此切换活跃目标只影响 IDE 视图，不影响矩阵构建。
 
 ## 常用命令
 
@@ -87,8 +89,7 @@ int permission = /*? if mc < 1.21.11 {*/3/*?} else {*/4/*?}*/;
 ```powershell
 .\gradlew.bat '-PgameVersion=26.3' '-Ploaders=fabric' :app:mc26_3:fabric:assemble :api:mc26_3:fabric:assemble
 .\gradlew.bat '-PgameVersion=1.21.1' '-Ploaders=forge,neoforge' buildProducts
-.\gradlew.bat -PjavaAgent=true :platforms:javaagent:assemble
-.\gradlew.bat '-PagentBukkitApiDir=<Paper #196 libraries>' :platforms:bukkit-bridge:assemble :api:shared:bukkit:assemble
+.\gradlew.bat '-PgameVersion=26.3' '-Ploaders=agent' -PjavaAgent=true buildProducts
 .\gradlew.bat :backends:zstd:check :engine:core:recoveryFaults
 ```
 
@@ -102,15 +103,18 @@ int permission = /*? if mc < 1.21.11 {*/3/*?} else {*/4/*?}*/;
 | --- | --- |
 | `mod` | `barusikozako-v0.5.0+fabric26.3.jar` |
 | `api` | `barusikozako_api-v0.5.0+fabric26.3.jar` |
-| `agent` | `barusikozako-v0.5.0+agent26.3.jar` |
-| `plugin` | `barusikozako-v0.5.0+bukkit26.3.jar`，用于配合 Agent 的可选桥 |
-| `preview` | 显式构建的兼容性探针，仍按验收矩阵管理 |
+| `agent` | `barusikozako-v0.5.0+agent26.3.jar`，用于原版服务端 |
 
-Fabric 与 Quilt 的产物分别使用 `+fabric<游戏版本>` 和 `+quilt<游戏版本>`。Agent 在文件名使用 `-PagentGameVersion`，其次使用命令行的 `-PgameVersion`，缺省 26.3。共享 Agent JAR 的运行兼容性由实际构建和验收决定。Bukkit 桥及 Bukkit API 可独立设置 `-PbukkitGameVersion`，默认沿用 Agent 或命令行所选版本。不同版本和平台的安装包可以并存。
+Fabric 与 Quilt 的产物分别使用各自的加载器和游戏版本标识。不同版本和平台的安装包可以并存。
 
 主模组可独立安装。外部模组以对应加载器和 Minecraft 版本的 `barusikozako_api` JAR 编译，声明 `barusikozako_api` 为加载器依赖，并将同一份 JAR 安装到服务器的 `mods` 目录。集成继续使用 `io.github.zct_studio.barusikozako.api` 接口。Zstd 后端 ID 为 `barusikozako_backendzstd`。
 
+## 配置数值单位
+
+主模组的 `config/barusikozako/server.yml` 和 Zstd 后端配置接受带单位的数值。时间支持 `ms`、`s`、`m`、`h`、`d`、`w`、`M`、`month`、`y`，例如 `50ms`、`30m`、`0.5h`。`M` 和 `month` 固定为 30 天，`y` 固定为 365 天。容量支持十进制 `B`、`Byte`、`KB`、`MB`、`GB`、`TB` 及二进制 `KiB`、`MiB`、`GiB`、`TiB`。
+
+没有后缀的数字沿用字段名称中的秒、毫秒或字节。单位按大小写区分，`m` 表示分钟，`M` 表示月。数值必须能精确表示为字段的基本单位，例如秒字段不能设置为 `50ms`。已有配置文件不会被自动改写，新建配置和通过配置指令写出的文件带有中英文注释。
+
 ```powershell
 .\gradlew.bat '-PgameVersion=26.3' '-Ploaders=fabric' buildProducts
-.\gradlew.bat -PjavaAgent=true '-PagentGameVersion=26.2' buildProducts
 ```

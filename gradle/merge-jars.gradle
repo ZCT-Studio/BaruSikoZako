@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ZCT Studio
 
 // 把同一 Minecraft 版本下多个 Loader 的产物合并成一个 jar（Forgix）。
-// 由根 build.gradle.kts 在 -PmergeJars=true 且选中的目标属于 .lists/targets.json5 的 merge 列表时应用。
+// 由根 build.gradle.kts 在 -PmergeJars=true 且选中的目标属于 ;lists/targets.json5 的 merge 列表时应用。
 // 使用 Groovy 是因为 Forgix 仅提供 Groovy 风格的动态扩展。
 
 apply plugin: 'io.github.pacifistmc.forgix'

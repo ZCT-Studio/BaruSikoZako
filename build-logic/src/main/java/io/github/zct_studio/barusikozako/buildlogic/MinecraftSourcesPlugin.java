@@ -45,7 +45,7 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion;
 import org.gradle.language.jvm.tasks.ProcessResources;
 
 /**
- * 把 {@code .lists/targets.json5} 应用到单个 Minecraft 构建目标：源码层、资源层、
+ * 把 {@code ;lists/targets.json5} 应用到单个 Minecraft 构建目标：源码层、资源层、
  * Java release、条件编译与 Mixin 配置。
  *
  * <p>源码直接作为源码集目录加入，IDEA 因此可以正常补全、跳转和重构。只有当前工作区

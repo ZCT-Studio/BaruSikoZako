@@ -15,7 +15,6 @@ dependencies {
     implementation(project(":api:host"))
     implementation(project(":engine:core"))
     implementation(project(":platforms:spi"))
-    implementation(project(":platforms:bukkit-startup")) { isTransitive = false }
     implementation("org.ow2.asm:asm:9.10.1")
     implementation(libs.snakeyaml)
     add(bundledBackend.name, project(":backends:zstd"))
@@ -61,7 +60,6 @@ fun notices(name: String, dependencies: Any) = tasks.register<CollectNotices>(na
             "barusikozako_backend_spi" to ":backends:spi",
             "backend-zstd" to ":backends:zstd",
             "compression-zstd" to ":backends:compression-zstd",
-            "platform-bukkit-startup" to ":platforms:bukkit-startup",
         ).map { (name, path) -> "$name-${project(path).version}.jar" }.toSet(),
     )
     strict.set(providers.gradleProperty("strictReleaseNotices").map(String::toBoolean).orElse(false))

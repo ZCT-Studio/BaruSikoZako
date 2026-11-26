@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako;
 
+import io.github.zct_studio.barusikozako.backend.ConfigUnits;
 import io.github.zct_studio.barusikozako.core.BackupExclusions;
 import io.github.zct_studio.barusikozako.runtime.BackupIntegration;
 import io.github.zct_studio.barusikozako.runtime.BackupRequest;
@@ -24,6 +25,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,14 +47,17 @@ import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
 public final class BaruSikoZakoServer {
     private static final System.Logger LOG = System.getLogger("BaruSikoZako");
-    private static final int PAGE_SIZE = 10;
+    private static final int PAGE_SIZE = 4;
+    private static final int SUGGESTION_LIMIT = 20;
     private static final int SNAPSHOT_LOOKUP_PAGE_SIZE = 256;
+    /** 快照列表使用的 UTC 时间格式 */
+    private static final DateTimeFormatter SNAPSHOT_TIME =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC);
     private static final String REPOSITORY = FabricOperations.REPOSITORY_ID;
     private static final String SOURCE = FabricOperations.SOURCE_ID;
     private static final class WorldWorkers {
@@ -85,6 +91,7 @@ public final class BaruSikoZakoServer {
     }
     private volatile WorldWorkers workers;
     private volatile BackupService operator;
+    private volatile BackupProgressDisplay progressDisplay;
     private volatile BackupApiHost.Binding commandBinding;
     private static volatile WorldCapture capture;
     private static volatile boolean empty;
@@ -116,6 +123,7 @@ public final class BaruSikoZakoServer {
         var root = Commands.literal(name)
             .requires(GameCommandAccess::canManageBackups)
             .then(Commands.literal("status").executes(context -> status(context.getSource())))
+            .then(Commands.literal("version").executes(context -> version(context.getSource())))
             .then(Commands.literal("help").executes(context -> help(context.getSource())))
             .then(configCommand("server", ServerConfig.defaults(), values -> {
                 var config = ServerConfig.parse(values);
@@ -123,20 +131,30 @@ public final class BaruSikoZakoServer {
                     !config.backendKeyword().equals(configuredBackend()))
                     throw new IllegalArgumentException("Backend is not installed: " + config.backendKeyword());
             }))
-            .then(Commands.literal("backup")
-                .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty())))
-            .then(snapshotSelection("list", (source, snapshot) -> list(source, Optional.of(snapshot.snapshot().snapshotId())))
-                .executes(context -> list(context.getSource(), Optional.empty())))
+            .then(Commands.literal("list")
+                .executes(context -> list(context.getSource(), 1))
+                .then(Commands.literal("page").then(Commands.argument("page",
+                        com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                    .executes(context -> list(context.getSource(),
+                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "page"))))))
+            .then(snapshotSelection("detail", BaruSikoZakoServer::detail))
             .then(snapshotCommand("verify",
                 snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
             .then(snapshotCommand("delete", BackupRequest.Delete::new))
-            .then(snapshotSelection("restore", (source, snapshot) -> {
+            .then(snapshotSelection("rollback", (source, snapshot) -> {
                 if (snapshot.consistency() == BackupService.Consistency.RELAXED)
-                    source.sendSuccess(() -> Component.literal(Translations.text(source, "notice.relaxed_restore")), false);
+                    Chat.line(source, Chat.Tone.WARNING, Translations.text(source, "notice.relaxed_restore"));
                 return submit(source, new BackupRequest.Restore(snapshot.snapshot(), SOURCE));
             }))
             .then(taskCommand("cancel", true))
-            .then(taskCommand("task", false).executes(context -> listTasks(context.getSource())));
+            .then(taskCommand("task", false)
+                .executes(context -> listTasks(context.getSource(), 1))
+                .then(Commands.literal("page").then(Commands.argument("page",
+                        com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                    .executes(context -> listTasks(context.getSource(),
+                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "page"))))));
+        var backup = Commands.literal("backup")
+            .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty()));
         for (var provider : BackendRegistry.registered().values()) {
             if (!provider.keyword().equals(selected)) continue;
             for (var command : provider.commands()) {
@@ -148,30 +166,29 @@ public final class BaruSikoZakoServer {
                 } else {
                     node.executes(context -> backendBackup(context.getSource(), provider.keyword(), mode, Optional.empty()));
                 }
-                root.then(node);
-                if (!command.keyword().equals("rebuild"))
-                    root.then(Commands.literal("backup").then(node));
+                backup.then(node);
             }
         }
+        root.then(backup);
         return root;
     }
 
     private static int help(CommandSourceStack source) {
-        var text = String.join("\n",
-            Translations.text(source, "help.header"),
+        Chat.lines(source, Chat.Tone.INFO, Translations.text(source, "help.header"), List.of(
             Translations.text(source, "help.status"),
+            Translations.text(source, "help.version"),
             Translations.text(source, "help.backup"),
             Translations.text(source, "help.list"),
+            Translations.text(source, "help.detail"),
             Translations.text(source, "help.verify"),
             Translations.text(source, "help.delete"),
-            Translations.text(source, "help.restore"),
+            Translations.text(source, "help.rollback"),
             Translations.text(source, "help.cancel"),
             Translations.text(source, "help.task"),
             Translations.text(source, "help.config"),
             Translations.text(source, "help.help"),
             Translations.text(source, "help.backend"),
-            Translations.text(source, "help.footer"));
-        source.sendSuccess(() -> Component.literal(text), false);
+            Translations.text(source, "help.footer")));
         return 1;
     }
 
@@ -185,7 +202,6 @@ public final class BaruSikoZakoServer {
         return Commands.literal(name)
             .then(snapshotUuid(action))
             .then(Commands.literal("fullname").then(Commands.argument("folder", StringArgumentType.word())
-                .suggests((context, builder) -> suggestSnapshots(builder, BaruSikoZakoServer::snapshotFolderName))
                 .executes(context -> withSnapshotFolder(context.getSource(), StringArgumentType.getString(context, "folder"), action))))
             .then(Commands.argument("time", StringArgumentType.greedyString())
                 .suggests((context, builder) -> suggestSnapshots(builder, item -> item.createdAt().toString()))
@@ -195,7 +211,6 @@ public final class BaruSikoZakoServer {
     private LiteralArgumentBuilder<CommandSourceStack> snapshotUuid(
             ToIntBiFunction<CommandSourceStack, BackupService.SnapshotInfo> action) {
         return Commands.literal("fromuuid").then(Commands.argument("uuid", StringArgumentType.word())
-            .suggests((context, builder) -> suggestSnapshots(builder, item -> item.snapshot().snapshotId()))
             .executes(context -> withId(context.getSource(), StringArgumentType.getString(context, "uuid"), action)));
     }
 
@@ -208,7 +223,7 @@ public final class BaruSikoZakoServer {
         return scanSnapshots(service, Optional.empty(), snapshot -> {
             var candidate = value.apply(snapshot);
             if (candidate.regionMatches(true, 0, prefix, 0, prefix.length())) matches.add(candidate);
-            return matches.size() >= PAGE_SIZE;
+            return matches.size() >= SUGGESTION_LIMIT;
         }).handle((result, failure) -> {
             if (failure == null && operator == service) matches.forEach(builder::suggest);
             return builder.build();
@@ -221,7 +236,7 @@ public final class BaruSikoZakoServer {
         try {
             time = Instant.parse(text);
         } catch (DateTimeParseException invalid) {
-            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot_time")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_snapshot_time"));
             return 0;
         }
         return resolveSnapshot(source, snapshot -> time.equals(snapshot.createdAt()),
@@ -249,7 +264,7 @@ public final class BaruSikoZakoServer {
                 // 格式错误统一在下面报告
             }
         }
-        source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot_folder")));
+        Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_snapshot_folder"));
         return 0;
     }
 
@@ -266,12 +281,12 @@ public final class BaruSikoZakoServer {
             if (failure != null || matches.size() != 1) {
                 String key = failure != null ? "command.query_failed" : matches.isEmpty()
                     ? notFound : "command.snapshot_time_ambiguous";
-                source.sendFailure(Component.literal(Translations.text(source, key)));
+                Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, key));
                 return;
             }
             action.applyAsInt(source, matches.get(0));
         }));
-        source.sendSuccess(() -> Component.literal(Translations.text(source, "command.repository_accepted")), false);
+        Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.repository_accepted"));
         return 1;
     }
 
@@ -289,7 +304,6 @@ public final class BaruSikoZakoServer {
     private LiteralArgumentBuilder<CommandSourceStack> taskCommand(String name, boolean cancel) {
         return Commands.literal(name)
             .then(Commands.literal("fromid").then(Commands.argument("id", StringArgumentType.greedyString())
-                .suggests((context, builder) -> suggestTasks(builder, cancel, task -> task.state().id().value()))
                 .executes(context -> executeTaskCommand(context.getSource(), StringArgumentType.getString(context, "id"), cancel))))
             .then(Commands.argument("time", StringArgumentType.greedyString())
                 .suggests((context, builder) -> suggestTasks(builder, cancel, task -> task.submittedAt().toString()))
@@ -313,18 +327,72 @@ public final class BaruSikoZakoServer {
             .sorted(Comparator.comparing(TimedTask::submittedAt).reversed()).toList();
     }
 
-    private int listTasks(CommandSourceStack source) {
+    private int listTasks(CommandSourceStack source, int page) {
         if (service(source) == null) return 0;
         var tasks = visibleTasks();
         if (tasks.isEmpty()) {
-            source.sendSuccess(() -> Component.literal(Translations.text(source, "command.tasks_empty")), false);
+            Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.tasks_empty"));
             return 1;
         }
-        var message = new StringBuilder(Translations.text(source, "command.tasks_recent"));
-        tasks.stream().limit(PAGE_SIZE).forEach(task -> message.append('\n').append(task.submittedAt())
-            .append(" · ").append(taskLabel(source, task.state())).append(" · ").append(task.state().id().value()));
-        source.sendSuccess(() -> Component.literal(message.toString()), false);
+        int requested = Math.min(Math.max(1, page), 1024);
+        int from = (requested - 1) * PAGE_SIZE;
+        if (from >= tasks.size()) {
+            Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.tasks_empty"));
+            return 1;
+        }
+        int to = Math.min(tasks.size(), from + PAGE_SIZE);
+        var blocks = new ArrayList<List<List<Chat.Piece>>>();
+        for (var task : tasks.subList(from, to)) blocks.add(taskBlock(source, task));
+        var navigation = new ArrayList<Chat.Piece>();
+        if (requested > 1) navigation.add(Chat.suggest(Translations.text(source, "action.previous_page"),
+            "/barusikozako task page " + (requested - 1)));
+        if (tasks.size() > to) {
+            if (!navigation.isEmpty()) navigation.add(Chat.text(" "));
+            navigation.add(Chat.suggest(Translations.text(source, "action.next_page"),
+                "/barusikozako task page " + (requested + 1)));
+        }
+        if (!navigation.isEmpty()) blocks.add(List.of(navigation));
+        Chat.blocks(source, Chat.Tone.INFO, Translations.format(source, "command.tasks_page", requested), blocks);
         return 1;
+    }
+
+    /** 任务条目三行：时间/ID/操作人，状态与结果，操作按钮 */
+    private static List<List<Chat.Piece>> taskBlock(CommandSourceStack source, TimedTask task) {
+        var state = task.state();
+        var first = new ArrayList<Chat.Piece>();
+        first.add(Chat.copy(SNAPSHOT_TIME.format(task.submittedAt()), task.submittedAt().toString()));
+        first.add(Chat.text(" · "));
+        first.add(taskId(state.id().value()));
+        first.add(Chat.text(" · "));
+        first.addAll(operatorPieces(source, state.operator()));
+
+        var second = new ArrayList<Chat.Piece>();
+        second.add(Chat.text(taskLabel(source, state)));
+        second.add(Chat.text(" · "));
+        second.add(Chat.text(progressText(state)));
+        state.result().ifPresent(result -> {
+            second.add(Chat.text(" · "));
+            second.addAll(summaryPieces(source, result));
+        });
+
+        var third = new ArrayList<Chat.Piece>();
+        if (cancellable(state)) {
+            third.add(Chat.suggest(Translations.text(source, "action.cancel"),
+                "/barusikozako cancel fromid " + state.id().value()));
+            third.add(Chat.text(" "));
+        }
+        third.add(Chat.suggest(Translations.text(source, "action.inspect"),
+            "/barusikozako task fromid " + state.id().value()));
+        return List.<List<Chat.Piece>>of(first, second, third);
+    }
+
+    private static boolean cancellable(TaskState state) {
+        return state.phase() != TaskState.Phase.TERMINAL && state.phase() != TaskState.Phase.COMMITTING;
+    }
+
+    /** 任务 ID 以短格式显示，点击复制完整值 */
+    private static Chat.Piece taskId(String id) {
+        return Chat.copy(Chat.shortId(id), id);
     }
 
     private int taskByTime(CommandSourceStack source, String text, boolean cancel) {
@@ -334,14 +402,14 @@ public final class BaruSikoZakoServer {
         } catch (DateTimeParseException invalid) {
             // 旧版允许直接输入带引号的任务 ID
             if (taskIdText(text).matches("[a-fA-F0-9-]{36}:[0-9]+")) return executeTaskCommand(source, text, cancel);
-            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_task_time")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_task_time"));
             return 0;
         }
         if (service(source) == null) return 0;
         var matches = visibleTasks().stream().filter(task -> time.equals(task.submittedAt())).limit(2).toList();
         if (matches.size() != 1) {
-            source.sendFailure(Component.literal(Translations.text(source,
-                matches.isEmpty() ? "command.task_unavailable" : "command.task_time_ambiguous")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source,
+                matches.isEmpty() ? "command.task_unavailable" : "command.task_time_ambiguous"));
             return 0;
         }
         return executeTaskCommand(source, matches.get(0).state().id().value(), cancel);
@@ -374,6 +442,7 @@ public final class BaruSikoZakoServer {
         } catch (IOException | RuntimeException failure) {
             LOG.log(System.Logger.Level.WARNING, "Could not create backup ignore configuration", failure);
         }
+        ProgressConfig.load(LoaderBridge.configDirectory().resolve("barusikozako"));
     }
 
     public synchronized void onServerStarted(MinecraftServer server) {
@@ -404,14 +473,64 @@ public final class BaruSikoZakoServer {
     }
 
     private String startupNotice(String language) {
-        var config = LoaderBridge.configDirectory().resolve("barusikozako").toAbsolutePath().normalize();
+        var config = LoaderBridge.configDirectory().resolve("barusikozako");
         var repository = repositoryPath == null
             ? Translations.languageText(language, "status.unknown")
-            : repositoryPath.toAbsolutePath().normalize().toString();
+            : displayPath(repositoryPath);
         return String.join("\n",
-            String.format(Locale.ROOT, Translations.languageText(language, "notice.startup_config"), config),
+            String.format(Locale.ROOT, Translations.languageText(language, "notice.startup_config"), displayPath(config)),
             String.format(Locale.ROOT, Translations.languageText(language, "notice.startup_repository"), repository),
             Translations.languageText(language, "notice.startup_schedule"));
+    }
+
+    /** 向玩家播报启动信息表格，内容与服务器日志保持一致 */
+    private void sendStartupNotice(CommandSourceStack source) {
+        var config = LoaderBridge.configDirectory().resolve("barusikozako").toAbsolutePath().normalize();
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.config"), displayPath(config)));
+        rows.add(Chat.row(Translations.text(source, "label.repository"), repositoryPath == null
+            ? Translations.text(source, "status.unknown")
+            : displayPath(repositoryPath)));
+        rows.add(Chat.row(Translations.text(source, "label.schedule"),
+            Translations.text(source, "notice.startup_schedule")));
+        Chat.send(source, Chat.Tone.INFO, "BaruSikoZako " + LoaderBridge.productVersion(), rows);
+    }
+
+    /** 仅在版本标记缺失或与当前模组版本不一致时向首个上线管理员发送启动提示 */
+    private boolean startupPromptDue() {
+        var repository = repositoryPath;
+        if (repository == null) return true;
+        var marker = repository.resolve(".cache").resolve("admin_prompted_version");
+        try {
+            if (Files.notExists(marker)) return true;
+            return !LoaderBridge.productVersion().equals(Files.readString(marker).strip());
+        } catch (IOException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not read the startup notice version marker", failure);
+            return true;
+        }
+    }
+
+    /** 记录已提示的模组版本；失败只影响下次是否重复提示 */
+    private void markStartupPrompted() {
+        var repository = repositoryPath;
+        if (repository == null) return;
+        var cache = repository.resolve(".cache");
+        var marker = cache.resolve("admin_prompted_version");
+        try {
+            Files.createDirectories(cache);
+            Files.writeString(marker, LoaderBridge.productVersion(),
+                java.nio.charset.StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+                try {
+                    Files.setAttribute(cache, "dos:hidden", true);
+                } catch (IOException | UnsupportedOperationException ignored) {
+                    // 无法设置隐藏属性时仍保留点号前缀目录
+                }
+            }
+        } catch (IOException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not record the startup notice version", failure);
+        }
     }
 
     public void onServerStopping() { stop(); }
@@ -426,23 +545,36 @@ public final class BaruSikoZakoServer {
 
     public void tickEnd(MinecraftServer server) {
         captureTick(server, WorldCapture.Edge.TICK_END);
-        if (!firstPlayerNoticeSent && server.getPlayerList().getPlayerCount() > 0) {
-            firstPlayerNoticeSent = true;
+        var display = progressDisplay;
+        if (display != null) display.tick(server);
+        if (!firstPlayerNoticeSent) {
             for (var player : server.getPlayerList().getPlayers()) {
-                player.sendSystemMessage(Component.literal(startupNotice(PlayerLanguage.get(player))));
+                var source = player.createCommandSourceStack();
+                if (!GameCommandAccess.isAdministrator(source)) continue;
+                firstPlayerNoticeSent = true;
+                if (startupPromptDue()) {
+                    sendStartupNotice(source);
+                    markStartupPrompted();
+                    LOG.log(System.Logger.Level.INFO, startupNotice(null));
+                }
+                break;
             }
-            LOG.log(System.Logger.Level.INFO, startupNotice(null));
         }
         var session = workers;
         if (session == null || session.restoreNotice == null) return;
         for (var player : server.getPlayerList().getPlayers()) {
             var language = PlayerLanguage.get(player);
             if (language == null || !session.restoreNoticeRecipients.add(player.getUUID())) continue;
-            var time = session.restoreNotice.snapshotTime().map(Instant::toString)
-                .orElseGet(() -> Translations.languageText(language, "notice.snapshot_time_unavailable"));
-            var message = String.format(Locale.ROOT, Translations.languageText(language, "notice.world_restored"),
-                server.getWorldData().getLevelName(), time);
-            player.sendSystemMessage(Component.literal(message));
+            var source = player.createCommandSourceStack();
+            var time = session.restoreNotice.snapshotTime();
+            var timeRow = time.isPresent()
+                ? Chat.row(Translations.text(source, "label.time"),
+                    Chat.copy(time.orElseThrow().toString(), time.orElseThrow().toString()))
+                : Chat.row(Translations.text(source, "label.time"),
+                    Translations.text(source, "notice.snapshot_time_unavailable"));
+            Chat.send(source, Chat.Tone.SUCCESS,
+                Translations.format(source, "notice.world_restored", server.getWorldData().getLevelName()),
+                List.of(timeRow));
         }
     }
 
@@ -466,10 +598,10 @@ public final class BaruSikoZakoServer {
                             try {
                                 var file = LoaderBridge.configDirectory().resolve("barusikozako").resolve(filename + ".yml");
                                 YamlSettings.change(file, defaults, key, value, validator);
-                                reply(source, Translations.text(source, "command.config_saved"), false);
+                                Chat.line(source, Chat.Tone.SUCCESS, Translations.text(source, "command.config_saved"));
                             } catch (IOException | IllegalArgumentException failure) {
                                 LOG.log(System.Logger.Level.WARNING, "Configuration rejected", failure);
-                                reply(source, Translations.text(source, "command.config_rejected"), true);
+                                Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.config_rejected"));
                             }
                         });
                         return 1;
@@ -489,7 +621,7 @@ public final class BaruSikoZakoServer {
 
     private int configGet(CommandSourceStack source, String filename, Map<String, String> defaults, String key) {
         if (!defaults.containsKey(key)) {
-            source.sendFailure(Component.literal(Translations.format(source, "command.config_unknown", key)));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.format(source, "command.config_unknown", key));
             return 0;
         }
         var active = workers;
@@ -499,10 +631,11 @@ public final class BaruSikoZakoServer {
                 try {
                     var file = LoaderBridge.configDirectory().resolve("barusikozako").resolve(filename + ".yml");
                     var settings = YamlSettings.load(file, defaults, false, () -> Map.of());
-                    reply(source, Translations.format(source, "command.config_value", key, settings.get(key)), false);
+                    Chat.line(source, Chat.Tone.INFO,
+                        Translations.format(source, "command.config_value", key, settings.get(key)));
                 } catch (IOException | RuntimeException failure) {
                     LOG.log(System.Logger.Level.WARNING, "Could not read configuration", failure);
-                    reply(source, Translations.text(source, "command.config_read_failed"), true);
+                    Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.config_read_failed"));
                 }
             });
             return 1;
@@ -512,7 +645,7 @@ public final class BaruSikoZakoServer {
     }
 
     private static int configPath(CommandSourceStack source, String filename) {
-        source.sendSuccess(() -> Component.literal(Translations.format(source, "command.config_path", filename)), false);
+        Chat.line(source, Chat.Tone.INFO, Translations.format(source, "command.config_path", filename));
         return 1;
     }
 
@@ -528,7 +661,7 @@ public final class BaruSikoZakoServer {
     private int backendBackup(CommandSourceStack source, String backend, BackupRequest.BackupMode mode,
                               Optional<SnapshotRef> baseline) {
         if (!backend.equals(activeBackend)) {
-            source.sendFailure(Component.literal(Translations.format(source, "command.backend_inactive", backend)));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.format(source, "command.backend_inactive", backend));
             return 0;
         }
         return submitBackup(source, mode, baseline);
@@ -536,7 +669,40 @@ public final class BaruSikoZakoServer {
 
     private int submitBackup(CommandSourceStack source, BackupRequest.BackupMode mode, Optional<SnapshotRef> baseline) {
         return submit(source, new BackupRequest.Backup(REPOSITORY, SOURCE,
-            new BackupRequest.Trigger("command", "manual", Map.of()), mode, baseline));
+            new BackupRequest.Trigger("command", "manual", snapshotMetadata(source)), mode, baseline));
+    }
+
+    /** 快照附加元信息：操作人、游戏版本、模组版本与后端版本 */
+    private Map<String, String> snapshotMetadata(CommandSourceStack source) {
+        var metadata = new java.util.LinkedHashMap<>(runtimeMetadata());
+        metadata.putAll(operatorMetadata(source));
+        return metadata;
+    }
+
+    private Map<String, String> runtimeMetadata() {
+        var metadata = new java.util.LinkedHashMap<String, String>();
+        var running = server;
+        metadata.put("gameVersion", running == null ? "unknown" : running.getServerVersion());
+        metadata.put("modVersion", LoaderBridge.productVersion());
+        metadata.put("backendVersion", activeBackend.isEmpty() ? "unknown"
+            : BackendRegistry.versions().getOrDefault(activeBackend, "unknown"));
+        return metadata;
+    }
+
+    /** 记录备份操作人；控制台与命令方块没有玩家时由界面显示为 Server */
+    private static Map<String, String> operatorMetadata(CommandSourceStack source) {
+        return operator(source)
+            .<Map<String, String>>map(value -> Map.of("operator", value.name(),
+                "operatorUuid", value.id().map(java.util.UUID::toString).orElse("")))
+            .orElse(Map.of());
+    }
+
+    /** 当前命令执行者；没有玩家实体时为空，界面按 Server 展示 */
+    private static Optional<BackupService.BackupOperator> operator(CommandSourceStack source) {
+        if (source.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)
+            return Optional.of(new BackupService.BackupOperator(player.getScoreboardName(),
+                Optional.of(player.getUUID())));
+        return Optional.empty();
     }
 
     private void start(MinecraftServer server, WorldWorkers session) {
@@ -566,6 +732,9 @@ public final class BaruSikoZakoServer {
                 commandBinding = running.bind("server-operator", new Grant(Map.of(REPOSITORY, EnumSet.allOf(Right.class)),
                     Set.of(SOURCE), Set.of(SOURCE)));
                 operator = commandBinding.service();
+                progressDisplay = new BackupProgressDisplay(
+                    ProgressConfig.load(LoaderBridge.configDirectory().resolve("barusikozako")),
+                    this::visibleTasks, operations::relaxedCapture);
                 if (config.backupIntervalSeconds() > 0) {
                     var scheduled = running.bind("server-scheduler", new Grant(Map.of(REPOSITORY, EnumSet.of(Right.BACKUP)),
                         Set.of(SOURCE), Set.of())).service();
@@ -580,7 +749,7 @@ public final class BaruSikoZakoServer {
             }
             LOG.log(System.Logger.Level.INFO, "BaruSikoZako services ready");
             if (capture != null) LOG.log(System.Logger.Level.WARNING,
-                "Online backups use best-effort file capture; cross-file state is not atomic");
+                "Online backups capture files while the server runs; cross-file state is not atomic");
             activateIntegrations(running, config);
         } catch (IOException | RuntimeException failure) {
             LOG.log(System.Logger.Level.ERROR, "BaruSikoZako unavailable: failed to load server configuration", failure);
@@ -636,6 +805,7 @@ public final class BaruSikoZakoServer {
         BackupApiHost running;
         WorldWorkers session;
         WorldCapture current;
+        BackupProgressDisplay display;
         synchronized (this) {
             session = workers;
             workers = null;
@@ -647,7 +817,10 @@ public final class BaruSikoZakoServer {
             host = null;
             current = capture;
             capture = null;
+            display = progressDisplay;
+            progressDisplay = null;
         }
+        if (display != null) display.close();
         if (session != null) session.close();
         if (current != null) {
             stoppingCapture = current;
@@ -660,32 +833,69 @@ public final class BaruSikoZakoServer {
         var product = LoaderBridge.productVersion();
         var state = operator == null ? "command.service_unavailable"
             : capture == null || !capture.available() ? "command.capture_unavailable" : "command.capture_enabled";
-        var lines = new StringBuilder("BaruSikoZako ").append(product).append(" · ")
-            .append(Translations.text(source, state));
-        lines.append('\n').append(Translations.format(source, "status.backend",
-            activeBackend.isEmpty() ? Translations.text(source, "status.backend_none") : activeBackend));
-        lines.append('\n').append(Translations.format(source, "status.repository",
-            repositoryPath == null ? Translations.text(source, "status.unknown")
-                : repositoryPath.toAbsolutePath().normalize()));
-        lines.append('\n').append(backupIntervalSeconds > 0
-            ? Translations.format(source, "status.schedule", backupIntervalSeconds)
-            : Translations.text(source, "status.schedule_disabled"));
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.service"), Translations.text(source, state)));
+        rows.add(Chat.row(Translations.text(source, "label.backend"), activeBackend.isEmpty()
+            ? Translations.text(source, "status.backend_none") : activeBackend));
+        rows.add(Chat.row(Translations.text(source, "label.repository"), repositoryPath == null
+            ? Translations.text(source, "status.unknown")
+            : displayPath(repositoryPath)));
+        rows.add(Chat.row(Translations.text(source, "label.schedule"), backupIntervalSeconds > 0
+            ? Translations.format(source, "status.schedule_every", backupIntervalSeconds)
+            : Translations.text(source, "status.schedule_off")));
         if (lastBackupTime == null || lastBackupResult == null) {
-            lines.append('\n').append(Translations.text(source, "status.last_backup_none"));
+            rows.add(Chat.row(Translations.text(source, "label.last_backup"),
+                Translations.text(source, "status.none")));
+        } else if (lastBackupResult instanceof TaskResult.BackupCommitted committed) {
+            rows.add(Chat.row(Translations.text(source, "label.last_backup"),
+                Chat.copy(SNAPSHOT_TIME.format(lastBackupTime), lastBackupTime.toString()),
+                Chat.text(" · "), snapshotId(committed.snapshot().snapshotId())));
         } else {
-            lines.append('\n').append(Translations.format(source, "status.last_backup",
-                lastBackupTime, summarize(source, lastBackupResult)));
+            var value = new ArrayList<Chat.Piece>();
+            value.add(Chat.copy(SNAPSHOT_TIME.format(lastBackupTime), lastBackupTime.toString()));
+            value.add(Chat.text(" · "));
+            value.addAll(summaryPieces(source, lastBackupResult));
+            rows.add(Chat.row(Translations.text(source, "label.last_backup"),
+                value.toArray(Chat.Piece[]::new)));
         }
-        lines.append('\n').append(Translations.format(source, "status.config",
-            LoaderBridge.configDirectory().resolve("barusikozako").toAbsolutePath().normalize()));
-        source.sendSuccess(() -> Component.literal(lines.toString()), false);
+        rows.add(Chat.row(Translations.text(source, "label.config"),
+            displayPath(LoaderBridge.configDirectory().resolve("barusikozako"))));
+        Chat.send(source, Chat.Tone.INFO, "BaruSikoZako " + product, rows);
         return 1;
+    }
+
+    /** 打印本体、API 与已注册后端的版本信息 */
+    private static int version(CommandSourceStack source) {
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.mod_version"), LoaderBridge.productVersion()));
+        var api = LoaderBridge.apiVersion();
+        if (api != null) rows.add(Chat.row(Translations.text(source, "label.api_version"), api));
+        var versions = BackendRegistry.versions();
+        var backends = versions.entrySet().stream()
+            .map(entry -> entry.getKey() + " " + entry.getValue()).toList();
+        rows.add(Chat.row(Translations.text(source, "label.backends"),
+            backends.isEmpty() ? Translations.text(source, "status.none") : String.join(" · ", backends)));
+        Chat.send(source, Chat.Tone.INFO, Translations.text(source, "chat.title.version"), rows);
+        return 1;
+    }
+
+    /** 相对于游戏根目录显示路径，无法相对化时回退为绝对路径 */
+    private String displayPath(Path path) {
+        var absolute = path.toAbsolutePath().normalize();
+        var current = server;
+        if (current == null) return absolute.toString();
+        var root = current.getWorldPath(LevelResource.ROOT).getParent();
+        if (root == null) return absolute.toString();
+        var base = root.toAbsolutePath().normalize();
+        if (!absolute.startsWith(base)) return absolute.toString();
+        var relative = base.relativize(absolute).toString().replace('\\', '/');
+        return relative.isEmpty() ? "." : relative;
     }
 
     private void scheduledBackup(BackupService service) {
         if (service != scheduler) return;
         var request = new BackupRequest.Backup(REPOSITORY, SOURCE,
-            new BackupRequest.Trigger("schedule", "periodic", Map.of()));
+            new BackupRequest.Trigger("schedule", "periodic", runtimeMetadata()));
         var submission = service.submit(request);
         if (submission instanceof BackupService.Submission.Accepted accepted) {
             accepted.completion().whenComplete((result, failure) -> {
@@ -715,65 +925,336 @@ public final class BaruSikoZakoServer {
         var running = server;
         if (running == null) return;
         for (var player : running.getPlayerList().getPlayers()) {
-            if (!GameCommandAccess.isAdministrator(player.createCommandSourceStack())) continue;
-            player.sendSystemMessage(Component.literal(Translations.playerText(player, key)));
+            var source = player.createCommandSourceStack();
+            if (!GameCommandAccess.isAdministrator(source)) continue;
+            Chat.line(source, Chat.Tone.WARNING, Translations.playerText(player, key));
         }
     }
 
-    private int list(CommandSourceStack source, Optional<String> after) {
+    private int list(CommandSourceStack source, int page) {
         var service = service(source);
         if (service == null) return 0;
-        service.snapshots(REPOSITORY, new PageRequest(PAGE_SIZE, after)).whenComplete((page, failure) -> {
+        int requested = Math.min(Math.max(1, page), 1024);
+        int limit = requested * PAGE_SIZE + 1;
+        service.snapshots(REPOSITORY, new PageRequest(limit, Optional.empty())).whenComplete((result, failure) -> {
             if (failure != null) {
-                reply(source, Translations.text(source, "command.query_failed"), true);
+                Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.query_failed"));
                 return;
             }
-            var message = new StringBuilder(Translations.text(source, "command.snapshots_list"));
-            for (var entry : page.items())
-                message.append('\n').append(entry.snapshot().snapshotId()).append("  ").append(entry.createdAt())
-                    .append("  ").append(Translations.text(source,
-                        "consistency." + entry.consistency().name().toLowerCase(Locale.ROOT)));
-            page.next().ifPresent(id -> message.append('\n').append(Translations.format(source, "command.snapshots_next", id)));
-            reply(source, page.items().isEmpty() ? Translations.text(source, "command.snapshots_empty") : message.toString(), false);
+            var items = result.items();
+            int from = (requested - 1) * PAGE_SIZE;
+            if (from >= items.size()) {
+                Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.snapshots_empty"));
+                return;
+            }
+            int to = Math.min(items.size(), from + PAGE_SIZE);
+            var blocks = new ArrayList<List<List<Chat.Piece>>>();
+            for (var entry : items.subList(from, to)) blocks.add(snapshotBlock(source, entry));
+            var navigation = new ArrayList<Chat.Piece>();
+            if (requested > 1) navigation.add(Chat.suggest(Translations.text(source, "action.previous_page"),
+                "/barusikozako list page " + (requested - 1)));
+            if (items.size() > to) {
+                if (!navigation.isEmpty()) navigation.add(Chat.text(" "));
+                navigation.add(Chat.suggest(Translations.text(source, "action.next_page"),
+                    "/barusikozako list page " + (requested + 1)));
+            }
+            if (!navigation.isEmpty()) blocks.add(List.of(navigation));
+            Chat.blocks(source, Chat.Tone.INFO,
+                Translations.format(source, "command.snapshots_page", requested), blocks);
         });
-        source.sendSuccess(() -> Component.literal(Translations.text(source, "command.repository_accepted")), false);
+        Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.repository_accepted"));
         return 1;
+    }
+
+    /** 快照条目三行：时间/UUID/操作人，类型/约束/体积/耗时，操作按钮 */
+    private static List<List<Chat.Piece>> snapshotBlock(CommandSourceStack source, BackupService.SnapshotInfo entry) {
+        var first = new ArrayList<Chat.Piece>();
+        first.add(Chat.copy(SNAPSHOT_TIME.format(entry.createdAt()), entry.createdAt().toString()));
+        first.add(Chat.text(" · "));
+        first.add(snapshotId(entry.snapshot().snapshotId()));
+        first.add(Chat.text(" · "));
+        first.addAll(operatorPieces(source, entry.operator()));
+
+        var second = new ArrayList<Chat.Piece>();
+        second.add(Chat.text(entry.layout()
+            .map(layout -> Translations.text(source, "snapshot.layout." + layout.name().toLowerCase(Locale.ROOT)))
+            .orElse("—")));
+        boolean relaxed = entry.consistency() == BackupService.Consistency.RELAXED;
+        second.add(Chat.colored(Translations.text(source,
+            relaxed ? "consistency.short.relaxed" : "consistency.short.strict"), relaxed ? 0xFFFF55 : 0x55FF55));
+        var size = entry.archiveBytes().isPresent() ? entry.archiveBytes() : entry.logicalBytes();
+        second.add(Chat.text(" · "));
+        second.add(Chat.text(size.isPresent() ? bytes(size.getAsLong()) : "—"));
+        second.add(Chat.text(" · "));
+        second.add(Chat.text(entry.elapsed().map(ConfigUnits::formatDuration).orElse("—")));
+
+        String id = entry.snapshot().snapshotId();
+        var third = List.of(
+            snapshotAction(source, "action.detail", "detail", id),
+            Chat.text(" "),
+            snapshotAction(source, "action.rollback", "rollback", id),
+            Chat.text(" "),
+            snapshotAction(source, "action.verify", "verify", id),
+            Chat.text(" "),
+            snapshotAction(source, "action.delete", "delete", id));
+        return List.<List<Chat.Piece>>of(first, second, third);
+    }
+
+    private static Chat.Piece snapshotAction(CommandSourceStack source, String key, String command, String id) {
+        return Chat.suggest(Translations.text(source, key), "/barusikozako " + command + " fromuuid " + id);
+    }
+
+    /** 快照详细信息：基础展示字段与备份时记录的运行环境 */
+    private static int detail(CommandSourceStack source, BackupService.SnapshotInfo entry) {
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.time"),
+            Chat.copy(SNAPSHOT_TIME.format(entry.createdAt()), entry.createdAt().toString())));
+        rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+            snapshotId(entry.snapshot().snapshotId())));
+        rows.add(Chat.row(Translations.text(source, "label.operator"),
+            operatorPieces(source, entry.operator()).toArray(Chat.Piece[]::new)));
+        rows.add(Chat.row(Translations.text(source, "label.layout"), entry.layout()
+            .map(layout -> Translations.text(source, "snapshot.layout." + layout.name().toLowerCase(Locale.ROOT)))
+            .orElse("—")));
+        rows.add(Chat.row(Translations.text(source, "label.consistency"),
+            Translations.text(source, "consistency." + entry.consistency().name().toLowerCase(Locale.ROOT))));
+        var size = entry.archiveBytes().isPresent() ? entry.archiveBytes() : entry.logicalBytes();
+        rows.add(Chat.row(Translations.text(source, "label.size"),
+            size.isPresent() ? bytes(size.getAsLong()) : "—"));
+        rows.add(Chat.row(Translations.text(source, "label.elapsed"),
+            entry.elapsed().map(ConfigUnits::formatDuration).orElse("—")));
+        var metadata = entry.trigger().map(BackupRequest.Trigger::metadata).orElse(Map.of());
+        rows.add(Chat.row(Translations.text(source, "label.game_version"),
+            metadata.getOrDefault("gameVersion", "unknown")));
+        rows.add(Chat.row(Translations.text(source, "label.mod_version"),
+            metadata.getOrDefault("modVersion", "unknown")));
+        rows.add(Chat.row(Translations.text(source, "label.backend_version"),
+            metadata.getOrDefault("backendVersion", "unknown")));
+        String id = entry.snapshot().snapshotId();
+        rows.add(Chat.row(Translations.text(source, "label.action"),
+            snapshotAction(source, "action.rollback", "rollback", id),
+            Chat.text(" "),
+            snapshotAction(source, "action.verify", "verify", id),
+            Chat.text(" "),
+            snapshotAction(source, "action.delete", "delete", id)));
+        Chat.send(source, Chat.Tone.INFO, Translations.text(source, "chat.title.detail"), rows);
+        return 1;
+    }
+
+    /** 快照 UUID 以短格式显示，点击复制完整值 */
+    private static Chat.Piece snapshotId(String id) {
+        return Chat.copy(Chat.shortId(id), id);
+    }
+
+    /** 忽略规则行：文件来源灰色，规则内容保持默认颜色 */
+    private static List<Chat.Piece> rulePieces(String line) {
+        int separator = line.indexOf(": ");
+        if (separator < 0) return List.of(Chat.text(line));
+        return List.of(Chat.colored(line.substring(0, separator + 2), 0xAAAAAA),
+            Chat.text(line.substring(separator + 2)));
+    }
+
+    /** 操作人显示为「玩家名#截断UUID」，两段分别可复制；缺少记录时显示 Server */
+    private static List<Chat.Piece> operatorPieces(CommandSourceStack source,
+            Optional<BackupService.BackupOperator> operator) {
+        if (operator.isEmpty()) return List.of(Chat.colored(Translations.text(source, "operator.server"), 0xAAAAAA));
+        var value = operator.orElseThrow();
+        var pieces = new ArrayList<Chat.Piece>(3);
+        pieces.add(Chat.copy(value.name(), value.name()));
+        value.id().ifPresent(id -> {
+            pieces.add(Chat.text("#"));
+            pieces.add(Chat.copy(Chat.shortId(id.toString()), id.toString()));
+        });
+        return pieces;
+    }
+
+    /** 从触发器元数据读取操作人；旧快照没有记录时返回空值 */
+    private static Optional<BackupService.BackupOperator> operator(BackupRequest.Trigger trigger) {
+        var name = trigger.metadata().get("operator");
+        if (name == null || name.isBlank()) return Optional.empty();
+        java.util.UUID id = null;
+        try {
+            var value = trigger.metadata().get("operatorUuid");
+            if (value != null) id = java.util.UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            // 操作人名仍可展示
+        }
+        return Optional.of(new BackupService.BackupOperator(name, Optional.ofNullable(id)));
     }
 
     private int submit(CommandSourceStack source, BackupRequest request) {
         var service = service(source);
         if (service == null) return 0;
         var binding = commandBinding;
-        var submission = binding == null ? service.submit(request) : binding.submit(request, rules -> {
+        var submission = binding == null ? service.submit(request, operator(source)) : binding.submit(request, rules -> {
             if (!(source.getEntity() instanceof net.minecraft.server.level.ServerPlayer)) return;
-            reply(source, io.github.zct_studio.barusikozako.runtime.host.RuleNotice.forPlayer(rules,
+            var notice = io.github.zct_studio.barusikozako.runtime.host.RuleNotice.forPlayer(rules,
                 Translations.format(source, "command.ignore_rules", rules.size()),
-                Translations.text(source, "command.ignore_rules_more")), false);
-        });
+                Translations.text(source, "command.ignore_rules_more")).split("\n");
+            var lines = new ArrayList<List<Chat.Piece>>();
+            for (int index = 1; index < notice.length; index++) lines.add(rulePieces(notice[index]));
+            Chat.richLines(source, Chat.Tone.INFO, notice[0], lines);
+        }, operator(source));
         if (submission instanceof BackupService.Submission.Accepted accepted) {
+            var display = progressDisplay;
+            if (display != null && (request.kind() == BackupRequest.Kind.BACKUP ||
+                request.kind() == BackupRequest.Kind.VERIFY) &&
+                source.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+                display.track(accepted.id(), player);
+            }
             accepted.completion().whenComplete((result, failure) -> {
                 if (failure != null) {
-                    reply(source, Translations.format(source, "command.task_delivery_failed", accepted.id().value()), true);
+                    Chat.line(source, Chat.Tone.FAILURE,
+                        Chat.text(Translations.text(source, "command.task_delivery_failed_prefix")),
+                        taskId(accepted.id().value()));
                 } else {
                     if (request instanceof BackupRequest.Backup) {
                         lastBackupTime = Instant.now();
                         lastBackupResult = result;
                     }
-                    String message = result instanceof TaskResult.VerificationComplete verified &&
-                        request instanceof BackupRequest.Verify verify ?
-                        Translations.format(source, "result.verified_snapshot", verify.snapshot().snapshotId(),
-                            verified.entries(), verified.bytes()) : summarize(source, result);
-                    reply(source, Translations.format(source, "command.task_result", accepted.id().value(), message), result instanceof TaskResult.Failed ||
-                        result instanceof TaskResult.CommitUncertain);
+                    sendResult(source, service, accepted.id(), request, result);
                 }
             });
-            String key = request.kind() == BackupRequest.Kind.BACKUP ? "command.backup_requested" :
-                request.kind() == BackupRequest.Kind.RESTORE ? "command.restore_requested" : "command.task_requested";
-            source.sendSuccess(() -> Component.literal(Translations.format(source, key, accepted.id().value())), false);
+            String key = request.kind() == BackupRequest.Kind.BACKUP ? "command.backup_requested_prefix" :
+                request.kind() == BackupRequest.Kind.RESTORE ? "command.rollback_requested_prefix" :
+                    "command.task_requested_prefix";
+            Chat.line(source, Chat.Tone.SUCCESS, Chat.text(Translations.text(source, key)),
+                taskId(accepted.id().value()));
             return 1;
         }
-        source.sendFailure(Component.literal(Translations.format(source, "command.request_rejected", rejection(source, submission))));
+        Chat.line(source, Chat.Tone.FAILURE,
+            Translations.format(source, "command.request_rejected", rejection(source, submission)));
         return 0;
+    }
+
+    /** 以表格形式播报任务结果；聊天中只展示短标识符，完整 UUID 保留给日志与命令 */
+    private static void sendResult(CommandSourceStack source, BackupService service, TaskId id,
+                                   BackupRequest request, TaskResult result) {
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.task"), taskId(id.value())));
+        Chat.Tone tone;
+        String title;
+        if (result instanceof TaskResult.BackupCommitted committed) {
+            boolean relaxed = committed.relaxedFiles() > 0;
+            tone = relaxed ? Chat.Tone.WARNING : Chat.Tone.SUCCESS;
+            title = Translations.text(source, relaxed ? "chat.result.backup_relaxed" : "completion.backup");
+            rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+                snapshotId(committed.snapshot().snapshotId())));
+            if (request instanceof BackupRequest.Backup backup)
+                rows.add(Chat.row(Translations.text(source, "label.operator"),
+                    operatorPieces(source, operator(backup.trigger())).toArray(Chat.Piece[]::new)));
+            if (relaxed) rows.add(Chat.row(Translations.text(source, "label.differences"),
+                Integer.toString(committed.relaxedFiles())));
+            committed.logicalBytes().ifPresent(size ->
+                rows.add(Chat.row(Translations.text(source, "label.original"), bytes(size))));
+            committed.archiveBytes().ifPresent(size ->
+                rows.add(Chat.row(Translations.text(source, "label.archive"), bytes(size))));
+            if (committed.logicalBytes().isPresent() && committed.archiveBytes().isPresent()) {
+                long logical = committed.logicalBytes().getAsLong();
+                long archive = committed.archiveBytes().getAsLong();
+                if (logical > archive)
+                    rows.add(Chat.row(Translations.text(source, "label.saved"), bytes(logical - archive)));
+            }
+        } else if (result instanceof TaskResult.VerificationComplete verified) {
+            tone = Chat.Tone.SUCCESS;
+            title = Translations.text(source, "completion.verify");
+            if (request instanceof BackupRequest.Verify verify)
+                rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+                    snapshotId(verify.snapshot().snapshotId())));
+            rows.add(Chat.row(Translations.text(source, "label.entries"), Long.toString(verified.entries())));
+            rows.add(Chat.row(Translations.text(source, "label.verified"), bytes(verified.bytes())));
+        } else if (result instanceof TaskResult.Failed failed) {
+            tone = Chat.Tone.FAILURE;
+            title = Translations.text(source, "chat.result.failed");
+            rows.add(Chat.row(Translations.text(source, "label.reason"), failureText(source, failed.reason())));
+        } else if (result instanceof TaskResult.Cancelled) {
+            tone = Chat.Tone.WARNING;
+            title = Translations.text(source, "chat.result.cancelled");
+            rows.add(Chat.row(Translations.text(source, "label.result"),
+                Translations.text(source, "result.cancelled")));
+        } else if (result instanceof TaskResult.CommitUncertain) {
+            tone = Chat.Tone.WARNING;
+            title = Translations.text(source, "chat.result.uncertain");
+            rows.add(Chat.row(Translations.text(source, "label.result"),
+                Translations.text(source, "result.uncertain")));
+        } else if (result instanceof TaskResult.RestoreQueued queued) {
+            tone = Chat.Tone.SUCCESS;
+            title = Translations.text(source, "chat.result.restore_queued");
+            rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+                snapshotId(queued.snapshot().snapshotId())));
+            rows.add(Chat.row(Translations.text(source, "label.result"),
+                Translations.text(source, "chat.note.restore")));
+        } else if (result instanceof TaskResult.Restored restored) {
+            tone = Chat.Tone.SUCCESS;
+            title = Translations.text(source, "chat.result.restored");
+            rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+                snapshotId(restored.snapshot().snapshotId())));
+        } else if (result instanceof TaskResult.Deleted deleted) {
+            tone = Chat.Tone.SUCCESS;
+            title = Translations.text(source, "chat.result.deleted");
+            rows.add(Chat.row(Translations.text(source, "label.snapshot"),
+                snapshotId(deleted.snapshot().snapshotId())));
+        } else {
+            tone = Chat.Tone.INFO;
+            title = Translations.text(source, "result.completed");
+        }
+        var elapsed = result instanceof TaskResult.BackupCommitted committed && committed.elapsed().isPresent()
+            ? committed.elapsed() : service.task(id).map(TaskState::elapsed);
+        elapsed.ifPresent(duration ->
+            rows.add(Chat.row(Translations.text(source, "label.elapsed"), ConfigUnits.formatDuration(duration))));
+        Chat.send(source, tone, title, rows);
+    }
+
+    /** 任务查询使用的简短结果说明；快照标识符显示截断值但点击复制完整值 */
+    private static List<Chat.Piece> summaryPieces(CommandSourceStack source, TaskResult result) {
+        if (result instanceof TaskResult.BackupCommitted committed) {
+            var pieces = new ArrayList<Chat.Piece>();
+            pieces.add(Chat.text(Translations.text(source, "summary.backup_prefix")));
+            pieces.add(snapshotId(committed.snapshot().snapshotId()));
+            if (committed.relaxedFiles() > 0) pieces.add(Chat.text(Translations.format(source,
+                "summary.backup_relaxed_suffix", committed.relaxedFiles())));
+            return pieces;
+        }
+        if (result instanceof TaskResult.RestoreQueued queued) return List.of(
+            Chat.text(Translations.text(source, "summary.restore_prefix")),
+            snapshotId(queued.snapshot().snapshotId()));
+        if (result instanceof TaskResult.Deleted deleted) return List.of(
+            Chat.text(Translations.text(source, "summary.deleted_prefix")),
+            snapshotId(deleted.snapshot().snapshotId()));
+        if (result instanceof TaskResult.VerificationComplete verified) return List.of(
+            Chat.text(Translations.format(source, "result.verified", verified.entries(), verified.bytes())));
+        if (result instanceof TaskResult.Restored) return List.of(
+            Chat.text(Translations.text(source, "chat.result.restored")));
+        if (result instanceof TaskResult.Failed failed) return List.of(
+            Chat.text(failureText(source, failed.reason())));
+        if (result instanceof TaskResult.CommitUncertain) return List.of(
+            Chat.text(Translations.text(source, "result.uncertain")));
+        if (result instanceof TaskResult.Cancelled) return List.of(
+            Chat.text(Translations.text(source, "result.cancelled")));
+        return List.of(Chat.text(Translations.text(source, "result.completed")));
+    }
+
+    /** 失败原因的本地化文本；原生访问与目录刷新失败给出完整处置建议 */
+    private static String failureText(CommandSourceStack source, TaskResult.Failure reason) {
+        return switch (reason) {
+            case NATIVE_ACCESS_DENIED -> Translations.text(source, "failure.native_access_denied");
+            case DIRECTORY_SYNC_FAILED -> Translations.text(source, "failure.directory_sync_failed");
+            default -> Translations.text(source, "failure." + reason.name().toLowerCase(Locale.ROOT));
+        };
+    }
+
+    /** 容量按二进制进位格式化，与进度显示保持一致 */
+    private static String bytes(long value) {
+        return ConfigUnits.formatBytes(value, ConfigUnits.SizeUnit.BINARY, 2);
+    }
+
+    /** 任务进度文本；总量未知时只显示已处理容量 */
+    private static String progressText(TaskState state) {
+        var processed = ConfigUnits.formatBytes(state.processedBytes(), ConfigUnits.SizeUnit.BINARY, 2);
+        return state.totalBytes().isPresent()
+            ? processed + " / " + ConfigUnits.formatBytes(state.totalBytes().getAsLong(),
+                ConfigUnits.SizeUnit.BINARY, 2)
+            : processed;
     }
 
     private static String rejection(CommandSourceStack source, BackupService.Submission submission) {
@@ -801,10 +1282,8 @@ public final class BaruSikoZakoServer {
         }
         if (result instanceof TaskResult.Failed failed) {
             return switch (failed.reason()) {
-                case NATIVE_ACCESS_DENIED -> Translations.text(source, "failure.native_access_denied");
-                case DIRECTORY_SYNC_FAILED -> Translations.text(source, "failure.directory_sync_failed");
-                default -> Translations.format(source, "result.failed",
-                    Translations.text(source, "failure." + failed.reason().name().toLowerCase(Locale.ROOT)));
+                case NATIVE_ACCESS_DENIED, DIRECTORY_SYNC_FAILED -> failureText(source, failed.reason());
+                default -> Translations.format(source, "result.failed", failureText(source, failed.reason()));
             };
         }
         if (result instanceof TaskResult.CommitUncertain) {
@@ -820,11 +1299,13 @@ public final class BaruSikoZakoServer {
         var service = service(source);
         if (service == null) return 0;
         if (id.isBlank() || id.length() > 64) {
-            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_task")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_task"));
             return 0;
         }
         var result = service.cancel(new TaskId(id));
-        source.sendSuccess(() -> Component.literal(Translations.text(source, "cancel." + result.name().toLowerCase(Locale.ROOT))), false);
+        var tone = result == BackupService.Cancellation.REQUESTED ? Chat.Tone.SUCCESS
+            : result == BackupService.Cancellation.TOO_LATE ? Chat.Tone.WARNING : Chat.Tone.FAILURE;
+        Chat.line(source, tone, Translations.text(source, "cancel." + result.name().toLowerCase(Locale.ROOT)));
         return result == BackupService.Cancellation.REQUESTED ? 1 : 0;
     }
 
@@ -832,28 +1313,40 @@ public final class BaruSikoZakoServer {
         var service = service(source);
         if (service == null) return 0;
         if (id.isBlank() || id.length() > 64) {
-            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_task")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_task"));
             return 0;
         }
         var state = service.task(new TaskId(id));
         if (state.isEmpty()) {
-            source.sendFailure(Component.literal(Translations.text(source, "command.task_unavailable")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.task_unavailable"));
             return 0;
         }
         var value = state.orElseThrow();
-        var submittedAt = visibleTasks().stream().filter(task -> task.state().id().equals(value.id())).findFirst()
-            .map(task -> task.submittedAt() + " · ").orElse("");
-        var progress = Long.toString(value.processedBytes()) +
-            (value.totalBytes().isPresent() ? "/" + value.totalBytes().getAsLong() : "");
-        source.sendSuccess(() -> Component.literal(submittedAt + taskLabel(source, value) + " · " + id + " · " +
-            Translations.format(source, "command.task_progress", progress, value.elapsed().toMillis()) +
-            value.result().map(result -> " · " + summarize(source, result)).orElse("")), false);
+        var rows = new ArrayList<Chat.Row>();
+        rows.add(Chat.row(Translations.text(source, "label.task"), taskId(id)));
+        visibleTasks().stream().filter(task -> task.state().id().value().equals(id)).findFirst().ifPresent(task ->
+            rows.add(Chat.row(Translations.text(source, "label.time"),
+                Chat.copy(SNAPSHOT_TIME.format(task.submittedAt()), task.submittedAt().toString()))));
+        rows.add(Chat.row(Translations.text(source, "label.state"), taskLabel(source, value)));
+        rows.add(Chat.row(Translations.text(source, "label.operator"),
+            operatorPieces(source, value.operator()).toArray(Chat.Piece[]::new)));
+        rows.add(Chat.row(Translations.text(source, "label.progress"), progressText(value)));
+        rows.add(Chat.row(Translations.text(source, "label.elapsed"), ConfigUnits.formatDuration(value.elapsed())));
+        value.result().ifPresent(result -> rows.add(Chat.row(Translations.text(source, "label.result"),
+            summaryPieces(source, result).toArray(Chat.Piece[]::new))));
+        if (cancellable(value)) {
+            rows.add(Chat.row(Translations.text(source, "label.action"),
+                Chat.suggest(Translations.text(source, "action.cancel"),
+                    "/barusikozako cancel fromid " + id)));
+        }
+        Chat.send(source, Chat.Tone.INFO, Translations.text(source, "chat.title.task"), rows);
         return 1;
     }
 
     private BackupService service(CommandSourceStack source) {
         var service = operator;
-        if (service == null) source.sendFailure(Component.literal(Translations.text(source, "command.service_unavailable")));
+        if (service == null) Chat.line(source, Chat.Tone.FAILURE,
+            Translations.text(source, "command.service_unavailable"));
         return service;
     }
 
@@ -862,18 +1355,10 @@ public final class BaruSikoZakoServer {
         try {
             FabricOperations.parseId(text);
         } catch (IllegalArgumentException invalid) {
-            source.sendFailure(Component.literal(Translations.text(source, "command.invalid_snapshot")));
+            Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.invalid_snapshot"));
             return 0;
         }
         return resolveSnapshot(source, snapshot -> snapshot.snapshot().snapshotId().equals(text),
             "command.snapshot_not_found", action);
-    }
-
-    private static void reply(CommandSourceStack source, String message, boolean failure) {
-        var component = Component.literal(message);
-        source.getServer().executeIfPossible(() -> {
-            if (failure) source.sendFailure(component);
-            else source.sendSuccess(() -> component, false);
-        });
     }
 }

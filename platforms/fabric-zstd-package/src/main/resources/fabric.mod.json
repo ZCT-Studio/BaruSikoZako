@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "barusikozako_backendzstd",
   "version": "${productVersion}",
-  "name": "ZakoBak Zstd",
+  "name": "ZakoBak Zstd (Bundled)",
   "description": "${descriptionJson}",
   "authors": ["${authorsJson}"],
   "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},

@@ -13,6 +13,7 @@ tasks.jar {
     dependsOn(common)
     from(common.map { zipTree(it) }) { include("io/github/zct_studio/barusikozako/**") }
     val metadata = mapOf("productVersion" to project.version.toString(),
+        "mainModVersion" to project.extra["modVersion"],
         "loaderRequirement" to project.extra["fabricLoaderRequirement"])
     @Suppress("UNCHECKED_CAST")
     val info = (rootProject.extra["productMetadata"] as Map<*, *>)["api"] as Map<String, Any?>

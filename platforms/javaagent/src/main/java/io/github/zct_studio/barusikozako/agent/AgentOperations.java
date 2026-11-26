@@ -3,6 +3,7 @@
 
 package io.github.zct_studio.barusikozako.agent;
 
+import io.github.zct_studio.barusikozako.api.BackupLifecycleHook;
 import io.github.zct_studio.barusikozako.api.BackupRequest;
 import io.github.zct_studio.barusikozako.api.BackupService.*;
 import io.github.zct_studio.barusikozako.api.SnapshotRef;
@@ -92,9 +93,50 @@ final class AgentOperations implements BackupApiHost.Operations {
                 snapshot.consistency() == io.github.zct_studio.barusikozako.backend.Consistency.STRICT
                     ? Consistency.STRICT
                     : Consistency.RELAXED,
-                snapshot.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata()))
+                snapshot.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata())),
+                snapshot.stats().map(Snapshot.Stats::archiveBytes).orElse(OptionalLong.empty()),
+                snapshot.stats().map(Snapshot.Stats::logicalBytes).orElse(OptionalLong.empty()),
+                snapshot.stats().flatMap(Snapshot.Stats::elapsed),
+                snapshot.stats().map(stats -> SnapshotLayout.valueOf(stats.layout().name())),
+                operator(snapshot.trigger())
             )).toList(), snapshots.next().map(UUID::toString));
         }
+    }
+
+    private static BackupLifecycleHook.Context hookContext(BackupRequest request) {
+        if (request instanceof BackupRequest.Backup)
+            return new BackupLifecycleHook.Context(BackupLifecycleHook.Operation.MANUAL_BACKUP,
+                request.repositoryId(), Optional.empty());
+        if (request instanceof BackupRequest.Verify verify)
+            return new BackupLifecycleHook.Context(BackupLifecycleHook.Operation.VERIFY,
+                request.repositoryId(), Optional.of(verify.snapshot()));
+        if (request instanceof BackupRequest.Delete delete)
+            return new BackupLifecycleHook.Context(BackupLifecycleHook.Operation.DELETE,
+                request.repositoryId(), Optional.of(delete.snapshot()));
+        if (request instanceof BackupRequest.Restore restore)
+            return new BackupLifecycleHook.Context(BackupLifecycleHook.Operation.RESTORE,
+                request.repositoryId(), Optional.of(restore.snapshot()));
+        return null;
+    }
+
+    @Override
+    public Runnable before(BackupRequest request, String principal) {
+        var context = hookContext(request);
+        if (context == null) return null;
+        return () -> {
+            try {
+                AgentRuntime.before(context);
+            } catch (IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
+        };
+    }
+
+    @Override
+    public void after(BackupRequest request, String principal,
+                      java.util.concurrent.CompletionStage<TaskResult> result) {
+        var context = hookContext(request);
+        if (context != null) result.thenAccept(outcome -> AgentRuntime.after(context, outcome));
     }
 
     @Override
@@ -113,6 +155,10 @@ final class AgentOperations implements BackupApiHost.Operations {
                     });
                 return new TaskResult.Deleted(delete.snapshot());
             }
+        } catch (io.github.zct_studio.barusikozako.backend.SnapshotInUseException inUse) {
+            System.getLogger(AgentOperations.class.getName()).log(System.Logger.Level.WARNING,
+                "Snapshot deletion rejected: it is a live backup baseline");
+            return new TaskResult.Failed(TaskResult.Failure.SNAPSHOT_IS_BASELINE);
         } catch (ManagedRepository.CommitUncertain uncertain) {
             System.getLogger(AgentOperations.class.getName()).log(System.Logger.Level.WARNING,
                 "Could not confirm Agent repository commit", uncertain);
@@ -159,5 +205,20 @@ final class AgentOperations implements BackupApiHost.Operations {
         var id = UUID.fromString(value);
         if (!id.toString().equals(value)) throw new IllegalArgumentException("Noncanonical snapshot ID");
         return id;
+    }
+
+    /** 旧快照没有操作人记录，由界面按 Server 展示 */
+    private static Optional<BackupOperator> operator(Optional<Snapshot.Trigger> trigger) {
+        var metadata = trigger.map(Snapshot.Trigger::metadata).orElse(java.util.Map.of());
+        var name = metadata.get("operator");
+        if (name == null || name.isBlank()) return Optional.empty();
+        UUID id = null;
+        try {
+            var value = metadata.get("operatorUuid");
+            if (value != null) id = UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            // 操作人名仍可展示
+        }
+        return Optional.of(new BackupOperator(name, Optional.ofNullable(id)));
     }
 }

@@ -26,7 +26,7 @@ tasks.register<ActivateTarget>("activateTarget") {
 
 tasks.register("checkTargetSources") {
     group = "verification"
-    description = "Validates every selected build target against .lists/targets.json5"
+    description = "Validates every selected build target against ;lists/targets.json5"
 }
 subprojects {
     tasks.matching { it.name == "checkTargetSources" }.configureEach {
@@ -46,7 +46,7 @@ val selectableGames = (
 
 val mergedGames: Set<String> = runCatching {
     @Suppress("UNCHECKED_CAST")
-    val table = Json5Reader(rootProject.file(".lists/targets.json5").readText()).read() as Map<String, Any?>
+    val table = Json5Reader(rootProject.file(";lists/targets.json5").readText()).read() as Map<String, Any?>
     (table["merge"] as? List<*>)?.map { it.toString() }?.toSet() ?: emptySet()
 }.getOrElse { emptySet() }
 
@@ -85,17 +85,6 @@ for (game in selectableGames) {
                 "-PmergeJars=true", "mergeJars", "mergeApiJars")
         }
     }
-    /* 暂停在 Gradle 目标列表提供 JavaAgent 构建
-    if (game in setOf("1.21.11", "26.1.2", "26.2", "26.3")) {
-        project(":targets:$game").tasks.register<Exec>("agent") {
-            group = "build"
-            description = "Builds the JavaAgent products for Minecraft $game"
-            workingDir = rootDir
-            val wrapper = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
-            commandLine(wrapper, "-PgameVersion=$game", "-Ploaders=agent", "-PjavaAgent=true", "buildProducts")
-        }
-    }
-    */
 }
 
 // 每个项目的版本和共享设置
@@ -129,13 +118,11 @@ subprojects {
     val distributionLoader: String = property("distributionLoader") ?: local("distributionLoader")
         ?: if (selectedLoaders == listOf("quilt")) "quilt" else "fabric"
     
-    val agentGame = property("agentGameVersion") ?: local("agentGameVersion") ?: selectedGames.firstOrNull() ?: "26.3"
-    val bukkitGame = property("bukkitGameVersion") ?: local("bukkitGameVersion") ?: agentGame
     
-    // 读取 .lists/version.json5 进行版本解析
+    // 读取 ;lists/version.json5 进行版本解析
     val versionTable: Map<String, Any?> = try {
         @Suppress("UNCHECKED_CAST")
-        Json5Reader(rootProject.projectDir.resolve(".lists/version.json5").readText()).read() as Map<String, Any?>
+        Json5Reader(rootProject.projectDir.resolve(";lists/version.json5").readText()).read() as Map<String, Any?>
     } catch (e: Exception) {
         emptyMap()
     }
@@ -168,7 +155,6 @@ subprojects {
     
     fun loaderFor(path: String): String? = when {
         path.startsWith(":platforms:javaagent") -> "agent"
-        path.startsWith(":api:shared:bukkit") || path.startsWith(":platforms:bukkit") -> "bukkit"
         path.endsWith(":fabric") || path.contains(":fabric-") -> distributionLoader
         path.endsWith(":forge") -> "forge"
         path.endsWith(":neoforge") -> "neoforge"
@@ -176,8 +162,7 @@ subprojects {
     }
     
     fun gameFor(path: String): String? = when {
-        path.startsWith(":platforms:javaagent") -> agentGame
-        path.startsWith(":api:shared:bukkit") || path.startsWith(":platforms:bukkit") -> bukkitGame
+        path.startsWith(":platforms:javaagent") -> property("agentGameVersion") ?: local("agentGameVersion") ?: selectedGames.firstOrNull() ?: "26.3"
         else -> path.split(':').firstOrNull { it.startsWith("mc") && it.length > 2 }
             ?.removePrefix("mc")?.replace('_', '.')
     }
@@ -188,6 +173,8 @@ subprojects {
     val modVersion = resolveVersion("mod", loader, game)
     val apiVersion = resolveVersion("api", loader, game)
     val zstdVersion = resolveVersion("backend.zstd", loader, game)
+    // 最低 API 版本：mod.api_version 显式指定；留空时与当前 API 版本保持一致
+    val minimumApiVersion = (versionRule("mod")["api_version"] as? String)?.takeIf { it.isNotBlank() } ?: apiVersion
     
     project.version = when {
         projectPath.startsWith(":api:") -> apiVersion
@@ -198,6 +185,7 @@ subprojects {
     val extra = project.extensions.extraProperties
     extra.set("modVersion", modVersion)
     extra.set("apiVersion", apiVersion)
+    extra.set("minimumApiVersion", minimumApiVersion)
     extra.set("zstdVersion", zstdVersion)
     extra.set("fabricPackageLoader", distributionLoader)
     if (game != null) {

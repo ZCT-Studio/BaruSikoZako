@@ -17,15 +17,15 @@ import java.util.Properties;
 import java.util.Set;
 
 /**
- * {@code .lists/} 声明式构建清单的模型、规则解析与严格校验。
+ * {@code ;lists/} 声明式构建清单的模型、规则解析与严格校验。
  *
  * <p>清单是源码层、资源层、Java 版本与 Mixin 配置的唯一事实来源：
  * <ul>
- *   <li>{@code .lists/targets.json5}：目标注册（{@code jdk}）、规则文件列表 {@code rules}
+ *   <li>{@code ;lists/targets.json5}：目标注册（{@code jdk}）、规则文件列表 {@code rules}
  *       与可选的单目标覆盖 {@code targets}。</li>
- *   <li>{@code .lists/sources.json5}、{@code .lists/resources.json5}：可选源码层与资源层目录，
- *       每项声明 {@code platforms/} 相对路径；{@code .lists/mixins.json5}：Mixin 模板与可选类名目录。</li>
- *   <li>{@code .lists/.rules/*.json5}：命名分组与条件规则，按 {@code rules} 顺序应用。</li>
+ *   <li>{@code ;lists/sources.json5}、{@code ;lists/resources.json5}：可选源码层与资源层目录，
+ *       每项声明 {@code platforms/} 相对路径；{@code ;lists/mixins.json5}：Mixin 模板与可选类名目录。</li>
+ *   <li>{@code ;lists/;rules/*.json5}：命名分组与条件规则，按 {@code rules} 顺序应用。</li>
  * </ul>
  *
  * <p>源码层路径相对于仓库的 {@code platforms/} 目录；{@code mixinTemplate} 相对于仓库根目录。
@@ -51,8 +51,8 @@ public final class BuildTargets {
         }
     }
 
-    private static final String LISTS = ".lists";
-    private static final String RULES = ".rules";
+    private static final String LISTS = ";lists";
+    private static final String RULES = ";rules";
     private static final Set<String> TOP_KEYS = Set.of("rules", "jdk", "targets", "merge");
     private static final Set<String> TARGET_KEYS = Set.of("source", "resource", "mixin");
     private static final Set<String> MIXIN_KEYS = Set.of("injectors", "plugin", "refmap", "mixins", "groups", "add", "remove");
@@ -76,8 +76,8 @@ public final class BuildTargets {
 
     public static BuildTargets load(Path root, Path compatibilityFile) {
         Path lists = root.resolve(LISTS);
-        Map<String, Object> document = readObject(lists.resolve("targets.json5"), ".lists/targets.json5");
-        rejectUnknown(document, TOP_KEYS, ".lists/targets.json5");
+        Map<String, Object> document = readObject(lists.resolve("targets.json5"), ";lists/targets.json5");
+        rejectUnknown(document, TOP_KEYS, ";lists/targets.json5");
 
         LayerCatalog sourceLayers = layerCatalog(root, lists, "sources.json5");
         LayerCatalog resourceLayers = layerCatalog(root, lists, "resources.json5");
@@ -86,15 +86,15 @@ public final class BuildTargets {
 
         Map<String, Integer> jdk = jdkTargets(document.get("jdk"));
         List<RuleFile> ruleFiles = ruleFiles(lists.resolve(RULES),
-            strings(document.get("rules"), ".lists/targets.json5.rules"));
+            strings(document.get("rules"), ";lists/targets.json5.rules"));
         Set<String> sourceCatalog = sourceLayers.names();
         Set<String> resourceCatalog = resourceLayers.names();
         Set<String> mixinCatalog = mixins.names();
-        Set<String> mergeGames = uniqueNames(document.get("merge"), ".lists/targets.json5.merge");
+        Set<String> mergeGames = uniqueNames(document.get("merge"), ";lists/targets.json5.merge");
         Map<String, Object> overrides = table(document.get("targets"));
         for (String key : overrides.keySet()) {
             if (!jdk.containsKey(key)) {
-                throw new IllegalStateException("Target override '" + key + "' is not registered in .lists/targets.json5 jdk");
+                throw new IllegalStateException("Target override '" + key + "' is not registered in ;lists/targets.json5 jdk");
             }
         }
 
@@ -150,7 +150,7 @@ public final class BuildTargets {
                 state.mixin.freeze());
             if (targets.put(key, target) != null) throw new IllegalStateException("Duplicate target '" + key + "'");
         }
-        if (targets.isEmpty()) throw new IllegalStateException(".lists/targets.json5 registers no build targets");
+        if (targets.isEmpty()) throw new IllegalStateException(";lists/targets.json5 registers no build targets");
 
         return new BuildTargets(root, Map.copyOf(layers), Map.copyOf(targets), mixins.template());
     }
@@ -165,7 +165,7 @@ public final class BuildTargets {
 
     private static Map<String, Integer> jdkTargets(Object value) {
         Map<String, Object> node = table(value);
-        if (node.isEmpty()) throw new IllegalStateException(".lists/targets.json5 must register targets under jdk");
+        if (node.isEmpty()) throw new IllegalStateException(";lists/targets.json5 must register targets under jdk");
         Map<String, Integer> result = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : node.entrySet()) {
             String key = entry.getKey();
@@ -181,7 +181,7 @@ public final class BuildTargets {
 
     /** 读取层目录：名称映射到 {@code platforms/} 下的相对路径。 */
     private static LayerCatalog layerCatalog(Path root, Path lists, String fileName) {
-        String label = ".lists/" + fileName;
+        String label = ";lists/" + fileName;
         Map<String, Object> document = readObject(lists.resolve(fileName), label);
         rejectUnknown(document, Set.of("layers"), label);
 
@@ -212,18 +212,18 @@ public final class BuildTargets {
             String previous = result.putIfAbsent(entry.getKey(), entry.getValue());
             if (previous != null && !previous.equals(entry.getValue())) {
                 throw new IllegalStateException("Layer '" + entry.getKey()
-                    + "' has different paths in .lists/sources.json5 and .lists/resources.json5");
+                    + "' has different paths in ;lists/sources.json5 and ;lists/resources.json5");
             }
         }
         return result;
     }
 
     private static MixinCatalog mixinCatalog(Path lists) {
-        Map<String, Object> document = readObject(lists.resolve("mixins.json5"), ".lists/mixins.json5");
-        rejectUnknown(document, Set.of("template", "mixins"), ".lists/mixins.json5");
-        String template = string(document.get("template"), ".lists/mixins.json5.template");
+        Map<String, Object> document = readObject(lists.resolve("mixins.json5"), ";lists/mixins.json5");
+        rejectUnknown(document, Set.of("template", "mixins"), ";lists/mixins.json5");
+        String template = string(document.get("template"), ";lists/mixins.json5.template");
         return new MixinCatalog(template,
-            uniqueNames(document.get("mixins"), ".lists/mixins.json5.mixins"));
+            uniqueNames(document.get("mixins"), ";lists/mixins.json5.mixins"));
     }
 
     private static Set<String> uniqueNames(Object value, String where) {
@@ -239,7 +239,7 @@ public final class BuildTargets {
         for (String entry : entries) {
             Path file = directory.resolve(entry).normalize();
             if (!file.startsWith(directory)) {
-                throw new IllegalStateException("Rule file '" + entry + "' escapes .lists/.rules/");
+                throw new IllegalStateException("Rule file '" + entry + "' escapes ;lists/;rules/");
             }
             result.add(ruleFile(file, entry));
         }
@@ -247,7 +247,7 @@ public final class BuildTargets {
     }
 
     private static RuleFile ruleFile(Path file, String entry) {
-        String label = ".lists/" + RULES + "/" + entry;
+        String label = ";lists/" + RULES + "/" + entry;
         Map<String, Object> document = readObject(file, label);
         rejectUnknown(document, RULE_FILE_KEYS, label);
         Map<String, Object> groupTable = table(document.get("groups"));
@@ -499,7 +499,7 @@ public final class BuildTargets {
     public Target require(String loader, String game) {
         Target target = targets.get(loader + "@" + game);
         if (target == null) {
-            throw new IllegalStateException("No build target '" + loader + "@" + game + "' in .lists/targets.json5");
+            throw new IllegalStateException("No build target '" + loader + "@" + game + "' in ;lists/targets.json5");
         }
         return target;
     }

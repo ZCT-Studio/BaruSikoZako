@@ -5,6 +5,7 @@ package io.github.zct_studio.barusikozako.api;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
@@ -14,9 +15,25 @@ import java.util.function.Consumer;
 public interface BackupService {
     Submission submit(BackupRequest request);
 
+    /** 提交任务并附带操作人；旧实现可以忽略操作人 */
+    default Submission submit(BackupRequest request, Optional<BackupOperator> operator) {
+        Objects.requireNonNull(operator);
+        return submit(request);
+    }
+
     Cancellation cancel(TaskId id);
 
     Optional<TaskState> task(TaskId id);
+
+    /**
+     * 与任务列表命令一致：列出调用方可见且仍在保留期内的任务，按提交时间倒序。
+     * continuation 为上一页末项的任务 ID；该任务被淘汰后游标失效并返回空页。
+     */
+    default CompletionStage<Page<TaskInfo>> tasks(PageRequest page) {
+        Objects.requireNonNull(page);
+        return java.util.concurrent.CompletableFuture.failedStage(
+            new UnsupportedOperationException("Task listing unavailable"));
+    }
 
     CompletionStage<Page<RepositoryInfo>> repositories(PageRequest page);
 
@@ -35,6 +52,24 @@ public interface BackupService {
         return snapshotDirectory(snapshot).thenApply(directory -> directory.map(Path::getFileName).map(Path::toString));
     }
 
+    /** 与快照详细信息命令一致：按标识查询单条信息，不存在或超出保留期时为空 */
+    default CompletionStage<Optional<SnapshotInfo>> snapshot(SnapshotRef snapshot) {
+        Objects.requireNonNull(snapshot);
+        return java.util.concurrent.CompletableFuture.completedStage(Optional.empty());
+    }
+
+    /** 与服务状态命令一致：捕获可用性、后端、仓库、计划间隔与配置目录 */
+    default CompletionStage<ServiceStatus> status() {
+        return java.util.concurrent.CompletableFuture.failedStage(
+            new UnsupportedOperationException("Service status unavailable"));
+    }
+
+    /** 与版本命令一致：本体、API 与已注册后端的版本 */
+    default CompletionStage<VersionInfo> version() {
+        return java.util.concurrent.CompletableFuture.failedStage(
+            new UnsupportedOperationException("Version information unavailable"));
+    }
+
 
     CompletionStage<List<CapabilityState>> capabilities();
 
@@ -48,6 +83,20 @@ public interface BackupService {
     }
 
     default CompletionStage<Void> updateConfiguration(String key, String value) {
+        return java.util.concurrent.CompletableFuture.failedStage(new UnsupportedOperationException("Configuration unavailable"));
+    }
+
+    /** 与后端配置命令一致：读取已注册后端的配置，需要配置权限 */
+    default CompletionStage<Map<String, String>> backendConfiguration(String backend) {
+        Objects.requireNonNull(backend);
+        return java.util.concurrent.CompletableFuture.failedStage(new UnsupportedOperationException("Configuration unavailable"));
+    }
+
+    /** 与后端配置命令一致：写入已注册后端的配置，需要配置权限 */
+    default CompletionStage<Void> updateBackendConfiguration(String backend, String key, String value) {
+        Objects.requireNonNull(backend);
+        Objects.requireNonNull(key);
+        Objects.requireNonNull(value);
         return java.util.concurrent.CompletableFuture.failedStage(new UnsupportedOperationException("Configuration unavailable"));
     }
 
@@ -93,11 +142,61 @@ public interface BackupService {
 
     record RepositoryInfo(String id, String displayName) {}
 
+    /** 任务列表条目：提交时间与当前状态 */
+    record TaskInfo(java.time.Instant submittedAt, TaskState state) {
+        public TaskInfo {
+            Objects.requireNonNull(submittedAt);
+            Objects.requireNonNull(state);
+        }
+    }
+
+    /** 服务状态；与服务状态命令展示的信息一致 */
+    record ServiceStatus(boolean captureAvailable, Optional<String> backend, Optional<RepositoryInfo> repository,
+                         Optional<Path> repositoryDirectory, long scheduleIntervalSeconds,
+                         Optional<Path> configurationDirectory) {
+        public ServiceStatus {
+            Objects.requireNonNull(backend);
+            Objects.requireNonNull(repository);
+            Objects.requireNonNull(repositoryDirectory);
+            Objects.requireNonNull(configurationDirectory);
+            if (scheduleIntervalSeconds < 0) throw new IllegalArgumentException("negative schedule interval");
+        }
+    }
+
+    /** 版本信息；与版本命令展示的信息一致 */
+    record VersionInfo(String modVersion, Optional<String> apiVersion, Map<String, String> backends) {
+        public VersionInfo {
+            Objects.requireNonNull(modVersion);
+            Objects.requireNonNull(apiVersion);
+            Objects.requireNonNull(backends);
+            backends = Map.copyOf(backends);
+        }
+    }
+
     record SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId,
-                        Consistency consistency, Optional<BackupRequest.Trigger> trigger) {
+                        Consistency consistency, Optional<BackupRequest.Trigger> trigger,
+                        java.util.OptionalLong archiveBytes, java.util.OptionalLong logicalBytes,
+                        Optional<java.time.Duration> elapsed, Optional<SnapshotLayout> layout,
+                        Optional<BackupOperator> operator) {
         public SnapshotInfo {
             Objects.requireNonNull(consistency);
             Objects.requireNonNull(trigger);
+            Objects.requireNonNull(archiveBytes);
+            Objects.requireNonNull(logicalBytes);
+            Objects.requireNonNull(elapsed);
+            Objects.requireNonNull(layout);
+            Objects.requireNonNull(operator);
+            if (archiveBytes.isPresent() && archiveBytes.getAsLong() < 0 ||
+                logicalBytes.isPresent() && logicalBytes.getAsLong() < 0)
+                throw new IllegalArgumentException("negative snapshot size");
+            if (elapsed.isPresent() && elapsed.orElseThrow().isNegative())
+                throw new IllegalArgumentException("negative snapshot duration");
+        }
+
+        public SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId,
+                            Consistency consistency, Optional<BackupRequest.Trigger> trigger) {
+            this(snapshot, createdAt, sourceId, consistency, trigger, java.util.OptionalLong.empty(),
+                java.util.OptionalLong.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
         public SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId,
@@ -107,6 +206,18 @@ public interface BackupService {
 
         public SnapshotInfo(SnapshotRef snapshot, java.time.Instant createdAt, String sourceId) {
             this(snapshot, createdAt, sourceId, Consistency.STRICT, Optional.empty());
+        }
+    }
+
+    /** 快照的存储布局；旧后端可能不提供 */
+    enum SnapshotLayout { FULL, INCREMENTAL, DIFFERENTIAL }
+
+    /** 备份操作人；缺少该记录时界面显示为 Server */
+    record BackupOperator(String name, Optional<java.util.UUID> id) {
+        public BackupOperator {
+            Objects.requireNonNull(name);
+            Objects.requireNonNull(id);
+            if (name.isBlank()) throw new IllegalArgumentException("missing operator name");
         }
     }
 

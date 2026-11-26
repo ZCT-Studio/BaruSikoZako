@@ -27,6 +27,7 @@ val targetLoader = name
 val apiOnly = path.startsWith(":api:")
 val modVersion = extra["modVersion"].toString()
 val apiVersion = extra["apiVersion"].toString()
+val minimumApiVersion = extra["minimumApiVersion"].toString()
 val zstdVersion = extra["zstdVersion"].toString()
 val versions = mapOf(targetLoader to requireNotNull(compatibility.getProperty("fml.runtime.$targetLoader.$minecraft")))
 val fmlSource = rootProject.file("platforms/fml")
@@ -130,10 +131,20 @@ fun metadata(loader: String, id: String, displayName: String, mixinConfig: Strin
         appendLine("ordering=\"AFTER\"")
         appendLine("side=\"BOTH\"")
     }
+    fun incompatible(on: String, range: String) {
+        appendLine("[[dependencies.$id]]")
+        appendLine("modId=\"$on\"")
+        appendLine("type=\"incompatible\"")
+        appendLine("versionRange=\"$range\"")
+        appendLine("ordering=\"AFTER\"")
+        appendLine("side=\"BOTH\"")
+    }
     dependency("minecraft", "[$minecraft]")
     dependency(loader, "[${versions.getValue(loader).removePrefix("$minecraft-")},)")
-    if (id == "barusikozako_api") dependency("barusikozako", "[0,)")
+    if (id == "barusikozako_api") dependency("barusikozako", "[$modVersion,)")
     if (id == "barusikozako_backendzstd") dependency("barusikozako", "[$modVersion]")
+    if (neo && id == "barusikozako" && minimumApiVersion.isNotBlank())
+        incompatible("barusikozako_api", "(,$minimumApiVersion)")
     if (neo && mixinConfig != null) {
         appendLine("[[mixins]]")
         appendLine("config=\"$mixinConfig\"")
@@ -355,6 +366,25 @@ for ((loader, version) in versions) {
     }
     val target = buildTargets.require(loader, minecraft)
     val mixinTask = MinecraftSourcesPlugin.configure(project, main, buildTargets, target, false, true)
+    val platformVersionsDir = layout.buildDirectory.dir("generated/platformVersions")
+    val platformVersions = tasks.register("${loader}PlatformVersions") {
+        val output = platformVersionsDir
+        val minimum = minimumApiVersion
+        outputs.dir(output)
+        doLast {
+            val file = output.get().file("io/github/zct_studio/barusikozako/platform/PlatformVersions.java").asFile
+            file.parentFile.mkdirs()
+            file.writeText("""
+                package io.github.zct_studio.barusikozako.platform;
+
+                public final class PlatformVersions {
+                    public static final String MINIMUM_API_VERSION = "$minimum";
+                    private PlatformVersions() {}
+                }
+            """.trimIndent() + "\n", Charsets.UTF_8)
+        }
+    }
+    main.java.srcDir(platformVersions)
     val backend = sourceSets.create("${loader}Backend") {
         java.srcDir(fmlSource.resolve("src/${loader}Backend/java"))
         compileClasspath += serverClasspath + main.output
@@ -379,7 +409,7 @@ for ((loader, version) in versions) {
     addCompileDependency(main, project(apiPath))
     for (module in backendComponents + ":backends:spi") addCompileDependency(backend, project(module))
     addCompileDependency(main, libs.snakeyaml)
-    val backendMeta = metadataFile("${loader}BackendMetadata", toml, metadata(loader, "barusikozako_backendzstd", "ZakoBak Zstd"))
+    val backendMeta = metadataFile("${loader}BackendMetadata", toml, metadata(loader, "barusikozako_backendzstd", "ZakoBak Zstd (Bundled)"))
     val backendJarJar = jarJarMetadata("${loader}Backend", backendLibraries)
     val backendJar = tasks.register("${loader}BackendJar",
         if (isolateBackendCommons) ShadowJar::class.java else Jar::class.java) {

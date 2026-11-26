@@ -53,7 +53,11 @@ public final class PublicApi {
 
     private record Service(io.github.zct_studio.barusikozako.runtime.BackupService runtime) implements BackupService {
         @Override public Submission submit(BackupRequest request) {
-            var submission = runtime.submit(request(request));
+            return submit(request, Optional.empty());
+        }
+
+        @Override public Submission submit(BackupRequest request, Optional<BackupService.BackupOperator> operator) {
+            var submission = runtime.submit(request(request), operator.map(PublicApi::operator));
             if (submission instanceof io.github.zct_studio.barusikozako.runtime.BackupService.Submission.Accepted accepted) {
                 return new Submission.Accepted(new TaskId(accepted.id().value()), accepted.completion().thenApply(PublicApi::result));
             }
@@ -71,6 +75,11 @@ public final class PublicApi {
             return runtime.task(internalId(id)).map(PublicApi::state);
         }
 
+        @Override public CompletionStage<Page<TaskInfo>> tasks(PageRequest page) {
+            return runtime.tasks(page(page)).thenApply(result -> new Page<>(result.items().stream()
+                .map(info -> new TaskInfo(info.submittedAt(), state(info.state()))).toList(), result.next()));
+        }
+
         @Override public CompletionStage<Page<RepositoryInfo>> repositories(PageRequest page) {
             return runtime.repositories(page(page)).thenApply(result -> new Page<>(result.items().stream()
                 .map(info -> new RepositoryInfo(info.id(), info.displayName())).toList(), result.next()));
@@ -78,14 +87,25 @@ public final class PublicApi {
 
         @Override public CompletionStage<Page<SnapshotInfo>> snapshots(String repositoryId, PageRequest page) {
             return runtime.snapshots(repositoryId, page(page)).thenApply(result -> new Page<>(result.items().stream()
-                .map(info -> new SnapshotInfo(snapshot(info.snapshot()), info.createdAt(), info.sourceId(),
-                    BackupService.Consistency.valueOf(info.consistency().name()),
-                    info.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata()))))
-                .toList(), result.next()));
+                .map(PublicApi::snapshotInfo).toList(), result.next()));
+        }
+
+        @Override public CompletionStage<Optional<SnapshotInfo>> snapshot(SnapshotRef snapshot) {
+            return runtime.snapshot(internalSnapshot(snapshot))
+                .thenApply(found -> found.map(PublicApi::snapshotInfo));
         }
 
         @Override public CompletionStage<Optional<Path>> snapshotDirectory(SnapshotRef snapshot) {
             return runtime.snapshotDirectory(internalSnapshot(snapshot));
+        }
+
+        @Override public CompletionStage<ServiceStatus> status() {
+            return runtime.status().thenApply(PublicApi::status);
+        }
+
+        @Override public CompletionStage<VersionInfo> version() {
+            return runtime.version().thenApply(info -> new VersionInfo(info.modVersion(), info.apiVersion(),
+                info.backends()));
         }
 
         @Override public CompletionStage<List<CapabilityState>> capabilities() {
@@ -104,6 +124,14 @@ public final class PublicApi {
 
         @Override public CompletionStage<Void> updateConfiguration(String key, String value) {
             return runtime.updateConfiguration(key, value);
+        }
+
+        @Override public CompletionStage<Map<String, String>> backendConfiguration(String backend) {
+            return runtime.backendConfiguration(backend);
+        }
+
+        @Override public CompletionStage<Void> updateBackendConfiguration(String backend, String key, String value) {
+            return runtime.updateBackendConfiguration(backend, key, value);
         }
 
         @Override public CompletionStage<TaskSubscription> subscribe(Optional<String> repositoryId, Consumer<TaskEvent> listener) {
@@ -140,6 +168,23 @@ public final class PublicApi {
         return new SnapshotRef(snapshot.repositoryId(), snapshot.snapshotId());
     }
 
+    private static BackupService.SnapshotInfo snapshotInfo(
+            io.github.zct_studio.barusikozako.runtime.BackupService.SnapshotInfo info) {
+        return new BackupService.SnapshotInfo(snapshot(info.snapshot()), info.createdAt(), info.sourceId(),
+            BackupService.Consistency.valueOf(info.consistency().name()),
+            info.trigger().map(trigger -> new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata())),
+            info.archiveBytes(), info.logicalBytes(), info.elapsed(),
+            info.layout().map(value -> BackupService.SnapshotLayout.valueOf(value.name())),
+            info.operator().map(PublicApi::operator));
+    }
+
+    private static BackupService.ServiceStatus status(
+            io.github.zct_studio.barusikozako.runtime.BackupService.ServiceStatus status) {
+        return new BackupService.ServiceStatus(status.captureAvailable(), status.backend(),
+            status.repository().map(info -> new BackupService.RepositoryInfo(info.id(), info.displayName())),
+            status.repositoryDirectory(), status.scheduleIntervalSeconds(), status.configurationDirectory());
+    }
+
     private static io.github.zct_studio.barusikozako.runtime.BackupRequest request(BackupRequest request) {
         if (request instanceof BackupRequest.Backup backup) {
             return new io.github.zct_studio.barusikozako.runtime.BackupRequest.Backup(
@@ -167,7 +212,16 @@ public final class PublicApi {
     private static TaskState state(io.github.zct_studio.barusikozako.runtime.TaskState state) {
         return new TaskState(new TaskId(state.id().value()), BackupRequest.Kind.valueOf(state.operation().name()),
             state.repositoryId(), TaskState.Phase.valueOf(state.phase().name()), state.processedBytes(),
-            state.totalBytes(), state.result().map(PublicApi::result), state.elapsed());
+            state.totalBytes(), state.result().map(PublicApi::result), state.elapsed(),
+            state.operator().map(PublicApi::operator));
+    }
+
+    private static BackupService.BackupOperator operator(io.github.zct_studio.barusikozako.runtime.BackupService.BackupOperator operator) {
+        return new BackupService.BackupOperator(operator.name(), operator.id());
+    }
+
+    private static io.github.zct_studio.barusikozako.runtime.BackupService.BackupOperator operator(BackupService.BackupOperator operator) {
+        return new io.github.zct_studio.barusikozako.runtime.BackupService.BackupOperator(operator.name(), operator.id());
     }
 
     private static TaskEvent event(io.github.zct_studio.barusikozako.runtime.TaskEvent event) {
@@ -188,7 +242,8 @@ public final class PublicApi {
 
     private static TaskResult result(io.github.zct_studio.barusikozako.runtime.TaskResult result) {
         if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.BackupCommitted backup) {
-            return new TaskResult.BackupCommitted(snapshot(backup.snapshot()), backup.logicalBytes(), backup.archiveBytes(), backup.elapsed());
+            return new TaskResult.BackupCommitted(snapshot(backup.snapshot()), backup.logicalBytes(), backup.archiveBytes(),
+                backup.elapsed(), backup.relaxedFiles());
         }
         if (result instanceof io.github.zct_studio.barusikozako.runtime.TaskResult.VerificationComplete verify) {
             return new TaskResult.VerificationComplete(

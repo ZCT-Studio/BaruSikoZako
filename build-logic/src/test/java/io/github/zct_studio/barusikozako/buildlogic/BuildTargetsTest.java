@@ -17,7 +17,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code .lists/} 清单、分组、条件规则与异常处理的自动化测试。 */
+/** {@code ;lists/} 清单、分组、条件规则与异常处理的自动化测试。 */
 final class BuildTargetsTest {
     @TempDir
     Path root;
@@ -62,7 +62,7 @@ final class BuildTargetsTest {
     @Test
     void layerOutsideCatalogCannotBeSelected() throws IOException {
         writeWorkspace();
-        write(".lists/sources.json5", """
+        write(";lists/sources.json5", """
             { layers: { common: "common", legacy: "legacy" } }
             """);
         IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
@@ -72,7 +72,7 @@ final class BuildTargetsTest {
     @Test
     void layerPathsMustMatchBetweenCatalogs() throws IOException {
         writeWorkspace();
-        write(".lists/resources.json5", """
+        write(";lists/resources.json5", """
             { layers: { common: "legacy" } }
             """);
         IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
@@ -82,8 +82,8 @@ final class BuildTargetsTest {
     @Test
     void catalogsDoNotProvideDefaults() throws IOException {
         writeWorkspace();
-        write(".lists/.rules/first.json5", "{ rule: {} }");
-        write(".lists/.rules/second.json5", "{ rule: {} }");
+        write(";lists/;rules/first.json5", "{ rule: {} }");
+        write(";lists/;rules/second.json5", "{ rule: {} }");
         IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
         assertTrue(error.getMessage().contains("resolved no source layers"), error.getMessage());
     }
@@ -91,7 +91,7 @@ final class BuildTargetsTest {
     @Test
     void unknownGroupOrLayerIsReported() throws IOException {
         writeWorkspace();
-        write(".lists/.rules/first.json5", """
+        write(";lists/;rules/first.json5", """
             {
               rule: {
                 "mc < 26": { source: ["Missing"] },
@@ -105,7 +105,7 @@ final class BuildTargetsTest {
     @Test
     void invalidExpressionIsReported() throws IOException {
         writeWorkspace();
-        write(".lists/.rules/first.json5", """
+        write(";lists/;rules/first.json5", """
             {
               rule: {
                 "mc >=": { source: ["common"] },
@@ -119,20 +119,20 @@ final class BuildTargetsTest {
     @Test
     void missingRuleFileIsReported() throws IOException {
         writeWorkspace();
-        write(".lists/targets.json5", """
+        write(";lists/targets.json5", """
             {
               rules: ["absent.json5"],
               jdk: { "fabric@26.3": 25 },
             }
             """);
         IllegalStateException error = assertThrows(IllegalStateException.class, this::load);
-        assertTrue(error.getMessage().contains("Missing .lists/.rules/absent.json5"), error.getMessage());
+        assertTrue(error.getMessage().contains("Missing ;lists/;rules/absent.json5"), error.getMessage());
     }
 
     @Test
     void duplicateRuleConditionIsReported() throws IOException {
         writeWorkspace();
-        write(".lists/.rules/first.json5", """
+        write(";lists/;rules/first.json5", """
             {
               rule: {
                 "mc < 26": { source: ["common"] },
@@ -147,7 +147,7 @@ final class BuildTargetsTest {
     @Test
     void unknownPatchFieldIsReported() throws IOException {
         writeWorkspace();
-        write(".lists/.rules/first.json5", """
+        write(";lists/;rules/first.json5", """
             {
               rule: {
                 "mc < 26": { sources: ["common"] },
@@ -201,7 +201,7 @@ final class BuildTargetsTest {
             fabric.runtime.api.26.3=0.17.0
             fml.runtime.forge.1.20.1=47.2.0
             """);
-        write(".lists/targets.json5", """
+        write(";lists/targets.json5", """
             {
               rules: ["first.json5", "second.json5"],
               jdk: {
@@ -214,7 +214,7 @@ final class BuildTargetsTest {
               },
             }
             """);
-        write(".lists/sources.json5", """
+        write(";lists/sources.json5", """
             {
               layers: {
                 common: "common",
@@ -223,13 +223,13 @@ final class BuildTargetsTest {
               },
             }
             """);
-        write(".lists/resources.json5", """
+        write(";lists/resources.json5", """
             { layers: { common: "common" } }
             """);
-        write(".lists/mixins.json5", """
+        write(";lists/mixins.json5", """
             { template: "mixin.json5", mixins: ["A", "B", "C", "D"] }
             """);
-        write(".lists/.rules/first.json5", """
+        write(";lists/;rules/first.json5", """
             {
               groups: {
                 source: { Legacy: ["common", "legacy"] },
@@ -249,7 +249,7 @@ final class BuildTargetsTest {
               },
             }
             """);
-        write(".lists/.rules/second.json5", """
+        write(";lists/;rules/second.json5", """
             {
               groups: {
                 source: { Legacy: ["common", "legacy", "extra"] },
@@ -284,7 +284,7 @@ final class BuildTargetsTest {
     private static Path repositoryRoot() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
-            if (Files.isRegularFile(current.resolve(".lists/targets.json5"))) return current;
+            if (Files.isRegularFile(current.resolve(";lists/targets.json5"))) return current;
             current = current.getParent();
         }
         throw new IllegalStateException("Cannot locate repository root from " + Path.of("").toAbsolutePath());

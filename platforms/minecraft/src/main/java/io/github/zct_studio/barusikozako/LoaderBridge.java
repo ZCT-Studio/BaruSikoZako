@@ -21,10 +21,17 @@ public final class LoaderBridge {
         Path configDirectory();
         String productVersion();
         boolean apiAvailable();
+        /** 已安装 API 的版本；未安装返回 null，已安装但无法取得版本时返回 unknown */
+        default String apiVersion() { return apiAvailable() ? "unknown" : null; }
         <T> List<Entry<T>> entries(String channel, Class<T> contract);
     }
 
-    public record Entry<T>(String owner, Supplier<T> value) {}
+    /** 注册项；version 为提供方声明的版本，无法取得时为 null */
+    public record Entry<T>(String owner, Supplier<T> value, String version) {
+        public Entry(String owner, Supplier<T> value) {
+            this(owner, value, null);
+        }
+    }
 
     public static synchronized void install(Binding source) {
         if (binding != null) throw new IllegalStateException("Loader binding is already installed");
@@ -34,6 +41,8 @@ public final class LoaderBridge {
     static Path configDirectory() { return requireBinding().configDirectory(); }
 
     static String productVersion() { return requireBinding().productVersion(); }
+
+    static String apiVersion() { return requireBinding().apiVersion(); }
 
     static <T> List<Entry<T>> entries(String channel, Class<T> contract) {
         var current = requireBinding();

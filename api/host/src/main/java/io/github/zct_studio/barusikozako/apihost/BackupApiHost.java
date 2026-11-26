@@ -10,7 +10,10 @@ import io.github.zct_studio.barusikozako.api.BackupService.CapabilityState;
 import io.github.zct_studio.barusikozako.api.BackupService.Page;
 import io.github.zct_studio.barusikozako.api.BackupService.PageRequest;
 import io.github.zct_studio.barusikozako.api.BackupService.RepositoryInfo;
+import io.github.zct_studio.barusikozako.api.BackupService.ServiceStatus;
 import io.github.zct_studio.barusikozako.api.BackupService.SnapshotInfo;
+import io.github.zct_studio.barusikozako.api.BackupService.TaskInfo;
+import io.github.zct_studio.barusikozako.api.BackupService.VersionInfo;
 import io.github.zct_studio.barusikozako.api.SnapshotRef;
 import io.github.zct_studio.barusikozako.api.TaskEvent;
 import io.github.zct_studio.barusikozako.api.TaskId;
@@ -120,6 +123,12 @@ public final class BackupApiHost implements AutoCloseable {
             return service.submit(request, ignoreNotice);
         }
 
+        /** 平台内部命令入口，附带操作人以便任务列表展示 */
+        public BackupService.Submission submit(BackupRequest request, Consumer<List<String>> ignoreNotice,
+                                               Optional<BackupService.BackupOperator> operator) {
+            return service.submit(request, ignoreNotice, operator);
+        }
+
         @Override
         public void close() {
             runtime.revoke(access);
@@ -151,10 +160,20 @@ public final class BackupApiHost implements AutoCloseable {
 
         @Override
         public Submission submit(BackupRequest request) {
-            return submit(request, ignored -> {});
+            return submit(request, ignored -> {}, Optional.empty());
+        }
+
+        @Override
+        public Submission submit(BackupRequest request, Optional<BackupService.BackupOperator> operator) {
+            return submit(request, ignored -> {}, operator);
         }
 
         private Submission submit(BackupRequest request, Consumer<List<String>> ignoreNotice) {
+            return submit(request, ignoreNotice, Optional.empty());
+        }
+
+        private Submission submit(BackupRequest request, Consumer<List<String>> ignoreNotice,
+                                  Optional<BackupService.BackupOperator> operator) {
             Objects.requireNonNull(request);
             if (closed) return new Submission.Rejected(Rejection.UNAVAILABLE);
             if (!access.maySubmit(request)) return new Submission.Rejected(Rejection.NOT_AUTHORIZED);
@@ -173,7 +192,7 @@ public final class BackupApiHost implements AutoCloseable {
                             "Unable to send world exclusion notice", failure);
                     }
                 }
-            }), before);
+            }), before, operator);
             if (admission instanceof TaskRuntime.Admission.Rejected rejected)
                 return new Submission.Rejected(rejected.reason());
             var accepted = (TaskRuntime.Admission.Accepted) admission;
@@ -184,6 +203,34 @@ public final class BackupApiHost implements AutoCloseable {
 
         @Override public Cancellation cancel(TaskId id) { return runtime.cancel(access, id); }
         @Override public Optional<TaskState> task(TaskId id) { return runtime.task(access, id); }
+
+        @Override
+        public CompletionStage<Page<TaskInfo>> tasks(PageRequest page) {
+            return read(() -> {
+                requireActive();
+                checkPage(page);
+                var all = new java.util.ArrayList<>(runtime.tasks(access));
+                all.sort(Comparator.comparing((TimedTask task) -> task.submittedAt()).reversed()
+                    .thenComparing(task -> task.state().id().value()));
+                int start = 0;
+                if (page.continuation().isPresent()) {
+                    String after = page.continuation().orElseThrow();
+                    start = -1;
+                    for (int index = 0; index < all.size(); index++) {
+                        if (all.get(index).state().id().value().equals(after)) {
+                            start = index + 1;
+                            break;
+                        }
+                    }
+                    if (start < 0) return new Page<>(List.of(), Optional.empty());
+                }
+                int end = Math.min(all.size(), start + page.limit());
+                Optional<String> next = end < all.size()
+                    ? Optional.of(all.get(end - 1).state().id().value()) : Optional.empty();
+                return new Page<>(all.subList(start, end).stream()
+                    .map(task -> new TaskInfo(task.submittedAt(), task.state())).toList(), next);
+            });
+        }
 
         @Override public AutoCloseable registerWorldExclusion(String pattern) {
             synchronized (BackupApiHost.this) {
@@ -232,8 +279,47 @@ public final class BackupApiHost implements AutoCloseable {
             });
         }
 
+        @Override
+        public CompletionStage<Optional<SnapshotInfo>> snapshot(SnapshotRef snapshot) {
+            Objects.requireNonNull(snapshot);
+            return read(() -> {
+                Optional<String> continuation = Optional.empty();
+                while (true) {
+                    requireView(snapshot.repositoryId());
+                    var page = operations.snapshots(snapshot.repositoryId(), new PageRequest(MAX_PAGE, continuation));
+                    for (var item : page.items()) {
+                        if (item.snapshot().equals(snapshot)) return Optional.of(item);
+                    }
+                    if (page.next().isEmpty()) return Optional.empty();
+                    continuation = page.next();
+                }
+            });
+        }
+
+        @Override
+        public CompletionStage<ServiceStatus> status() {
+            return read(() -> {
+                requireActive();
+                requireViewAny();
+                return operations.status();
+            });
+        }
+
+        @Override
+        public CompletionStage<VersionInfo> version() {
+            return read(() -> {
+                requireActive();
+                requireViewAny();
+                return operations.version();
+            });
+        }
+
         private void requireView(String repositoryId) {
             if (!access.mayViewRepository(repositoryId)) throw new SecurityException("Repository is not authorized");
+        }
+
+        private void requireViewAny() {
+            if (!access.mayViewAnyRepository()) throw new SecurityException("Repository is not authorized");
         }
 
         private void requireActive() {
@@ -266,6 +352,29 @@ public final class BackupApiHost implements AutoCloseable {
                 requireActive();
                 if (!access.mayConfigure()) throw new SecurityException("Configuration access is not authorized");
                 operations.updateConfiguration(key, value);
+                return null;
+            });
+        }
+
+        @Override
+        public CompletionStage<Map<String, String>> backendConfiguration(String backend) {
+            Objects.requireNonNull(backend);
+            return read(() -> {
+                requireActive();
+                if (!access.mayConfigure()) throw new SecurityException("Configuration access is not authorized");
+                return Map.copyOf(operations.backendConfiguration(backend));
+            });
+        }
+
+        @Override
+        public CompletionStage<Void> updateBackendConfiguration(String backend, String key, String value) {
+            Objects.requireNonNull(backend);
+            Objects.requireNonNull(key);
+            Objects.requireNonNull(value);
+            return read(() -> {
+                requireActive();
+                if (!access.mayConfigure()) throw new SecurityException("Configuration access is not authorized");
+                operations.updateBackendConfiguration(backend, key, value);
                 return null;
             });
         }
@@ -327,6 +436,12 @@ public final class BackupApiHost implements AutoCloseable {
         }
         default Map<String, String> configuration() throws IOException { throw new UnsupportedOperationException("Configuration unavailable"); }
         default void updateConfiguration(String key, String value) throws IOException { throw new UnsupportedOperationException("Configuration unavailable"); }
+        default Map<String, String> backendConfiguration(String backend) throws IOException { throw new UnsupportedOperationException("Configuration unavailable"); }
+        default void updateBackendConfiguration(String backend, String key, String value) throws IOException {
+            throw new UnsupportedOperationException("Configuration unavailable");
+        }
+        default ServiceStatus status() throws IOException { throw new UnsupportedOperationException("Service status unavailable"); }
+        default VersionInfo version() throws IOException { throw new UnsupportedOperationException("Version information unavailable"); }
         Availability availability(BackupRequest.Kind kind);
         /** 仅非阻塞平台准入检查 */
         Optional<BackupService.Rejection> evaluate(BackupRequest request);

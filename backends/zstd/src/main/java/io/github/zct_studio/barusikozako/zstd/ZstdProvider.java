@@ -4,6 +4,7 @@
 package io.github.zct_studio.barusikozako.zstd;
 
 import io.github.zct_studio.barusikozako.backend.BackendProvider;
+import io.github.zct_studio.barusikozako.backend.ConfigUnits;
 import io.github.zct_studio.barusikozako.backend.ManagedRepository;
 import java.util.List;
 import java.util.Map;
@@ -41,12 +42,12 @@ public final class ZstdProvider implements BackendProvider {
         if ((mode == ZstdRepository.WriteMode.DIFFERENTIAL) != (baseline != null) ||
             (baseline != null && !baseline.toString().equals(baselineText)))
             throw new IllegalArgumentException("Zstd differential mode requires a canonical baseline UUID");
-        long gc = Long.parseLong(values.getOrDefault("gcIntervalSeconds", "0"));
+        long gc = ConfigUnits.seconds(values.getOrDefault("gcIntervalSeconds", "0"));
         if (gc < 0 || (mode == ZstdRepository.WriteMode.EXPERIMENTAL_FIXED_CHUNKS && compression.threads() != 1))
             throw new IllegalArgumentException("Invalid Zstd maintenance or compression configuration");
         var rollover = new ZstdRepository.Rollover(Integer.parseInt(values.getOrDefault("maxIncrementals", "8")),
             Integer.parseInt(values.getOrDefault("fullThresholdPercent", "0")),
-            Long.parseLong(values.getOrDefault("fullIntervalSeconds", "0")));
+            ConfigUnits.seconds(values.getOrDefault("fullIntervalSeconds", "0")));
         return new Settings() {
             @Override public long maintenanceIntervalSeconds() { return gc; }
 

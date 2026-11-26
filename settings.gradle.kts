@@ -220,7 +220,7 @@ class Json5Reader(text: String) {
 
 val versionTable: Map<String, Any?> = runCatching {
     @Suppress("UNCHECKED_CAST")
-    Json5Reader(rootDir.resolve(".lists/version.json5").readText()).read() as Map<String, Any?>
+    Json5Reader(rootDir.resolve(";lists/version.json5").readText()).read() as Map<String, Any?>
 }.getOrElse { emptyMap() }
 
 @Suppress("UNCHECKED_CAST")
@@ -242,12 +242,6 @@ fun resolveVersion(component: String, loader: String?, game: String?): String {
 
 // --- optional shared entry points ----------------------------------------------
 
-val javaAgent = (property("javaAgent") ?: local("javaAgent"))?.toBoolean() ?: false
-val agentGame = property("agentGameVersion") ?: local("agentGameVersion") ?: selectedGames.firstOrNull() ?: "26.3"
-val bukkitGame = property("bukkitGameVersion") ?: local("bukkitGameVersion") ?: agentGame
-val bukkitApiDir = property("agentBukkitApiDir") ?: local("agentBukkitApiDir")
-val paperServerDir = property("paper26ServerDir") ?: local("paper26ServerDir")
-val experimentalBukkit = (property("experimentalBukkit") ?: local("experimentalBukkit"))?.toBoolean() ?: false
 
 include(":api:common", ":api:host")
 include(":backends:spi", ":backends:compression-zstd", ":backends:zstd")
@@ -255,6 +249,10 @@ include(":engine:core")
 include(":engine:gitignore")
 include(":engine:mod-runtime")
 include(":platforms:spi")
+
+if ((property("javaAgent") ?: local("javaAgent"))?.toBoolean() == true) {
+    include(":platforms:javaagent")
+}
 
 fun includeVersioned(game: String, loader: String, script: String) {
     val node = directoryOf(game)
@@ -295,25 +293,10 @@ for (game in selectedGames) {
     }
 }
 
-if (javaAgent) {
-    include(":platforms:javaagent", ":platforms:bukkit-startup")
-}
-if (bukkitApiDir != null) {
-    include(":platforms:bukkit-bridge", ":api:shared:bukkit")
-    project(":api:shared:bukkit").buildFileName = "../../../platforms/bukkit-bridge/build.gradle.kts"
-}
-if (paperServerDir != null) {
-    include(":platforms:paper-preview")
-}
-if (experimentalBukkit) {
-    include(":app:experimental:bukkit")
-}
 
 // --- per-project versions and shared settings ----------------------------------
 
 fun loaderFor(path: String): String? = when {
-    path.startsWith(":platforms:javaagent") -> "agent"
-    path.startsWith(":api:shared:bukkit") || path.startsWith(":platforms:bukkit") -> "bukkit"
     path.endsWith(":fabric") || path.contains(":fabric-") -> distributionLoader
     path.endsWith(":forge") -> "forge"
     path.endsWith(":neoforge") -> "neoforge"

@@ -6,18 +6,22 @@ package io.github.zct_studio.barusikozako;
 import io.github.zct_studio.barusikozako.platform.windows.WindowsDirectorySync;
 
 import io.github.zct_studio.barusikozako.runtime.BackupRequest;
+import io.github.zct_studio.barusikozako.runtime.BackupService;
 import io.github.zct_studio.barusikozako.runtime.BackupService.Availability;
+import io.github.zct_studio.barusikozako.runtime.BackupService.BackupOperator;
 import io.github.zct_studio.barusikozako.runtime.BackupService.Page;
 import io.github.zct_studio.barusikozako.runtime.BackupService.PageRequest;
 import io.github.zct_studio.barusikozako.runtime.BackupService.Rejection;
 import io.github.zct_studio.barusikozako.runtime.BackupService.RepositoryInfo;
 import io.github.zct_studio.barusikozako.runtime.BackupService.SnapshotInfo;
+import io.github.zct_studio.barusikozako.runtime.BackupService.SnapshotLayout;
 import io.github.zct_studio.barusikozako.runtime.SnapshotRef;
 import io.github.zct_studio.barusikozako.runtime.TaskResult;
 import io.github.zct_studio.barusikozako.runtime.host.BackupApiHost;
 import io.github.zct_studio.barusikozako.backend.Snapshot;
 import io.github.zct_studio.barusikozako.core.BackupEngine;
 import io.github.zct_studio.barusikozako.core.BackupExclusions;
+import io.github.zct_studio.barusikozako.core.StagedDirectoryView;
 import io.github.zct_studio.barusikozako.platform.CaptureSource;
 import io.github.zct_studio.barusikozako.platform.ReadView;
 import io.github.zct_studio.barusikozako.backend.BackendProvider;
@@ -46,6 +50,8 @@ final class FabricOperations implements BackupApiHost.Operations {
     private final CaptureSource capture;
     private final Path repository;
     private final boolean restoreAvailable;
+    /** 最近一次宽松捕获中接受过时间点差异的快照 ID，供进度显示标记「有疑问」 */
+    private volatile String relaxedCapture;
 
     FabricOperations(ServerConfig config, Path world, CaptureSource capture, BackendProvider.Settings backend,
                      boolean restoreAvailable) {
@@ -81,6 +87,46 @@ final class FabricOperations implements BackupApiHost.Operations {
     public void updateConfiguration(String key, String value) throws IOException {
         var path = LoaderBridge.configDirectory().resolve("barusikozako").resolve("server.yml");
         YamlSettings.change(path, ServerConfig.defaults(), key, value, ServerConfig::parse);
+    }
+
+    @Override
+    public BackupService.ServiceStatus status() {
+        return new BackupService.ServiceStatus(
+            capture != null && capture.available(),
+            Optional.of(config.backendKeyword()),
+            Optional.of(new BackupService.RepositoryInfo(REPOSITORY_ID, config.backendKeyword())),
+            Optional.of(repository),
+            config.backupIntervalSeconds(),
+            Optional.of(LoaderBridge.configDirectory().resolve("barusikozako")));
+    }
+
+    @Override
+    public BackupService.VersionInfo version() {
+        return new BackupService.VersionInfo(LoaderBridge.productVersion(), Optional.ofNullable(LoaderBridge.apiVersion()),
+            BackendRegistry.versions());
+    }
+
+    @Override
+    public java.util.Map<String, String> backendConfiguration(String backend) throws IOException {
+        var provider = backend(backend);
+        var defaults = provider.defaults();
+        var path = LoaderBridge.configDirectory().resolve("barusikozako").resolve(backend + ".yml");
+        var values = new java.util.LinkedHashMap<>(defaults);
+        values.putAll(YamlSettings.load(path, defaults, false, java.util.Map::of));
+        return java.util.Map.copyOf(values);
+    }
+
+    @Override
+    public void updateBackendConfiguration(String backend, String key, String value) throws IOException {
+        var provider = backend(backend);
+        YamlSettings.change(LoaderBridge.configDirectory().resolve("barusikozako").resolve(backend + ".yml"),
+            provider.defaults(), key, value, provider::configure);
+    }
+
+    private static BackendProvider backend(String keyword) throws IOException {
+        var provider = BackendRegistry.registered().get(keyword);
+        if (provider == null) throw new IOException("Backend is not installed: " + keyword);
+        return provider;
     }
 
     @Override
@@ -121,6 +167,11 @@ final class FabricOperations implements BackupApiHost.Operations {
         return repository;
     }
 
+    /** 该快照是否在宽松模式下捕获且接受过时间点差异 */
+    boolean relaxedCapture(String snapshotId) {
+        return snapshotId.equals(relaxedCapture);
+    }
+
     @Override
     public Page<SnapshotInfo> snapshots(String repositoryId, PageRequest page) throws IOException {
         if (!REPOSITORY_ID.equals(repositoryId)) throw new IllegalArgumentException("Unknown repository");
@@ -135,7 +186,16 @@ final class FabricOperations implements BackupApiHost.Operations {
                         ? io.github.zct_studio.barusikozako.runtime.BackupService.Consistency.STRICT
                         : io.github.zct_studio.barusikozako.runtime.BackupService.Consistency.RELAXED,
                     snapshot.trigger().map(trigger ->
-                        new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata())))).toList(),
+                        new BackupRequest.Trigger(trigger.source(), trigger.reason(), trigger.metadata())),
+                    snapshot.stats().map(Snapshot.Stats::archiveBytes).orElse(OptionalLong.empty()),
+                    snapshot.stats().map(Snapshot.Stats::logicalBytes).orElse(OptionalLong.empty()),
+                    snapshot.stats().flatMap(Snapshot.Stats::elapsed),
+                    snapshot.stats().map(stats -> switch (stats.layout()) {
+                        case FULL -> SnapshotLayout.FULL;
+                        case INCREMENTAL -> SnapshotLayout.INCREMENTAL;
+                        case DIFFERENTIAL -> SnapshotLayout.DIFFERENTIAL;
+                    }),
+                    operator(snapshot.trigger()))).toList(),
                 snapshots.next().map(UUID::toString));
         } catch (IOException | LinkageError failure) {
             LOG.warn("Snapshot query failed", failure);
@@ -156,22 +216,41 @@ final class FabricOperations implements BackupApiHost.Operations {
         }
     }
 
-    private static io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context backupContext(BackupRequest request, String principal) {
-        return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
-            principal.equals("server-scheduler") ? io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.AUTOMATIC_BACKUP :
-                io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.MANUAL_BACKUP, request.repositoryId(), Optional.empty());
+    private static io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context hookContext(
+            BackupRequest request, String principal) {
+        if (request instanceof BackupRequest.Backup backup) {
+            if (backup.mode() == BackupRequest.BackupMode.REBUILD) return null;
+            return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
+                principal.equals("server-scheduler") ? io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.AUTOMATIC_BACKUP :
+                    io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.MANUAL_BACKUP,
+                request.repositoryId(), Optional.empty());
+        }
+        if (request instanceof BackupRequest.Verify verify)
+            return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
+                io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.VERIFY,
+                request.repositoryId(), Optional.of(verify.snapshot()));
+        if (request instanceof BackupRequest.Delete delete)
+            return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
+                io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.DELETE,
+                request.repositoryId(), Optional.of(delete.snapshot()));
+        if (request instanceof BackupRequest.Restore restore)
+            return new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
+                io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.RESTORE,
+                request.repositoryId(), Optional.of(restore.snapshot()));
+        return null;
     }
 
     @Override
     public Runnable before(BackupRequest request, String principal) {
-        if (!(request instanceof BackupRequest.Backup backup) || backup.mode() == BackupRequest.BackupMode.REBUILD) return null;
-        return () -> LifecycleHooks.before(config.lifecycleIntegrations(), backupContext(request, principal));
+        var context = hookContext(request, principal);
+        return context == null ? null : () -> LifecycleHooks.before(config.lifecycleIntegrations(), context);
     }
 
     @Override
     public void after(BackupRequest request, String principal, java.util.concurrent.CompletionStage<TaskResult> result) {
-        if (!(request instanceof BackupRequest.Backup backup) || backup.mode() == BackupRequest.BackupMode.REBUILD) return;
-        result.thenAccept(outcome -> LifecycleHooks.after(config.lifecycleIntegrations(), backupContext(request, principal), outcome));
+        var context = hookContext(request, principal);
+        if (context == null) return;
+        result.thenAccept(outcome -> LifecycleHooks.after(config.lifecycleIntegrations(), context, outcome));
     }
 
     @Override
@@ -217,6 +296,9 @@ final class FabricOperations implements BackupApiHost.Operations {
                 if (!control.beginCommit()) throw new InterruptedIOException("Snapshot deletion not authorized");
             });
             return new TaskResult.Deleted(request.snapshot());
+        } catch (io.github.zct_studio.barusikozako.backend.SnapshotInUseException inUse) {
+            LOG.warn("Snapshot deletion rejected: it is a live backup baseline");
+            return new TaskResult.Failed(TaskResult.Failure.SNAPSHOT_IS_BASELINE);
         } catch (ManagedRepository.CommitUncertain uncertain) {
             LOG.warn("Snapshot deletion outcome could not be confirmed", uncertain);
             return new TaskResult.CommitUncertain();
@@ -268,13 +350,18 @@ final class FabricOperations implements BackupApiHost.Operations {
         BackupExclusions exclusions;
         try {
             var configRoot = LoaderBridge.configDirectory().toAbsolutePath().normalize();
-            exclusions = BackupExclusions.load(configRoot.resolve("barusikozako"), world, false);
+            var worldRoot = world.toAbsolutePath().normalize();
+            exclusions = BackupExclusions.load(configRoot.resolve("barusikozako"), worldRoot, false,
+                config.parseGitignore(), config.parsePteroignore(), worldRoot.getParent());
             captured = capture.acquire(control::mayContinue);
         } catch (IOException | LinkageError failure) {
             if (control.mayContinue() && !(failure instanceof InterruptedIOException))
                 LOG.warn("Online capture failed: {}", failure.getMessage(), failure);
             return new TaskResult.Failed(TaskResult.Failure.SOURCE_UNAVAILABLE);
         }
+        boolean relaxedDifferences = config.consistency() == io.github.zct_studio.barusikozako.backend.Consistency.RELAXED
+            && captured instanceof StagedDirectoryView staged && !staged.relaxedChanges().isEmpty();
+        int relaxedFiles = captured instanceof StagedDirectoryView staged ? staged.relaxedChanges().size() : 0;
         var bytes = new java.util.concurrent.atomic.AtomicLong();
         try {
             var view = captured;
@@ -284,17 +371,19 @@ final class FabricOperations implements BackupApiHost.Operations {
                 throw new IOException("Repository path changed during capture");
             UUID baseline = request.baseline().map(base -> parseId(base.snapshotId())).orElse(null);
             var archiveBytes = OptionalLong.empty();
+            long capturedBytes = view.totalBytes();
+            var knownTotal = capturedBytes > 0 ? OptionalLong.of(capturedBytes) : OptionalLong.empty();
             try (var zstd = backend.open(canonical, ServerRepository::forceDirectory, request.mode().name(),
                 request.mode() == BackupRequest.BackupMode.REBUILD ? null : baseline)) {
                 try {
-                    control.progress(0, OptionalLong.empty());
+                    control.progress(0, knownTotal);
                     new BackupEngine().backup(view, zstd, snapshot, operation, config.readLimits(), () -> {
                         if (!control.mayContinue()) throw new InterruptedIOException("Backup cancelled");
                     }, () -> {
                         if (!control.beginCommit()) throw new InterruptedIOException("Backup commit was not authorized");
                     }, processed -> {
                         bytes.set(processed);
-                        control.progress(processed, OptionalLong.empty());
+                        control.progress(processed, knownTotal);
                     }, config.backupReadBytesPerSecond(), exclusions, control::ignoreRules);
                 } catch (IOException | LinkageError failure) {
                     if (failure instanceof ManagedRepository.CommitUncertain) throw failure;
@@ -306,9 +395,18 @@ final class FabricOperations implements BackupApiHost.Operations {
                 } catch (IOException failure) {
                     LOG.warn("Backup committed but stored size could not be read", failure);
                 }
+                var elapsed = java.time.Duration.ofNanos(System.nanoTime() - started);
+                try {
+                    zstd.recordStats(snapshot.id(), elapsed, bytes.get());
+                } catch (IOException failure) {
+                    LOG.warn("Backup committed but statistics could not be stored", failure);
+                }
             }
-            return new TaskResult.BackupCommitted(new SnapshotRef(REPOSITORY_ID, snapshot.id().toString()),
-                OptionalLong.of(bytes.get()), archiveBytes, Optional.of(java.time.Duration.ofNanos(System.nanoTime() - started)));
+            var committed = new TaskResult.BackupCommitted(new SnapshotRef(REPOSITORY_ID, snapshot.id().toString()),
+                OptionalLong.of(bytes.get()), archiveBytes,
+                Optional.of(java.time.Duration.ofNanos(System.nanoTime() - started)), relaxedFiles);
+            if (relaxedDifferences) relaxedCapture = snapshot.id().toString();
+            return committed;
         } catch (ManagedRepository.CommitUncertain failure) {
             LOG.warn("Backup commit outcome could not be confirmed", failure);
             return new TaskResult.CommitUncertain();
@@ -350,5 +448,20 @@ final class FabricOperations implements BackupApiHost.Operations {
         var id = UUID.fromString(text);
         if (!id.toString().equals(text)) throw new IllegalArgumentException("Noncanonical snapshot ID");
         return id;
+    }
+
+    /** 旧快照没有操作人记录，由界面按 Server 展示 */
+    private static Optional<BackupOperator> operator(Optional<Snapshot.Trigger> trigger) {
+        var metadata = trigger.map(Snapshot.Trigger::metadata).orElse(java.util.Map.of());
+        var name = metadata.get("operator");
+        if (name == null || name.isBlank()) return Optional.empty();
+        UUID id = null;
+        try {
+            var value = metadata.get("operatorUuid");
+            if (value != null) id = UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            // 操作人名仍可展示，UUID 缺失不影响列表
+        }
+        return Optional.of(new BackupOperator(name, Optional.ofNullable(id)));
     }
 }

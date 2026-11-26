@@ -31,17 +31,17 @@ final class AgentConfig {
         Path path = home.resolve("barusikozako.yml");
         try {
             Files.writeString(path, """
-                # BaruSikoZako JavaAgent configuration
-                # Restart the server after making changes
-                # Backup backend keyword
+                # BaruSikoZako JavaAgent configuration / JavaAgent 配置
+                # Restart the server after making changes / 修改后重启服务器
+                # Backup backend keyword / 备份后端标识
                 backend: barusikozako_backendzstd
-                # Request online capture when supported by the server
+                # Request online capture when supported / 平台支持时启用在线捕获
                 onlineBackup: true
-                # Console language
+                # Console language / 控制台语言
                 language: en_us
-                # Report save observations
+                # Report save observations / 输出保存观察结果
                 reportSaveObservations: false
-                # Enable Moonrise observation probes
+                # Enable Moonrise observation probes / 启用 Moonrise 观察探针
                 observeMoonrise: false
                 """, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
             System.err.println("已创建 " + path + "，请按需填写并重启");

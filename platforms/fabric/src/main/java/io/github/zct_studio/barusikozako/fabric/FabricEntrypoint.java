@@ -21,6 +21,14 @@ public final class FabricEntrypoint implements ModInitializer {
             @Override public java.nio.file.Path configDirectory() { return loader.getConfigDir(); }
             @Override public boolean apiAvailable() { return loader.isModLoaded("barusikozako_api"); }
 
+            @Override public String apiVersion() {
+                return loader.getModContainer("barusikozako_api")
+                    .map(container -> {
+                        var version = container.getMetadata().getVersion().getFriendlyString();
+                        return version == null || version.isBlank() ? "unknown" : version;
+                    }).orElse(null);
+            }
+
             @Override public String productVersion() {
                 return loader.getModContainer("barusikozako").orElseThrow().getMetadata().getVersion().getFriendlyString();
             }
@@ -32,7 +40,8 @@ public final class FabricEntrypoint implements ModInitializer {
                     return ApiEntries.entries(loader, channel, contract);
                 }
                 return loader.getEntrypointContainers(channel, contract).stream()
-                    .map(entry -> new LoaderBridge.Entry<T>(entry.getProvider().getMetadata().getId(), entry::getEntrypoint))
+                    .map(entry -> new LoaderBridge.Entry<T>(entry.getProvider().getMetadata().getId(),
+                        entry::getEntrypoint, entry.getProvider().getMetadata().getVersion().getFriendlyString()))
                     .toList();
             }
         });

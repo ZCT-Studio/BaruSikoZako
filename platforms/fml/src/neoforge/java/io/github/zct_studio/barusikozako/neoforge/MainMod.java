@@ -23,7 +23,9 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 public final class MainMod {
     public MainMod(ModContainer context) {
         LoaderBridge.install(new NativeEntrypoints(FMLPaths.CONFIGDIR.get(), context.getModInfo().getVersion().toString(),
-            () -> ModList.get().isLoaded("barusikozako_api"), () ->
+            () -> ModList.get().isLoaded("barusikozako_api"),
+            () -> ModList.get().getModContainerById("barusikozako_api")
+                .map(container -> container.getModInfo().getVersion().toString()).orElse(null), () ->
             ModList.get().applyForEachModContainer(container -> new NativeEntrypoints.Integration(
                 container.getModId(),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),

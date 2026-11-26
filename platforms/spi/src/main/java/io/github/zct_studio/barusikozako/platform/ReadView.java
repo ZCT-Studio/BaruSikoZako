@@ -12,6 +12,11 @@ import java.util.List;
 public interface ReadView extends AutoCloseable {
     Session openSession() throws IOException;
 
+    /** 视图已知的总逻辑字节，实施方无法提前确定时返回 -1 */
+    default long totalBytes() {
+        return -1;
+    }
+
     @Override
     void close() throws IOException;
 

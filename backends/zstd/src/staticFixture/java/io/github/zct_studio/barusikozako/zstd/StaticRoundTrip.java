@@ -128,6 +128,29 @@ public final class StaticRoundTrip {
                 }
             }
         }
+        Files.writeString(game.resolve(".pteroignore"), "worlds/world/ptero-omit.dat\n");
+        Files.writeString(world.resolve(".gitignore"), "git-omit.dat\n");
+        Files.writeString(world.resolve("ptero-omit.dat"), "excluded from the game root");
+        Files.writeString(world.resolve("git-omit.dat"), "excluded by the nested .gitignore");
+        for (boolean container : new boolean[] {false, true}) {
+            var source = container ? world.getParent() : world;
+            var rules = BackupExclusions.load(config, source, container, true, true, game);
+            var point = new Snapshot(UUID.randomUUID(), Instant.now(), "ignore-switches");
+            var notices = new java.util.ArrayList<String>();
+            try (var repository = ZstdRepository.open(repo)) {
+                var view = StagedDirectoryView.copy(source, stages,
+                        new StagedDirectoryView.CopyBudget(1L << 20, 100, 16), () -> {});
+                engine.backup(view, repository, point, UUID.randomUUID(), LIMITS,
+                        () -> {}, () -> {}, ignored -> {}, 0, rules, notices::addAll);
+                var archive = engine.prepareRestore(repository, point.id(), LIMITS, stages);
+                require(Files.notExists(archive.resolve(".worlds/world/git-omit.dat")) &&
+                                Files.notExists(archive.resolve(".worlds/world/ptero-omit.dat")),
+                        "ignore switches did not exclude the expected entries");
+                require(notices.contains(".worlds/world/.gitignore: git-omit.dat") &&
+                                notices.contains("[.pteroignore]: worlds/world/ptero-omit.dat"),
+                        "ignore switches were not reported as used rules");
+            }
+        }
         require(Files.isRegularFile(config.resolve("world.gitignore")) && Files.notExists(config.resolve("save.gitignore")),
                 "old world rule file was not renamed");
         System.out.println("World namespaces, scoped rules, notifications and restored data verified.");
@@ -583,7 +606,8 @@ public final class StaticRoundTrip {
             require(firstPage.entries().size() == 1 && firstPage.next().isPresent() &&
                     secondPage.entries().size() == 1 && secondPage.next().isEmpty() &&
                     !firstPage.entries().equals(secondPage.entries()), "committed snapshot pages are inconsistent");
-            require(firstPage.entries().contains(snapshot) || secondPage.entries().contains(snapshot),
+            require(firstPage.entries().stream().anyMatch(entry -> entry.id().equals(snapshot.id())) ||
+                    secondPage.entries().stream().anyMatch(entry -> entry.id().equals(snapshot.id())),
                     "history lost original snapshot metadata");
         }
         exerciseUncertainPublication(work, source);

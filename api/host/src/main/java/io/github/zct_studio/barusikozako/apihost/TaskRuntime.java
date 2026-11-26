@@ -4,6 +4,7 @@
 package io.github.zct_studio.barusikozako.apihost;
 
 import io.github.zct_studio.barusikozako.api.BackupRequest;
+import io.github.zct_studio.barusikozako.api.BackupService.BackupOperator;
 import io.github.zct_studio.barusikozako.api.BackupService.Cancellation;
 import io.github.zct_studio.barusikozako.api.BackupService.Rejection;
 import io.github.zct_studio.barusikozako.api.TaskId;
@@ -67,11 +68,17 @@ final class TaskRuntime implements AutoCloseable {
     }
 
     synchronized Admission admit(BoundAccess access, BackupRequest request, Operation operation) {
-        return admit(access, request, operation, null);
+        return admit(access, request, operation, null, Optional.empty());
     }
 
     synchronized Admission admit(BoundAccess access, BackupRequest request, Operation operation, Runnable before) {
+        return admit(access, request, operation, before, Optional.empty());
+    }
+
+    synchronized Admission admit(BoundAccess access, BackupRequest request, Operation operation, Runnable before,
+                                 Optional<BackupOperator> operator) {
         Objects.requireNonNull(operation);
+        Objects.requireNonNull(operator);
         if (closed) return new Admission.Rejected(Rejection.UNAVAILABLE);
         synchronized (access) {
             if (!access.maySubmit(request)) return new Admission.Rejected(Rejection.NOT_AUTHORIZED);
@@ -85,7 +92,7 @@ final class TaskRuntime implements AutoCloseable {
                 return new Admission.Rejected(Rejection.UNAVAILABLE);
             }
             var id = new TaskId(instance + ":" + ++sequence);
-            var work = new Work(id, access, request, operation);
+            var work = new Work(id, access, request, operator, operation);
             active.put(id, work);
             try {
                 if (before == null) {
@@ -333,7 +340,8 @@ final class TaskRuntime implements AutoCloseable {
 
     private TaskState state(Work work, Phase phase, long bytes, OptionalLong total, TaskResult outcome) {
         return new TaskState(work.id, work.request.kind(), work.request.repositoryId(), phase, bytes, total,
-            Optional.ofNullable(outcome), Duration.ofNanos(Math.max(0, clock.getAsLong() - work.createdAt)));
+            Optional.ofNullable(outcome), Duration.ofNanos(Math.max(0, clock.getAsLong() - work.createdAt)),
+            work.operator);
     }
 
     final class Control {
@@ -388,6 +396,7 @@ final class TaskRuntime implements AutoCloseable {
         private final TaskId id;
         private final BoundAccess access;
         private final BackupRequest request;
+        private final Optional<BackupOperator> operator;
         private final Operation operation;
         private final long createdAt = clock.getAsLong();
         private final Instant submittedAt = Instant.now();
@@ -396,10 +405,12 @@ final class TaskRuntime implements AutoCloseable {
         private boolean cancellation;
         private long lastProgress;
 
-        private Work(TaskId id, BoundAccess access, BackupRequest request, Operation operation) {
+        private Work(TaskId id, BoundAccess access, BackupRequest request, Optional<BackupOperator> operator,
+                     Operation operation) {
             this.id = id;
             this.access = access;
             this.request = request;
+            this.operator = operator;
             this.operation = operation;
             state = state(this, Phase.QUEUED, 0, OptionalLong.empty(), null);
         }

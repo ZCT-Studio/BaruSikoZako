@@ -62,6 +62,7 @@ tasks.processResources {
     val metadata = mapOf("productVersion" to project.version.toString(),
         "minecraftVersions" to supportedMinecraft.joinToString("\",\""),
         "loaderRequirement" to project.extra["fabricLoaderRequirement"],
+        "minimumApiVersion" to project.extra["minimumApiVersion"],
         "mixinConfig" to mixinConfig,
         "modDescription" to if (releaseAlpha) "BaruSikoZako backup engine for Fabric dedicated servers (Alpha)."
             else "BaruSikoZako server integration development build.")

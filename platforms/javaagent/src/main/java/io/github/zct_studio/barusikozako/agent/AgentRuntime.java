@@ -172,7 +172,7 @@ public final class AgentRuntime {
         return List.copyOf(EXTENSIONS.values());
     }
 
-    static void beforeRestore(BackupLifecycleHook.Context context) throws IOException {
+    static void before(BackupLifecycleHook.Context context) throws IOException {
         var hooks = extensions();
         if (hooks.isEmpty()) return;
         var callback = new FutureTask<Void>(() -> {
@@ -185,15 +185,15 @@ public final class AgentRuntime {
         } catch (InterruptedException failure) {
             callback.cancel(true);
             Thread.currentThread().interrupt();
-            throw new IOException("Restore callback interrupted", failure);
+            throw new IOException("Lifecycle callback interrupted", failure);
         } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException |
                  java.util.concurrent.RejectedExecutionException failure) {
             callback.cancel(true);
-            throw new IOException("Restore callback failed", failure);
+            throw new IOException("Lifecycle callback failed", failure);
         }
     }
 
-    static void afterRestore(BackupLifecycleHook.Context context, TaskResult result) {
+    static void after(BackupLifecycleHook.Context context, TaskResult result) {
         var hooks = extensions();
         if (hooks.isEmpty()) return;
         try {

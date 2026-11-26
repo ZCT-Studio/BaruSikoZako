@@ -10,6 +10,8 @@ import net.minecraftforge.fml.common.Mod;
 @Mod("barusikozako_backendzstd")
 public final class ZstdMod {
     public ZstdMod() {
-        NativeEntrypoints.registerBackend(new ZstdProvider());
+        NativeEntrypoints.registerBackend(new ZstdProvider(),
+            net.minecraftforge.fml.ModList.get().getModContainerById("barusikozako_backendzstd")
+                .map(container -> container.getModInfo().getVersion().toString()).orElse(null));
     }
 }

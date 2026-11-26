@@ -220,7 +220,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
                 long start = System.nanoTime();
                 long[] cloned = {0};
                 try {
-                    LOG.info("Best-effort background capture started at world tick {}", worldTick);
+                    LOG.info("Background capture started at world tick {}", worldTick);
                     var limits = config.readLimits();
                     view = StagedDirectoryView.copyLive(world, stagingParent,
                         new StagedDirectoryView.CopyBudget(limits.contentBytes(), limits.entries(), 128), () -> {
@@ -241,7 +241,7 @@ final class WorldCapture implements io.github.zct_studio.barusikozako.platform.C
                         throw new InterruptedIOException("Capture was cancelled, stopped or observed a save failure");
                     if (request.result.complete(view)) {
                         view = null;
-                        LOG.info("Best-effort capture prepared: save {} ms, background copy {} ms, edge {}, world tick {}, cloned bytes {}",
+                        LOG.info("Capture prepared: save {} ms, background copy {} ms, edge {}, world tick {}, cloned bytes {}",
                             millis(fence.saveNanos), millis(System.nanoTime() - start), edge, worldTick, cloned[0]);
                     }
                 } catch (IOException | RuntimeException | LinkageError failure) {

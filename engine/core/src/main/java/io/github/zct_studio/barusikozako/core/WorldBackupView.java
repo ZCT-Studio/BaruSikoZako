@@ -22,21 +22,22 @@ import java.util.Map;
 final class WorldBackupView implements ReadView {
     static final String PREFIX = ".worlds";
     private static final String LOCAL_RULES = "local.gitignore";
+    private static final String GITIGNORE = ".gitignore";
     private static final int RULE_FILES = 1024;
     private static final int RULE_BYTES = 16 * 1024 * 1024;
     private final ReadView source;
     private final BackupExclusions rules;
     private final BackupEngine.Checkpoint checkpoint;
-    private final Map<String, Map<String, GitIgnoreRules>> local = new HashMap<>();
-    private final List<String> descriptions;
-    private record RuleFile(String world, String parent, byte[] content) {}
+    private final Map<String, Map<String, List<GitIgnoreRules>>> local = new HashMap<>();
+    private final List<RuleSource> ruleSources = new ArrayList<>();
+    private record RuleFile(String world, String parent, String name, byte[] content) {}
+    private record RuleSource(String source, GitIgnoreRules rules) {}
 
     WorldBackupView(ReadView source, BackupExclusions rules, BackupEngine.Limits limits,
                     BackupEngine.Checkpoint checkpoint) throws IOException {
         this.source = source;
         this.rules = rules;
         this.checkpoint = checkpoint;
-        descriptions = rules.descriptions();
         int count = 0;
         int bytes = 0;
         int entries = 0;
@@ -56,7 +57,9 @@ final class WorldBackupView implements ReadView {
                     String key = Normalizer.normalize(parts.get(0), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
                     if (!worldNames.add(key)) throw new IOException("Conflicting world names: " + parts.get(0));
                 }
-                if (item.directory() || !parts.get(parts.size() - 1).equals(LOCAL_RULES)) continue;
+                if (item.directory()) continue;
+                String name = parts.get(parts.size() - 1);
+                if (!name.equals(LOCAL_RULES) && !(rules.parseGitignore && name.equals(GITIGNORE))) continue;
                 if (++count > RULE_FILES || item.size() > RULE_BYTES - bytes)
                     throw new IOException("World rule scan exceeds the local rule budget");
                 String worldName = worldName(parts);
@@ -67,27 +70,32 @@ final class WorldBackupView implements ReadView {
                 }
                 if (content.length > RULE_BYTES - bytes) throw new IOException("World rule scan exceeds the local rule budget");
                 bytes += content.length;
-                ruleFiles.add(new RuleFile(worldName, parent, content));
+                ruleFiles.add(new RuleFile(worldName, parent, name, content));
             }
         }
         if (rules.worldContainer && worldNames.isEmpty()) throw new IOException("No worlds in the captured container");
         if (!rules.worldContainer) validate(List.of(rules.worldName));
-        // 文件枚举顺序不能决定继承优先级，所有父目录规则先于后代加载
-        ruleFiles.sort(java.util.Comparator.comparing(RuleFile::world).thenComparing(RuleFile::parent));
-        for (var file : ruleFiles) {
+        // 文件枚举顺序不能决定继承优先级，所有父目录规则先于后代加载；同目录下 local.gitignore 优先
+        ruleFiles.sort(java.util.Comparator.comparing(RuleFile::world).thenComparing(RuleFile::parent)
+            .thenComparingInt(file -> file.name().equals(LOCAL_RULES) ? 1 : 0));
+        for (int index = 0; index < ruleFiles.size();) {
             checkpoint.check();
+            var file = ruleFiles.get(index++);
             var worldRules = local.computeIfAbsent(file.world(), ignored -> new HashMap<>());
-            var parent = file.parent();
-            if (!parent.isEmpty() && ignored(worldRules, parent, true)) continue;
+            if (!file.parent().isEmpty() && ignored(file.world(), worldRules, file.parent(), true)) continue;
             var parsed = GitIgnoreRules.parse(new ByteArrayInputStream(file.content()));
-            if (worldRules.putIfAbsent(parent, parsed) != null)
-                throw new IOException("Duplicate local rule file: " + file.world() + "/" + parent);
-            BackupExclusions.describe(descriptions, PREFIX + "/" + file.world() + "/" +
-                (parent.isEmpty() ? "" : parent + "/") + LOCAL_RULES, parsed);
+            worldRules.computeIfAbsent(file.parent(), ignored -> new ArrayList<>()).add(parsed);
+            ruleSources.add(new RuleSource(PREFIX + "/" + file.world() + "/" +
+                (file.parent().isEmpty() ? "" : file.parent() + "/") + file.name(), parsed));
         }
     }
 
-    List<String> descriptions() { return List.copyOf(descriptions); }
+    /** 扫描与归档完成后生成，只包含真正参与过匹配的规则 */
+    List<String> descriptions() {
+        var lines = rules.descriptions();
+        for (var source : ruleSources) BackupExclusions.describe(lines, source.source(), source.rules());
+        return List.copyOf(lines);
+    }
 
     @Override public Session openSession() throws IOException {
         var session = source.openSession();
@@ -111,8 +119,8 @@ final class WorldBackupView implements ReadView {
                     if (rules.worldContainer && path.size() == 1 && !item.directory()) continue;
                     String worldName = worldName(path);
                     String relative = String.join("/", worldParts(path));
-                    if (!relative.isEmpty() && ignored(local.getOrDefault(worldName, Map.of()), relative, item.directory()))
-                        continue;
+                    if (!relative.isEmpty() && ignored(worldName, local.getOrDefault(worldName, Map.of()), relative,
+                        item.directory())) continue;
                     var output = new ArrayList<String>(path.size() + 2);
                     output.add(PREFIX);
                     if (!rules.worldContainer) output.add(worldName);
@@ -128,13 +136,13 @@ final class WorldBackupView implements ReadView {
         };
     }
 
-    private boolean ignored(Map<String, GitIgnoreRules> localRules, String path, boolean directory) {
+    private boolean ignored(String world, Map<String, List<GitIgnoreRules>> localRules, String path,
+                           boolean directory) {
         if (rules.forced(path, directory)) return true;
         for (int slash = path.indexOf('/'); slash >= 0; slash = path.indexOf('/', slash + 1)) {
-            if (BackupExclusions.match(rules.world, localRules, path.substring(0, slash), true) == Match.EXCLUDE)
-                return true;
+            if (rules.match(world, localRules, path.substring(0, slash), true) == Match.EXCLUDE) return true;
         }
-        return BackupExclusions.match(rules.world, localRules, path, directory) == Match.EXCLUDE;
+        return rules.match(world, localRules, path, directory) == Match.EXCLUDE;
     }
 
     private String worldName(List<String> path) { return rules.worldContainer ? path.get(0) : rules.worldName; }

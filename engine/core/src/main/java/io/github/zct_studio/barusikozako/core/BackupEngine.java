@@ -66,15 +66,17 @@ public final class BackupEngine {
         throws IOException {
         try (view) {
             var scoped = exclusions == null ? null : new WorldBackupView(view, exclusions, limits, checkpoint);
-            if (scoped != null) {
-                var lines = scoped.descriptions();
-                var log = System.getLogger(BackupEngine.class.getName());
-                log.log(System.Logger.Level.INFO, "World backup {0} · ignore rules: {1}", snapshot.id(), lines.size());
-                for (String line : lines) log.log(System.Logger.Level.INFO, "World backup {0} · {1}", snapshot.id(), line);
-                ruleNotice.accept(lines);
-            }
             writeBackup(scoped == null ? view : scoped, repository, snapshot, operationId, limits, checkpoint, gate,
                 progress, readBytesPerSecond);
+            if (scoped != null) {
+                var lines = scoped.descriptions();
+                if (!lines.isEmpty()) {
+                    var log = System.getLogger(BackupEngine.class.getName());
+                    log.log(System.Logger.Level.INFO, "World backup {0} · ignore rules: {1}", snapshot.id(), lines.size());
+                    for (String line : lines) log.log(System.Logger.Level.INFO, "World backup {0} · {1}", snapshot.id(), line);
+                    ruleNotice.accept(lines);
+                }
+            }
         }
     }
 

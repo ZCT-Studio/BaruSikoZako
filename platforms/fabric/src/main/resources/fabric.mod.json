@@ -12,6 +12,9 @@
     "main": ["io.github.zct_studio.barusikozako.fabric.FabricEntrypoint"]
   },
   "mixins": ["${mixinConfig}"],
+  "breaks": {
+    "barusikozako_api": "<${minimumApiVersion}"
+  },
   "depends": {
     "fabricloader": "${loaderRequirement}",
     "minecraft": ["${minecraftVersions}"],

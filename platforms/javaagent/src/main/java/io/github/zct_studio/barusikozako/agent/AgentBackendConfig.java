@@ -18,15 +18,15 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 final class AgentBackendConfig {
     private static final Map<String, String> DESCRIPTIONS = Map.ofEntries(
-        Map.entry("schema", "Configuration schema version"),
-        Map.entry("level", "Zstd compression level, 1 to 9"),
-        Map.entry("compressionThreads", "Compression threads, 1 to 4"),
-        Map.entry("writeMode", "Backup mode: full, incremental, differential or fixed-chunks"),
-        Map.entry("baseline", "Full baseline UUID for differential backups"),
-        Map.entry("maxIncrementals", "Maximum consecutive incrementals, 0 disables this trigger"),
-        Map.entry("fullThresholdPercent", "Cumulative incremental size percentage, 0 disables this trigger"),
-        Map.entry("fullIntervalSeconds", "Maximum full baseline age in seconds, 0 disables this trigger"),
-        Map.entry("gcIntervalSeconds", "Garbage collection interval in seconds, 0 disables it")
+        Map.entry("schema", "Configuration schema version / 配置格式版本"),
+        Map.entry("level", "Zstd compression level, 1 to 9 / Zstd 压缩等级，1 至 9"),
+        Map.entry("compressionThreads", "Compression threads, 1 to 4 / 压缩线程数量，1 至 4"),
+        Map.entry("writeMode", "Backup mode: full, incremental, differential or fixed-chunks / 备份模式，full、incremental、differential 或 fixed-chunks"),
+        Map.entry("baseline", "Full baseline UUID for differential backups / 差异备份使用的全量基线 UUID"),
+        Map.entry("maxIncrementals", "Maximum consecutive incrementals, 0 disables this trigger / 连续增量次数上限，0 表示关闭此条件"),
+        Map.entry("fullThresholdPercent", "Cumulative incremental size percentage, 0 disables this trigger / 累计增量大小百分比上限，0 表示关闭此条件"),
+        Map.entry("fullIntervalSeconds", "Maximum full baseline age in seconds, 0 disables this trigger / 全量基线最长使用时间，0 表示关闭此条件"),
+        Map.entry("gcIntervalSeconds", "Garbage collection interval in seconds, 0 disables it / 垃圾回收间隔，0 表示关闭")
     );
 
     private AgentBackendConfig() {}
@@ -36,7 +36,7 @@ final class AgentBackendConfig {
             throw new IOException("Invalid backend keyword");
         Path file = Path.of(".").toRealPath().resolve("config/barusikozako").resolve(keyword + ".yml");
         var yaml = new Yaml();
-        var initial = new StringBuilder();
+        var initial = new StringBuilder("# Time units: ms, s, m, h, d, w, M/month (30 days), y (365 days) / 时间单位：ms、s、m、h、d、w、M/month（30 天）、y（365 天）\n");
         defaults.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             var description = DESCRIPTIONS.get(entry.getKey());
             if (description != null) initial.append("# ").append(description).append('\n');

@@ -19,7 +19,7 @@ BaruSikoZako(ZakoBak) backs up Minecraft: Java Edition worlds. Take a snapshot b
 
 1. Run `/barusikozako backup`. Once it completes, run `/barusikozako list` to find the snapshot ID.
 2. Run `/barusikozako verify <UTC timestamp>` and wait for verification to pass.
-3. To roll back, run `/barusikozako restore <UTC timestamp>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
+3. To roll back, run `/barusikozako rollback <UTC timestamp>`. Restart a dedicated server, or leave and reopen the world in singleplayer. Recovery replaces the active save before the world loads.
 
 Use Tab to complete timestamps for `restore`, `verify`, and `delete`. Add `fromuuid <uuid>` to select by snapshot UUID, or `fullname <timestamp--uuid>` to paste the complete snapshot folder name. Use `/barusikozako task` to list recent tasks, then use `task <time>` or `cancel <time>`. Both accept `fromid <task-id>` for direct selection.
 
@@ -43,7 +43,7 @@ BaruSikoZako（杂鱼备份） 为 Minecraft Java 版保存世界备份。更新
 
 1. 运行 `/barusikozako backup`，等备份完成后用 `/barusikozako list` 找到快照 ID。
 2. 运行 `/barusikozako verify <UTC 时间>`，确认快照通过完整校验。
-3. 想回滚时，运行 `/barusikozako restore <UTC 时间>`。独立服务器需要重启，单人游戏需要退出并重新进入存档。恢复会在世界加载前替换当前存档。
+3. 想回滚时，运行 `/barusikozako rollback <UTC 时间>`。独立服务器需要重启，单人游戏需要退出并重新进入存档。恢复会在世界加载前替换当前存档。
 
 `restore`、`verify` 和 `delete` 均可用 Tab 补全时间。使用快照 UUID 时，在命令后加 `fromuuid <uuid>`。也可用 `fullname <时间--UUID>` 粘贴完整快照目录名。运行 `/barusikozako task` 列出近期任务，再用 `task <时间>` 或 `cancel <时间>`，也可加 `fromid <任务 ID>` 直接选择。
 

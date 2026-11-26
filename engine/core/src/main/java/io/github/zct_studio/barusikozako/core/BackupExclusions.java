@@ -24,15 +24,24 @@ public final class BackupExclusions {
     private static final Map<Registration, GitIgnoreRules> REGISTERED = new LinkedHashMap<>();
     private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;
     final GitIgnoreRules world;
+    /** 游戏根目录的 .pteroignore，未启用或不存在时为 null */
+    final GitIgnoreRules ptero;
+    /** 世界读取路径相对游戏根目录的前缀，游戏根本身时为空串 */
+    final String pteroPrefix;
     final String worldName;
     final boolean worldContainer;
+    final boolean parseGitignore;
     private final Map<Registration, GitIgnoreRules> registered;
 
-    private BackupExclusions(String worldName, boolean container,
-                             GitIgnoreRules world, Map<Registration, GitIgnoreRules> registered) {
+    private BackupExclusions(String worldName, boolean container, GitIgnoreRules world, GitIgnoreRules ptero,
+                             String pteroPrefix, boolean parseGitignore,
+                             Map<Registration, GitIgnoreRules> registered) {
         this.worldName = worldName;
         this.worldContainer = container;
         this.world = world;
+        this.ptero = ptero;
+        this.pteroPrefix = pteroPrefix;
+        this.parseGitignore = parseGitignore;
         this.registered = registered;
     }
 
@@ -65,11 +74,36 @@ public final class BackupExclusions {
 
     public static BackupExclusions load(Path configDirectory, Path captureRoot, boolean worldContainer)
         throws IOException {
+        return load(configDirectory, captureRoot, worldContainer, false, false, null);
+    }
+
+    /**
+     * @param parseGitignore  是否把各目录的 .gitignore 作为局部规则
+     * @param parsePteroignore 是否读取游戏根目录的 .pteroignore
+     * @param gameRoot        游戏根目录；.pteroignore 的规则路径相对于它
+     */
+    public static BackupExclusions load(Path configDirectory, Path captureRoot, boolean worldContainer,
+                                        boolean parseGitignore, boolean parsePteroignore, Path gameRoot)
+        throws IOException {
         Path source = captureRoot.toAbsolutePath().normalize();
         if (source.getFileName() == null) throw new IOException("Backup source has no world name");
         var world = prepareConfig(configDirectory);
+        GitIgnoreRules ptero = null;
+        String pteroPrefix = "";
+        if (parsePteroignore && gameRoot != null) {
+            Path root = gameRoot.toAbsolutePath().normalize();
+            Path file = root.resolve(".pteroignore");
+            if (source.startsWith(root) && Files.isRegularFile(file, NOFOLLOW)) {
+                pteroPrefix = root.relativize(source).toString().replace('\\', '/');
+                ptero = readRules(file);
+            } else if (!source.startsWith(root)) {
+                System.getLogger("BaruSikoZako").log(System.Logger.Level.WARNING,
+                    "Game root " + root + " does not contain the backup source; .pteroignore is ignored");
+            }
+        }
         synchronized (BackupExclusions.class) {
-            return new BackupExclusions(source.getFileName().toString(), worldContainer, world, Map.copyOf(REGISTERED));
+            return new BackupExclusions(source.getFileName().toString(), worldContainer, world, ptero, pteroPrefix,
+                parseGitignore, Map.copyOf(REGISTERED));
         }
     }
 
@@ -102,6 +136,10 @@ public final class BackupExclusions {
                 // 并发任务已经创建配置
             }
         }
+        return readRules(path);
+    }
+
+    private static GitIgnoreRules readRules(Path path) throws IOException {
         try {
             var before = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW);
             if (!before.isRegularFile()) throw new IOException("Expected a regular backup ignore file: " + path);
@@ -129,15 +167,18 @@ public final class BackupExclusions {
 
     List<String> descriptions() {
         var lines = new ArrayList<String>();
-        describe(lines, "config/barusikozako/world.gitignore", world);
-        registered.keySet().stream()
-            .sorted(java.util.Comparator.comparing(Registration::source).thenComparing(Registration::pattern))
-            .forEach(key -> lines.add("mod " + display(key.source()) + " [WORLD]: " + display(key.pattern())));
+        describe(lines, "[world.gitignore]", world);
+        if (ptero != null) describe(lines, "[.pteroignore]", ptero);
+        registered.entrySet().stream()
+            .sorted(java.util.Comparator.comparing(entry -> entry.getKey().source()))
+            .forEach(entry -> describe(lines, "mod " + display(entry.getKey().source()) + " [WORLD]",
+                entry.getValue()));
         return lines;
     }
 
+    /** 只列出真正参与过匹配的规则 */
     static void describe(List<String> lines, String source, GitIgnoreRules rules) {
-        for (String pattern : rules.patterns()) lines.add(display(source) + ": " + display(pattern));
+        for (String pattern : rules.usedPatterns()) lines.add(display(source) + ": " + display(pattern));
     }
 
     private static String display(String text) {
@@ -150,13 +191,30 @@ public final class BackupExclusions {
         return printable.toString();
     }
 
-    static Match match(GitIgnoreRules base, Map<String, GitIgnoreRules> local, String path, boolean directory) {
-        Match decision = base.match(path, directory);
+    /** .pteroignore 的决策，路径按游戏根目录展开 */
+    Match ptero(String world, String path, boolean directory) {
+        if (ptero == null) return Match.NONE;
+        var relative = new StringBuilder(pteroPrefix);
+        if (worldContainer) {
+            if (relative.length() > 0) relative.append('/');
+            relative.append(world);
+        }
+        if (!path.isEmpty()) {
+            if (relative.length() > 0) relative.append('/');
+            relative.append(path);
+        }
+        return ptero.match(relative.toString(), directory);
+    }
+
+    /** .pteroignore 最底层，world.gitignore 覆盖它，各级局部规则再覆盖两者 */
+    Match match(String world, Map<String, List<GitIgnoreRules>> local, String path, boolean directory) {
+        Match decision = ptero(world, path, directory);
+        Match base = this.world.match(path, directory);
+        if (base != Match.NONE) decision = base;
         int slash = -1;
         do {
             String parent = slash < 0 ? "" : path.substring(0, slash);
-            var rules = local.get(parent);
-            if (rules != null) {
+            for (var rules : local.getOrDefault(parent, List.of())) {
                 Match found = rules.match(path.substring(slash + 1), directory);
                 if (found != Match.NONE) decision = found;
             }

@@ -45,6 +45,8 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
     static final String MANIFEST = "manifest.jsonl";
     static final String CHUNK_INDEX = "chunks.idx";
     static final String CHUNK_STAGE = "chunk.tmp";
+    /** 发布后写入的展示统计，旧快照没有该文件 */
+    static final String STATS = "stats";
     private static final String COMMIT = "commit";
     private static final String COMMIT_FORMAT = "BaruSikoZako zstd development " + Manifest.FORMAT;
     private static final String CHUNK_COMMIT = "BaruSikoZako zstd development " + Manifest.CHUNK_FORMAT;
@@ -542,12 +544,79 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
                 UUID id = UUID.fromString(entry.getKey());
                 Path folder = ordinaryDirectory(entry.getValue());
                 var record = readCommit(folder, id);
-                page.add(readMetadata(folder, id, record, manifestBytes, () -> {}));
+                var metadata = readMetadata(folder, id, record, manifestBytes, () -> {});
+                var layout = record.link() == null ? Snapshot.Layout.FULL :
+                    record.link().differential() ? Snapshot.Layout.DIFFERENTIAL : Snapshot.Layout.INCREMENTAL;
+                var archiveBytes = record.format() == Manifest.FORMAT || record.format() == DELTA_FORMAT
+                    ? java.util.OptionalLong.of(archiveSize(new Point(id, folder, record)))
+                    : java.util.OptionalLong.empty();
+                page.add(new Snapshot(metadata.id(), metadata.createdAt(), metadata.source(), metadata.consistency(),
+                    metadata.trigger(), readStats(folder, layout, archiveBytes)));
             }
             return new SnapshotPage(page, more ? Optional.of(page.get(page.size() - 1).id()) : Optional.empty());
         } finally {
             release();
         }
+    }
+
+    /**
+     * 在已发布的快照旁记录展示用的耗时与逻辑体积。
+     *
+     * <p>统计文件是可选的展示数据，不参与提交校验；写入失败不影响快照本身的可用性。
+     */
+    @Override
+    public synchronized void recordStats(UUID id, java.time.Duration elapsed, long logicalBytes) throws IOException {
+        if (closed) throw new IOException("repository is closed");
+        if (elapsed.isNegative() || logicalBytes < 0) throw new IllegalArgumentException("invalid snapshot statistics");
+        var folder = snapshotDirectory(id, () -> {});
+        var temporary = root.resolve(".stats-" + id + ".tmp");
+        var content = "BaruSikoZako zstd stats 1\nelapsedMillis=" + elapsed.toMillis() + "\nlogicalBytes=" + logicalBytes + "\n";
+        try (var channel = FileChannel.open(temporary, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
+            channel.write(java.nio.ByteBuffer.wrap(content.getBytes(StandardCharsets.US_ASCII)));
+            channel.force(true);
+        }
+        try {
+            Files.move(temporary, folder.resolve(STATS), StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+            directoryPersistence.force(folder);
+            directoryPersistence.force(root);
+        } catch (IOException failure) {
+            Files.deleteIfExists(temporary);
+            throw failure;
+        }
+    }
+
+    /** 损坏或缺失的统计只影响展示，不影响快照列表 */
+    private static Optional<Snapshot.Stats> readStats(Path folder, Snapshot.Layout layout,
+                                                      java.util.OptionalLong archiveBytes) {
+        var logical = java.util.OptionalLong.empty();
+        var elapsed = Optional.<java.time.Duration>empty();
+        try {
+            var file = folder.resolve(STATS);
+            if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                for (var line : Files.readAllLines(file, StandardCharsets.US_ASCII)) {
+                    int separator = line.indexOf('=');
+                    if (separator < 0) continue;
+                    var key = line.substring(0, separator);
+                    var value = line.substring(separator + 1).strip();
+                    try {
+                        if (key.equals("elapsedMillis")) {
+                            long millis = Long.parseLong(value);
+                            if (millis >= 0) elapsed = Optional.of(java.time.Duration.ofMillis(millis));
+                        } else if (key.equals("logicalBytes")) {
+                            long bytes = Long.parseLong(value);
+                            if (bytes >= 0) logical = java.util.OptionalLong.of(bytes);
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // 单行损坏时继续读取其余统计
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // 统计文件不可读时保持未知
+        }
+        return Optional.of(new Snapshot.Stats(archiveBytes, logical, elapsed, layout));
     }
 
 
@@ -569,7 +638,9 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
                     if (record.link() != null) {
                         checkedChain(folderId, checkpoint);
                         ZstdOverlay.checkSidecars(folder, record.link().inherited(), record.link().removed(), checkpoint);
-                        if (record.link().baseline().equals(id)) throw new IOException("snapshot is a live backup baseline");
+                        if (record.link().baseline().equals(id))
+                            throw new io.github.zct_studio.barusikozako.backend.SnapshotInUseException(
+                                "snapshot is a live backup baseline");
                     }
                 }
             }
@@ -1044,7 +1115,7 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
     }
 
     private static void discard(Path staged) throws IOException {
-        for (String file : new String[] { COMMIT, MANIFEST, ARCHIVE, CHUNK_INDEX, CHUNK_STAGE,
+        for (String file : new String[] { COMMIT, MANIFEST, ARCHIVE, CHUNK_INDEX, CHUNK_STAGE, STATS,
             ZstdOverlay.INHERITED, ZstdOverlay.REMOVED })
             Files.deleteIfExists(staged.resolve(file));
         Files.delete(staged);
@@ -1068,8 +1139,8 @@ public final class ZstdRepository implements io.github.zct_studio.barusikozako.b
             for (var file : files) {
                 var name = file.getFileName().toString();
                 if (!(name.equals(COMMIT) || name.equals(MANIFEST) || name.equals(ARCHIVE) ||
-                    name.equals(CHUNK_INDEX) || name.equals(CHUNK_STAGE) || name.equals(ZstdOverlay.INHERITED) ||
-                    name.equals(ZstdOverlay.REMOVED)) ||
+                    name.equals(CHUNK_INDEX) || name.equals(CHUNK_STAGE) || name.equals(STATS) ||
+                    name.equals(ZstdOverlay.INHERITED) || name.equals(ZstdOverlay.REMOVED)) ||
                     !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
                     throw new IOException("unexpected snapshot artifact");
             }

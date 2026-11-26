@@ -8,9 +8,9 @@ import java.util.Objects;
 /** 权威的任务结果。回调失败不会更改该值 */
 public sealed interface TaskResult {
     record BackupCommitted(SnapshotRef snapshot, java.util.OptionalLong logicalBytes, java.util.OptionalLong archiveBytes,
-                           java.util.Optional<java.time.Duration> elapsed) implements TaskResult {
+                           java.util.Optional<java.time.Duration> elapsed, int relaxedFiles) implements TaskResult {
         public BackupCommitted(SnapshotRef snapshot) {
-            this(snapshot, java.util.OptionalLong.empty(), java.util.OptionalLong.empty(), java.util.Optional.empty());
+            this(snapshot, java.util.OptionalLong.empty(), java.util.OptionalLong.empty(), java.util.Optional.empty(), 0);
         }
 
         public BackupCommitted {
@@ -18,6 +18,7 @@ public sealed interface TaskResult {
             Objects.requireNonNull(logicalBytes);
             Objects.requireNonNull(archiveBytes);
             Objects.requireNonNull(elapsed);
+            if (relaxedFiles < 0) throw new IllegalArgumentException("negative relaxed file count");
         }
     }
 
@@ -37,5 +38,5 @@ public sealed interface TaskResult {
     record CommitUncertain() implements TaskResult {}
 
     enum Failure { LOST_AUTHORIZATION, SOURCE_UNAVAILABLE, INTEGRITY, RESOURCE_LIMIT, IO, INTERNAL,
-        NATIVE_ACCESS_DENIED, DIRECTORY_SYNC_FAILED }
+        NATIVE_ACCESS_DENIED, DIRECTORY_SYNC_FAILED, SNAPSHOT_IS_BASELINE }
 }

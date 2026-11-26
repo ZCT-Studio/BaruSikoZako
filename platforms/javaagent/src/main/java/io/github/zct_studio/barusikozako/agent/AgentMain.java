@@ -6,7 +6,6 @@ package io.github.zct_studio.barusikozako.agent;
 import io.github.zct_studio.barusikozako.api.BackupLifecycleHook;
 import io.github.zct_studio.barusikozako.api.SnapshotRef;
 import io.github.zct_studio.barusikozako.api.TaskResult;
-import io.github.zct_studio.barusikozako.bukkit.startup.BukkitStartup;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -15,7 +14,6 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.Set;
-import java.util.jar.JarFile;
 
 public final class AgentMain {
     private static final Set<String> AUDITED_VANILLA = Set.of(
@@ -32,8 +30,10 @@ public final class AgentMain {
             System.out.println(AgentRuntime.status());
             return;
         }
-        if (args.length >= 2 && (args[0].equals("start") || args[0].equals("restore-start")))
-            requireSupportedLauncher(Path.of(args[1]));
+        if (args.length >= 2 && (args[0].equals("start") || args[0].equals("restore-start"))
+                && !isAuditedVanilla(Path.of(args[1]))) {
+            throw new IOException("UNSUPPORTED: JavaAgent requires a verified vanilla Minecraft server JAR");
+        }
         String zstd = "barusikozako_backendzstd";
         String configured = System.getProperty("barusikozako.agent.backend", zstd);
         String backend = configured;
@@ -49,11 +49,11 @@ public final class AgentMain {
             var point = new SnapshotRef("agent", args[2]);
             var context = new BackupLifecycleHook.Context(BackupLifecycleHook.Operation.OFFLINE_RESTORE,
                 "agent", Optional.of(point));
-            BukkitStartup.run(args, repository, () -> AgentRuntime.backend(backend), () -> AgentRuntime.beforeRestore(context),
-                () -> AgentRuntime.afterRestore(context, new TaskResult.Restored(point, "worlds")), startApi,
+            AgentStartup.run(args, repository, () -> AgentRuntime.backend(backend), () -> AgentRuntime.before(context),
+                () -> AgentRuntime.after(context, new TaskResult.Restored(point, "worlds")), startApi,
                 AgentDirectoryPersistence.INSTANCE);
         } else {
-            BukkitStartup.run(args, repository, () -> AgentRuntime.backend(backend), () -> {}, () -> {}, startApi,
+            AgentStartup.run(args, repository, () -> AgentRuntime.backend(backend), () -> {}, () -> {}, startApi,
                 AgentDirectoryPersistence.INSTANCE);
         }
     }
@@ -66,15 +66,4 @@ public final class AgentMain {
         return AUDITED_VANILLA.contains(HexFormat.of().formatHex(digest.digest()));
     }
 
-    private static void requireSupportedLauncher(Path serverJar) throws IOException {
-        try (var archive = new JarFile(serverJar.toFile())) {
-            var manifest = archive.getManifest();
-            if (manifest == null) return;
-            var attributes = manifest.getMainAttributes();
-            var entry = attributes.getValue("Main-Class");
-            if ("SpongeVanilla".equalsIgnoreCase(attributes.getValue("Implementation-Title")) ||
-                    (entry != null && entry.startsWith("org.spongepowered.")))
-                throw new IOException("UNSUPPORTED: SpongeVanilla is outside the JavaAgent support scope");
-        }
-    }
 }

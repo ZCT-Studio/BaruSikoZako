@@ -3,7 +3,7 @@
 
 package io.github.zct_studio.barusikozako.agent;
 
-import io.github.zct_studio.barusikozako.bukkit.startup.BukkitStartup.DirectoryPersistence;
+import io.github.zct_studio.barusikozako.agent.AgentStartup.DirectoryPersistence;
 import io.github.zct_studio.barusikozako.platform.RestoreWindow;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;

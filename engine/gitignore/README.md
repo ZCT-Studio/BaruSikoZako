@@ -17,11 +17,11 @@
 
 已绑定的公共 `BackupService` 可调用 `registerWorldExclusion("*.tmp")`，来源取自绑定的集成 ID。关闭返回的 `AutoCloseable` 可注销，关闭绑定或主机也会解除其注册。同一来源和规则的重复注册会被拒绝。模组登记仅接受一个正向排除模式。
 
-不直接依赖 API 时，可反射调用模组的 `io.github.zct_studio.barusikozako.NativeEntrypoints.registerBackupExclusion(String scope, String source, String pattern)` 或 Agent 的 `io.github.zct_studio.barusikozako.agent.AgentRuntime` 同名方法。传入 `WORLD`、模组标识和规则，调用方持有并关闭返回的句柄。Bukkit 插件可从插件管理器获取 `barusikozako` 桥，再调用 `registerWorldExclusion(Plugin owner, String pattern)`，桥会在插件停用时注销。
+不直接依赖 API 时，可反射调用模组的 `io.github.zct_studio.barusikozako.NativeEntrypoints.registerBackupExclusion(String scope, String source, String pattern)` 。传入 `WORLD`、模组标识和规则，调用方持有并关闭返回的句柄。
 
 ## 归档与恢复
 
-新生产快照使用 `.worlds/<存档名>/<相对路径>`。模组端按当前打开的世界选择仓库。Agent 在线捕获当前原版世界，启动器的离线备份可覆盖受管理的 `worlds/` 容器及其中分离的多世界目录。各世界的全局规则独立匹配。单纯查看、校验和暂存提取旧快照仍沿用后端格式，平台的回滚入口要求新的世界命名空间。
+新生产快照使用 `.worlds/<存档名>/<相对路径>`。模组端按当前打开的世界选择仓库。各世界的全局规则独立匹配。单纯查看、校验和暂存提取旧快照仍沿用后端格式，平台的回滚入口要求新的世界命名空间。
 
 离线回滚完整校验后才切换目录。排除文件不会自动混入恢复后的活动世界，恢复前的完整世界（包括被排除文件）由原有事务保存在回滚副本中，日志记录位置。世界规则若排除启动所需的 `level.dat`，该快照会被启动前恢复检查拒绝。集成客户端未提供启动前回滚入口。
 ## 构建和对照测试

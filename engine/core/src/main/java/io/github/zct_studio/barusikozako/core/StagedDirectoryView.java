@@ -37,21 +37,32 @@ public final class StagedDirectoryView implements ReadView {
         "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
     private final Path root;
     private final List<String> tolerated;
+    private final long totalBytes;
     private int sessions;
     private boolean closed;
 
     private StagedDirectoryView(Path root) {
-        this(root, List.of());
+        this(root, List.of(), -1);
     }
 
     private StagedDirectoryView(Path root, List<String> tolerated) {
+        this(root, tolerated, -1);
+    }
+
+    private StagedDirectoryView(Path root, List<String> tolerated, long totalBytes) {
         this.root = root;
         this.tolerated = List.copyOf(tolerated);
+        this.totalBytes = totalBytes;
     }
 
     /** 宽松捕获中被接受的时间点差异文件；严格捕获始终为空 */
     public List<String> relaxedChanges() {
         return tolerated;
+    }
+
+    @Override
+    public long totalBytes() {
+        return totalBytes;
     }
 
     /**
@@ -76,7 +87,7 @@ public final class StagedDirectoryView implements ReadView {
             java.util.Objects.requireNonNull(includeFile));
     }
 
-    /** 在源数据保持可写时尽力为每个文件创建稳定副本 */
+    /** 在源数据保持可写时为每个文件创建稳定副本 */
     public static StagedDirectoryView copyLive(Path source, Path destinationParent, CopyBudget budget,
                                               BackupEngine.Checkpoint checkpoint, FileClone cloner) throws IOException {
         return copyLive(source, destinationParent, budget, checkpoint, cloner, 0);
@@ -140,7 +151,7 @@ public final class StagedDirectoryView implements ReadView {
         Path stage = Files.createTempDirectory(destination, PREFIX);
         var tolerated = new ArrayList<String>();
         try {
-            Files.walkFileTree(sourceRoot, new SimpleFileVisitor<>() {
+            var walker = new SimpleFileVisitor<Path>() {
                 private ByteBuffer copyBuffer;
                 private byte[] hashBuffer;
                 private long entries;
@@ -308,9 +319,10 @@ public final class StagedDirectoryView implements ReadView {
                     }
                     return FileVisitResult.CONTINUE;
                 }
-            });
+            };
+            Files.walkFileTree(sourceRoot, walker);
             checkpoint.check();
-            return new StagedDirectoryView(stage, tolerated);
+            return new StagedDirectoryView(stage, tolerated, walker.bytes);
         } catch (IOException | RuntimeException failure) {
             try {
                 BackupEngine.deleteStage(stage);
