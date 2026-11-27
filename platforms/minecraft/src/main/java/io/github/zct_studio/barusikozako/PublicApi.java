@@ -108,6 +108,15 @@ public final class PublicApi {
                 info.backends()));
         }
 
+        @Override public void log(BackupService.LogLevel level, String message) {
+            runtime.log(io.github.zct_studio.barusikozako.runtime.BackupService.LogLevel.valueOf(level.name()), message);
+        }
+
+        @Override public CompletionStage<Integer> sendMessage(BackupService.MessageTarget target, String message) {
+            return runtime.sendMessage(
+                io.github.zct_studio.barusikozako.runtime.BackupService.MessageTarget.valueOf(target.name()), message);
+        }
+
         @Override public CompletionStage<List<CapabilityState>> capabilities() {
             return runtime.capabilities().thenApply(states -> states.stream()
                 .map(state -> new CapabilityState(BackupRequest.Kind.valueOf(state.operation().name()),

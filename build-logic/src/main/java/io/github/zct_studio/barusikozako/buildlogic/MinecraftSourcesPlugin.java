@@ -137,6 +137,9 @@ public final class MinecraftSourcesPlugin implements Plugin<Project> {
                     task.getSourceFiles().from(allSources.values());
                     task.getOutputDirectory().set(project.getLayout().getBuildDirectory()
                         .dir("target-sources/" + target.key() + "/java"));
+                    // 输出目录里出现源码视图中不存在的文件时（源码移动或删除后的残留）必须重跑并清理
+                    task.getOutputs().upToDateWhen(actual ->
+                        !(actual instanceof GenerateTargetSources sources) || !sources.hasOrphanedOutputs());
                 });
             sourceSet.getJava().srcDir(generate.flatMap(GenerateTargetSources::getOutputDirectory));
             project.getTasks().named(sourceSet.getCompileJavaTaskName()).configure(task -> task.dependsOn(generate));
@@ -252,6 +255,8 @@ public final class MinecraftSourcesPlugin implements Plugin<Project> {
             ConditionalProcessor.Context context = new ConditionalProcessor.Context(
                 getMc().get(), getLoader().get(), getJavaRelease().get());
             Path output = getOutputDirectory().get().getAsFile().toPath();
+            // 源码移动或改名后旧视图必须消失，否则残留副本会继续被编译
+            deleteRecursively(output);
             for (Map.Entry<String, String> entry : new java.util.TreeMap<>(getSources().get()).entrySet()) {
                 Path file = Path.of(entry.getValue());
                 String processed = ConditionalProcessor.apply(ConditionalProcessor.canonical(read(file)), context);
@@ -262,6 +267,31 @@ public final class MinecraftSourcesPlugin implements Plugin<Project> {
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
+            }
+        }
+
+        /** 输出目录中是否存在当前源码视图不含的文件，用于让增量检查发现残留副本。 */
+        public boolean hasOrphanedOutputs() {
+            Path output = getOutputDirectory().get().getAsFile().toPath();
+            if (Files.notExists(output)) return false;
+            Set<String> expected = getSources().get().keySet();
+            try (java.util.stream.Stream<Path> walk = Files.walk(output)) {
+                return walk.filter(Files::isRegularFile)
+                    .map(file -> output.relativize(file).toString().replace('\\', '/'))
+                    .anyMatch(relative -> !expected.contains(relative));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        private static void deleteRecursively(Path directory) {
+            if (Files.notExists(directory)) return;
+            try (java.util.stream.Stream<Path> walk = Files.walk(directory)) {
+                for (Path path : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
         }
     }

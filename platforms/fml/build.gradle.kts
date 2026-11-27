@@ -6,7 +6,13 @@ import io.github.zct_studio.barusikozako.buildlogic.PrepareFmlRuntime
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.api.file.RegularFile
+import org.gradle.api.tasks.SourceSetContainer
+import java.io.File
+import java.util.Collections
 import java.util.Properties
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 plugins {
     java
@@ -57,14 +63,17 @@ dependencies {
     for (library in listOf(libs.zstd.jni, libs.jackson.core))
         add(backendLibraries.name, library)
     if (isolateBackendCommons) {
-        // Forge 客户端和旧版服务端可能已加载另一份 Commons 模块
+        // Forge 客户端和旧版服务端可能已加载另一份 Commons 模块，故 relocate 隔离。
+        // codec 在 zip/tar 链路中零引用，不再打包；lang3 必须保留完整实现——绝不能用同包名
+        // 的迷你 shim 替代，那会在游戏类加载器中顶掉本体依赖的 org.apache.commons.lang3.*；
+        // commons-io 被 commons-compress 的 tar 类（CountingOutputStream、IOUtils 等）引用，需保留。
         add(isolatedCommons.name, libs.commons.compress)
-        add(isolatedCommons.name, "commons-codec:commons-codec:1.19.0")
+        add(isolatedCommons.name, libs.commons.lang3)
         add(isolatedCommons.name, "commons-io:commons-io:2.20.0")
-        add(isolatedCommons.name, "org.apache.commons:commons-lang3:3.18.0")
     } else {
         add(backendLibraries.name, libs.commons.compress)
-        add(backendLibraries.name, "commons-codec:commons-codec:1.19.0")
+        add(backendLibraries.name, libs.commons.lang3)
+        add(backendLibraries.name, "commons-io:commons-io:2.20.0")
     }
     if (forgeSrg && !apiOnly) {
         add(forgeMappingTools.name, "net.minecraftforge:srgutils:0.5.6")
@@ -79,7 +88,8 @@ fun Jar.copyComponents(components: List<String>) {
         val archive = project(component).tasks.named<Jar>("jar")
         dependsOn(archive)
         from(archive.flatMap { it.archiveFile }.map { zipTree(it) }) {
-            include("io/github/zct_studio/barusikozako/**", "META-INF/barusikozako/gitignore/**")
+            include("io/github/zct_studio/barusikozako/**",
+                "META-INF/barusikozako/gitignore/**")
         }
     }
 }
@@ -136,7 +146,7 @@ fun metadata(loader: String, id: String, displayName: String, mixinConfig: Strin
         appendLine("modId=\"$on\"")
         appendLine("type=\"incompatible\"")
         appendLine("versionRange=\"$range\"")
-        appendLine("ordering=\"AFTER\"")
+        appendLine("ordering=\"NONE\"")
         appendLine("side=\"BOTH\"")
     }
     dependency("minecraft", "[$minecraft]")
@@ -173,6 +183,13 @@ fun notices(task: String, vararg libraries: Configuration) = tasks.register<Coll
 val hostNotices = notices("collectHostNotices", hostLibraries)
 val backendNotices = notices("collectBackendNotices", backendLibraries, isolatedCommons)
 
+// 双击独立工作站：复用 :platforms:standalone 的 standalone.jar（仅含自身类）与 Java 17 编译的
+// DoubleClickLauncher（不引用任何 Minecraft 类），让 forge/neoforge 模组 jar 也能 `java -jar` 双击运行。
+val standaloneJar = project(":platforms:standalone").tasks.named("jar", org.gradle.jvm.tasks.Jar::class.java)
+    .flatMap { it.archiveFile }
+val standaloneLauncher = project(":platforms:standalone").extensions.getByType<SourceSetContainer>()
+    .named("main").map { it.output }
+
 fun jarJarMetadata(name: String, libraries: Configuration, nestedBackend: Provider<RegularFile>? = null): TaskProvider<Task> {
     val archive = nestedBackend
     val descriptors = libraries.incoming.artifacts.resolvedArtifacts
@@ -197,7 +214,53 @@ fun jarJarMetadata(name: String, libraries: Configuration, nestedBackend: Provid
     }
 }
 
-fun Jar.attachLibraries(libraries: Configuration, descriptor: TaskProvider<Task>, nestedBackend: Provider<RegularFile>?) {
+// —— 体积精简：重写 jarjar 依赖 jar，去掉冷门平台 native 库与非 tar 归档代码 ——
+// 规则与 :platforms:fabric-zstd-package 保持一致。
+val nativeStripPrefixes = listOf(
+    "aix/", "freebsd/i386/",
+    "linux/arm/", "linux/i386/", "linux/loongarch64/", "linux/mips64/",
+    "linux/ppc64/", "linux/ppc64le/", "linux/riscv64/", "linux/s390x/",
+    "win/x86/",
+)
+val compressStripPrefixes = listOf(
+    "org/apache/commons/compress/harmony/",
+    "org/apache/commons/compress/archivers/sevenz/",
+    "org/apache/commons/compress/archivers/dump/",
+    "org/apache/commons/compress/archivers/cpio/",
+    "org/apache/commons/compress/archivers/arj/",
+    "org/apache/commons/compress/archivers/ar/",
+    "org/apache/commons/compress/archivers/jar/",
+    "org/apache/commons/compress/archivers/examples/",
+    "org/apache/commons/compress/compressors/",
+    "org/apache/commons/compress/changes/",
+)
+
+fun stripJar(jar: File, prefixes: List<String>) {
+    val tmp = File.createTempFile("barusikozako-strip", ".jar")
+    ZipFile(jar).use { zin ->
+        ZipOutputStream(tmp.outputStream()).use { zout ->
+            for (entry in Collections.list(zin.entries())) {
+                if (prefixes.any { entry.name.startsWith(it) }) continue
+                val copy = ZipEntry(entry.name)
+                copy.time = 0L
+                zout.putNextEntry(copy)
+                zin.getInputStream(entry).copyTo(zout)
+                zout.closeEntry()
+            }
+        }
+    }
+    tmp.copyTo(jar, overwrite = true)
+    tmp.delete()
+}
+
+fun stripIncludedJar(f: File) {
+    when {
+        f.name.startsWith("zstd-jni-") -> stripJar(f, nativeStripPrefixes)
+        f.name.startsWith("commons-compress-") -> stripJar(f, compressStripPrefixes)
+    }
+}
+
+fun Jar.attachLibraries(libraries: Any, descriptor: TaskProvider<Task>, nestedBackend: Provider<RegularFile>?) {
     from(descriptor) { into("META-INF/jarjar") }
     from(libraries) { into("META-INF/jarjar") }
     if (nestedBackend != null) {
@@ -412,6 +475,22 @@ for ((loader, version) in versions) {
     addCompileDependency(main, libs.snakeyaml)
     val backendMeta = metadataFile("${loader}BackendMetadata", toml, metadata(loader, "barusikozako_backendzstd", "ZakoBak Zstd (Bundled)"))
     val backendJarJar = jarJarMetadata("${loader}Backend", backendLibraries)
+    // 精简 backendLibraries 里打包进 jarjar 的 jar（zstd-jni native 库、非 relocate 场景的 commons-compress）。
+    val stripBackendLibraries = tasks.register("${loader}StripBackendLibraries") {
+        val outDir = layout.buildDirectory.dir("strippedBackend")
+        inputs.files(backendLibraries)
+        outputs.dir(outDir)
+        doLast {
+            val dir = outDir.get().asFile
+            dir.mkdirs()
+            backendLibraries.forEach { jar ->
+                val target = File(dir, jar.name)
+                jar.copyTo(target, overwrite = true)
+                stripIncludedJar(target)
+            }
+        }
+    }
+    val strippedBackendLibraries = stripBackendLibraries.map { it.outputs.files }
     val backendJar = tasks.register("${loader}BackendJar",
         if (isolateBackendCommons) ShadowJar::class.java else Jar::class.java) {
         if (forgePack != null) from(forgePack)
@@ -422,7 +501,7 @@ for ((loader, version) in versions) {
         from(backendMeta) { into("META-INF") }
         copyComponents(backendComponents)
         loaderManifest("io.github.zct_studio.barusikozako.zstd")
-        attachLibraries(backendLibraries, backendJarJar, null)
+        attachLibraries(strippedBackendLibraries, backendJarJar, null)
         from(backendNotices.flatMap { it.collected }) { into("META-INF/third-party") }
         if (this is ShadowJar) {
             configurations.set(listOf(isolatedCommons))
@@ -431,6 +510,8 @@ for ((loader, version) in versions) {
                 relocate(pkg, pkg.replace("org.apache.commons", "io.github.zct_studio.barusikozako.zstd.internal.commons"))
             }
             exclude("module-info.class", "META-INF/versions/**/module-info.class")
+            // 裁剪 commons-compress 非 tar 归档代码（relocate 前的原始路径）。
+            compressStripPrefixes.forEach { exclude("${it}**") }
             if (forgeSrg) {
                 // 这些 Commons jar 仅具有版本化模块描述符，已在上面删除
                 addMultiReleaseAttribute.set(false)
@@ -461,6 +542,15 @@ for ((loader, version) in versions) {
         from(descriptor) { into("META-INF") }
         copyComponents(ownComponents)
         loaderManifest("barusikozako", if (loader == "forge") target.mixinConfigName() else null)
+        // 双击独立工作站：声明 Main-Class，嵌套 standalone 运行包，并把 Java 17 编译的引导类打进顶层。
+        manifest.attributes("Main-Class" to "io.github.zct_studio.barusikozako.fabric.DoubleClickLauncher")
+        from(standaloneJar) {
+            into("META-INF/standalone")
+            rename { "standalone.jar" }
+        }
+        from(standaloneLauncher) {
+            include("io/github/zct_studio/barusikozako/fabric/DoubleClickLauncher*.class")
+        }
         attachLibraries(hostLibraries, jarJar, backendArchive)
         from(hostNotices.flatMap { it.collected }) { into("META-INF/third-party") }
     }

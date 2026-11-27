@@ -22,6 +22,13 @@ public final class FabricEntrypoint implements ModInitializer {
             @Override public java.nio.file.Path configDirectory() { return loader.getConfigDir(); }
             @Override public boolean apiAvailable() { return loader.isModLoaded("barusikozako_api"); }
 
+            @Override public String modName(String id) {
+                return loader.getModContainer(id)
+                    .map(container -> container.getMetadata().getName())
+                    .filter(name -> name != null && !name.isBlank())
+                    .orElse(id);
+            }
+
             @Override public String apiVersion() {
                 return loader.getModContainer("barusikozako_api")
                     .map(container -> {
@@ -78,7 +85,8 @@ public final class FabricEntrypoint implements ModInitializer {
                 var id = entry.getProvider().getMetadata().getId();
                 if (!owners.add(id)) continue;
                 entries.add(new LoaderBridge.Entry<>(id,
-                    () -> contract.cast(PublicApi.integration(entry.getEntrypoint()))));
+                    () -> contract.cast(PublicApi.integration(entry.getEntrypoint())),
+                    entry.getProvider().getMetadata().getVersion().getFriendlyString()));
             }
             for (var container : loader.getAllMods()) {
                 var id = container.getMetadata().getId();
@@ -90,10 +98,11 @@ public final class FabricEntrypoint implements ModInitializer {
                 owners.add(id);
                 var discovered = ServiceIntegrations.service(id, source,
                     io.github.zct_studio.barusikozako.api.BackupIntegration.class);
+                var version = container.getMetadata().getVersion().getFriendlyString();
                 entries.add(new LoaderBridge.Entry<>(id, () -> {
                     var value = discovered.get();
                     return value == null ? null : contract.cast(PublicApi.integration(value));
-                }));
+                }, version));
             }
             return entries;
         }
@@ -107,7 +116,8 @@ public final class FabricEntrypoint implements ModInitializer {
                 var id = entry.getProvider().getMetadata().getId();
                 if (!owners.add(id)) continue;
                 entries.add(new LoaderBridge.Entry<>(id,
-                    () -> contract.cast(PublicApi.lifecycle(entry.getEntrypoint()))));
+                    () -> contract.cast(PublicApi.lifecycle(entry.getEntrypoint())),
+                    entry.getProvider().getMetadata().getVersion().getFriendlyString()));
             }
             for (var container : loader.getAllMods()) {
                 var id = container.getMetadata().getId();
@@ -119,10 +129,11 @@ public final class FabricEntrypoint implements ModInitializer {
                 owners.add(id);
                 var discovered = ServiceIntegrations.service(id, source,
                     io.github.zct_studio.barusikozako.api.BackupLifecycleHook.class);
+                var version = container.getMetadata().getVersion().getFriendlyString();
                 entries.add(new LoaderBridge.Entry<>(id, () -> {
                     var value = discovered.get();
                     return value == null ? null : contract.cast(PublicApi.lifecycle(value));
-                }));
+                }, version));
             }
             return entries;
         }

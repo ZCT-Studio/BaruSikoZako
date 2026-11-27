@@ -3,7 +3,10 @@ import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
 import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 
+import org.gradle.api.tasks.SourceSetContainer
+
 plugins {
+    // 26.x 无需重映射；1.21.x 走 platforms/fabric-legacy 的重映射脚本
     alias(libs.plugins.fabric.loom)
     id("barusikozako.minecraft-sources")
     id("barusikozako.java17-library") apply false
@@ -27,6 +30,13 @@ val backendRuntimeSuffix = if (runtimeMinecraft == minecraftVersion) "" else "-$
 val backendArchive = "barusikozako_backendzstd-fabric$backendRuntimeSuffix-${extra["zstdVersion"]}.jar"
 val packageTarget = "${extra["fabricPackageLoader"]}$runtimeMinecraft"
 val mixinConfig = MinecraftSourcesPlugin.target(project, MinecraftSourcesPlugin.load(project)).mixinConfigName()
+val standaloneJar = project(":platforms:standalone").tasks.named("jar", org.gradle.jvm.tasks.Jar::class.java)
+    .flatMap { it.archiveFile }
+// 双击引导器 DoubleClickLauncher 已移到 :platforms:standalone 模块按 Java 17 编译（它不引用任何
+// Minecraft 类），这里从它的编译产物取回该类打进模组 jar 顶层，使 `java -jar` 无需 Java 25 也能
+// 运行独立工作站（其运行时依赖均为 Java 17）。
+val standaloneLauncher = project(":platforms:standalone").extensions.getByType<SourceSetContainer>()
+    .named("main").map { it.output }
 
 repositories {
     mavenCentral()
@@ -91,10 +101,20 @@ val collectNotices = tasks.register<CollectNotices>("collectNotices") {
 }
 
 tasks.jar {
-    manifest.attributes("Implementation-Version" to project.version.toString())
+    manifest.attributes(
+        "Implementation-Version" to project.version.toString(),
+        "Main-Class" to "io.github.zct_studio.barusikozako.fabric.DoubleClickLauncher",
+    )
     archiveBaseName.set("barusikozako-fabric-$runtimeMinecraft" + if (releaseAlpha) "" else "-development")
     from(rootProject.file("LICENSE")) { into("META-INF") }
     from(collectNotices.flatMap { it.collected }) { into("META-INF/third-party") }
+    from(standaloneJar) {
+        into("META-INF/standalone")
+        rename { "standalone.jar" }
+    }
+    from(standaloneLauncher) {
+        include("io/github/zct_studio/barusikozako/fabric/DoubleClickLauncher*.class")
+    }
 }
 
 

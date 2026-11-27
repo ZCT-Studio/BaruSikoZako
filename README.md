@@ -42,6 +42,26 @@ BaruSikoZako（杂鱼备份） 为 Minecraft Java 版保存世界备份。更新
 | `/barusikozako full` | 使用 Zstd 创建一次全量备份 |
 | `/barusikozako task <任务 ID>` | 查看备份或校验任务的状态 |
 
+## 离线工作站（双击 / 命令行）
+
+模组 JAR 可以直接双击打开独立的桌面工作站，也可以在终端里用命令行操作。两者都只对**已停止**的存档生效，且与游戏内命令共享同一套快照与配置。
+
+- **双击 JAR**：打开 Java Swing 图形界面。浏览目录默认从 JAR 所在目录开始；选择存档后会自动推导游戏根目录（位于 `saves/` 下时取其上级），并同步读取游戏 `config/barusikozako` 配置（不存在则改用 `<游戏根>/standalone`），随后即可备份、列出、校验、回滚或删除快照，并查看详情、状态与配置。
+- **命令行**：`java -jar 模组.jar [选项] <命令> [参数]`。常用命令如下：
+
+| 命令 | 用途 |
+| --- | --- |
+| `-w <目录> status` | 查看备份服务状态 |
+| `-w <目录> backup` | 按配置模式备份（可加 `full`/`incremental`/`differential`/`rebuild`/`fixed-chunks` 与 `note <文本>`） |
+| `-w <目录> list` | 列出快照 |
+| `-w <目录> detail <时间\|fromuuid <uuid>\|fullname <名称>>` | 查看快照详情 |
+| `-w <目录> verify <选择>` | 校验快照 |
+| `-w <目录> rollback [-y] <选择>` | 回滚到快照（`-y` 跳过确认） |
+| `-w <目录> delete [-y] <选择>` | 删除快照 |
+| `-w <目录> config server\|backend` | 查看配置 |
+
+其中 `<选择>` 可用 UTC 时间、`fromuuid <uuid>` 或 `fullname <名称>`。游戏根目录默认从存档自动推导：存档位于 `saves/` 下时取其上级（`saves/` 的父目录），否则取存档上级。配置优先同步游戏 `<游戏根>/config/barusikozako/`，不存在则回退到 `<游戏根>/standalone/`；快照仓库仍位于 `<游戏根>/barusikozako/<存档名>/<后端>/`，与游戏内一致。可用 `-c <目录>` 手动指定游戏根目录。
+
 ## 配置与备份位置
 
 | 路径 | 用途 |
@@ -95,6 +115,26 @@ Run server commands as an administrator or from the console. Omit the leading `/
 | `/barusikozako status` | Check if the backup service is available |
 | `/barusikozako full` | Create a full backup with Zstd |
 | `/barusikozako task <task ID>` | Check the progress of a backup or verification task |
+
+## Standalone workstation (double-click / command line)
+
+The mod JAR can be double-clicked to open a standalone desktop workstation, or driven from the command line. Both work only on a **stopped** world and share the same snapshots and configuration as the in-game commands.
+
+- **Double-click the JAR** to open a Java Swing window. Browsing starts from the JAR's own directory; after choosing a world it auto-derives the game root (the parent of `saves/` when the world sits under `saves/`) and syncs the game's `config/barusikozako` configuration (falling back to `<game root>/standalone` when absent), then back up, list, verify, roll back, or delete snapshots and inspect details, status, and configuration.
+- **Command line:** `java -jar mod.jar [options] <command> [args]`. Common commands:
+
+| Command | Purpose |
+| --- | --- |
+| `-w <dir> status` | Show backup service status |
+| `-w <dir> backup` | Back up with the configured mode (add `full`/`incremental`/`differential`/`rebuild`/`fixed-chunks` and `note <text>`) |
+| `-w <dir> list` | List snapshots |
+| `-w <dir> detail <time\|fromuuid <uuid>\|fullname <name>>` | Show snapshot details |
+| `-w <dir> verify <selector>` | Verify a snapshot |
+| `-w <dir> rollback [-y] <selector>` | Roll back to a snapshot (`-y` skips confirmation) |
+| `-w <dir> delete [-y] <selector>` | Delete a snapshot |
+| `-w <dir> config server\|backend` | Show configuration |
+
+Use a UTC timestamp, `fromuuid <uuid>`, or `fullname <name>` as the `<selector>`. The game root is derived from the world: the parent of `saves/` when the world sits under `saves/`, otherwise the world's parent. Configuration syncs from `<game root>/config/barusikozako/` when present, otherwise `<game root>/standalone/`; snapshots stay under `<game root>/barusikozako/<world>/<backend>/`, matching the in-game layout. Use `-c <dir>` to override the game root explicitly.
 
 ## Configuration and backup location
 

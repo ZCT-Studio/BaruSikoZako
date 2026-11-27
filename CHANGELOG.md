@@ -22,60 +22,33 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
-## [1.1.0-patch.1] - 2026-11-27
+## [1.2.0] - 2026-11-28
 
 ### Added / 新增
 
+- The mod JAR can now be double-clicked (or run with `java -jar`) to open a standalone desktop workstation built with the native Java Swing UI. For a stopped world it supports backup, listing, details, verification, rollback, deletion, status and configuration, and it shares the exact same snapshot format, naming and repository as the in-game commands.
+  <br> 模组 JAR 现在可以双击（或用 `java -jar`）打开一个基于 Java 原始 Swing 界面的独立桌面工作站。它能对已停止的存档进行备份、列出、详情、校验、回滚、删除、状态与配置查看，并与游戏内指令共享完全相同的快照格式、命名与仓库。
+- The same workstation is available from the command line with semantics matching the in-game commands (`backup`, `list`, `detail`, `verify`, `rollback`, `delete`, `status`, `config`), so backups and rollbacks can be scripted or run from a terminal.
+  <br> 该工作站同时提供与游戏内指令语义一致的命令行入口（`backup`、`list`、`detail`、`verify`、`rollback`、`delete`、`status`、`config`），可在终端中脚本化执行备份与回滚。
 - Third-party mods can register a backup integration through `META-INF/services/io.github.zct_studio.barusikozako.api.BackupIntegration` (and `...BackupLifecycleHook`) without referencing any loader class; the implementation only needs a public no-argument constructor. Fabric entrypoints and the Forge/NeoForge extension points keep working, take priority when both are present, and every mod still yields exactly one integration identified by its container ID.
 <br> 第三方模组现在可以通过 `META-INF/services/io.github.zct_studio.barusikozako.api.BackupIntegration`（以及 `...BackupLifecycleHook`）注册备份集成，无需引用任何加载器类；实现类只需具备 public 无参构造。Fabric entrypoint 与 Forge/NeoForge 扩展点继续可用，两者同时存在时优先，每个模组仍只产生一个以容器 ID 标识的集成。
-
-## [1.1.0] - 2026-11-26
-
-### Added / 新增
-
-- New separate `progress.yml` displays backup progress in a BossBar, with per-player language, configurable colors, text sections and a result display after the task ends.
-<br> 新增独立的 `progress.yml`，可用 BossBar 显示备份进度，支持按玩家语言渲染、自定义颜色与文本项，并在任务结束后展示结果。
-- Progress display distinguishes backups started by the viewing player from scheduled, console and third-party backups, with configurable audience for the latter.
-<br> 进度显示会区分查看者本人发起的备份与定时、控制台及第三方发起的备份，后者受众可配置。
-- Configuration files include English and Chinese guidance and accept human-readable time and size units.
-<br> 配置文件提供中英文说明，并支持易读的时间和容量单位。
-- New `capture.consistency` option (`strict` by default, or `relaxed`). Strict refuses a backup when files change during capture; relaxed accepts fully copied files that may come from slightly different moments, never truncated or damaged copies.
-<br> 新增 `capture.consistency` 配置（默认 `strict`，可选 `relaxed`）。严格模式发现文件在捕获期间变化就拒绝备份；宽松模式接受完整复制但来自不同时间点的文件，绝不接受截断或损坏的副本。
-- Snapshot metadata records the consistency level used at capture time, `/list` shows it, and restoring a relaxed snapshot prints a warning first.
-<br> 快照元数据永久记录捕获时的一致性等级，`/list` 会显示该等级，恢复宽松模式快照前会先弹出警告。
-- Snapshot and task lists show three lines per item (time, UUID and operator; type or progress; actions), with four items per page and previous/next navigation.
-<br> 快照与任务列表每项显示三行（时间、UUID 与操作人；类型或进度；操作），每页 4 项并支持上一页/下一页。
-- New `/detail` command and a details button on every snapshot, showing capture time, UUID, type, consistency, size, elapsed time, operator and game, mod and backend versions.
-<br> 新增 `/detail` 指令和每个快照的“详细信息”按钮，显示备份时间、UUID、类型、一致性、体积、耗时、操作人以及游戏、模组和后端版本。
-- Tasks record their operator and can be listed, inspected and canceled by submission time or task ID.
-<br> 任务会记录操作人，并支持按提交时间或任务 ID 列出、查看和取消。
-- New `ignore.gitignore` and `ignore.pteroignore` options use world-level `.gitignore` files and the game root `.pteroignore` as exclusion rules.
-<br> 新增 `ignore.gitignore` 与 `ignore.pteroignore` 配置，可将世界内的 `.gitignore` 和游戏根目录的 `.pteroignore` 作为排除规则。
-- Backup and verification completion messages can use separate `template.backup` and `template.verify` layouts, and `progress_simple` shows both sizes in a shared unit.
-<br> 备份与校验的完成提示可分别使用 `template.backup` 与 `template.verify`，`progress_simple` 使用统一单位显示两个体积。
-- Copyable values are yellow and clickable actions are cyan in brackets; hovering a copyable value shows its original text.
-<br> 可复制内容显示为黄色，可点击操作显示为带方括号的青色；悬停可复制内容会显示原始文本。
-- Zstd snapshots record archive size, logical size, elapsed time and layout in their metadata, and `/list` and `/detail` display them.
-<br> Zstd 快照在元数据中记录压缩体积、逻辑体积、耗时与布局，`/list` 与 `/detail` 会显示这些信息。
-- The mod declares a minimum ZakoBak API version (`mod.api_version`); Fabric and NeoForge refuse older API versions at load time, and Forge reports a bilingual `ModLoadingException`.
-<br> 主模组声明最低 ZakoBak API 版本（`mod.api_version`）；Fabric 与 NeoForge 会在加载时拒绝更旧的 API，Forge 则输出双语 `ModLoadingException`。
+- `/barusikozako version` now reports registered and rejected integrations, and `/barusikozako list version <backends|mod|extensions>` lists backend, mod or extension versions.
+<br> `/barusikozako version` 现在会显示已注册与拒绝的拓展，并新增 `/barusikozako list version <backends|mod|extensions>` 分别列出后端、本体或拓展的版本。
+- Integrations that are skipped are logged with their mod ID instead of being dropped silently.
+<br> 被跳过的集成会记录模组标识，不再静默丢弃。
+- Integrations can write log lines that carry their mod ID, and send messages to all players, administrators, or the player who started the most recent task; arbitrary player targeting is not exposed.
+<br> 集成现在可以写带模组标识的日志，并向全部玩家、管理员或最近一次任务的发起者发送消息；不开放任意玩家定向。
 
 ### Changed / 变更
 
-- Online backups retry each changed file more times, and retry the whole capture once when it still fails, greatly improving success on busy servers.
-<br> 在线备份会以更多次数重试发生变化的文件，整次捕获仍失败时还会重新捕获一次，显著提升繁忙服务器上的成功率。
-- Capture failures now log the concrete reason to the server log instead of only reporting that the source was unavailable.
-<br> 捕获失败现在会把具体原因写入服务器日志，不再只报告来源不可用。
-- Ignore-rule notices list only the rules that actually matched and dim the source file.
-<br> 忽略规则提示只列出实际生效的规则，并淡化显示来源文件。
-- Command failures report the concrete rejection or failure reason instead of a generic error.
-<br> 指令失败时会报告具体的拒绝或失败原因，不再只显示通用错误。
-- The first-run notice is sent only to the first administrator who joins, once per mod version.
-<br> 首次启动提示只发送给第一个上线的管理员，每个模组版本仅提示一次。
-- The built-in Zstd backend is now listed as `ZakoBak Zstd (Bundled)`, and its version no longer carries a suffix.
-<br> 内置 Zstd 后端现在显示为 `ZakoBak Zstd (Bundled)`，版本号不再带后缀。
-- Now `server.yml` file is structured instead of flat.
-<br> 现在 `server.yml` 结构化而非扁平化
+- Integration authorization is now an advanced, opt-in feature stored in `api.yml`. It is disabled by default, and while disabled no allowlist is checked: every discovered integration is activated with full rights. Existing `api.*` keys in `server.yml` are migrated on first start.
+  <br> 集成授权改为独立的高级功能，配置移到 `api.yml` 并默认关闭；关闭时不检查任何名单，所有被发现的集成都会获得全部权限。`server.yml` 中旧的 `api.*` 键会在首次启动时自动迁移。
+- The bundled standalone workstation and the Zstd backend now ship only the native libraries for mainstream platforms (Windows, Linux and macOS on x86_64 and AArch64); the archive-format code unused by tar-based snapshots, and the unused transitive dependencies (`commons-codec`, plus `commons-lang3` replaced by a tiny in-module shim) are no longer packaged. The standalone workstation's own JAR likewise no longer bundles the runtime libraries already shipped in the mod JAR's nested `META-INF/jars`, shrinking it from several megabytes to a few tens of kilobytes. This applies to Fabric, Forge and NeoForge alike and roughly halves each mod JAR (the Forge/NeoForge backend drops from ~10 MB to ~4 MB).
+  <br> 内置的独立工作站与 Zstd 后端现在只打包主流平台（Windows、Linux、macOS 的 x86_64 与 AArch64）的原生库，并去除 tar 快照用不到的归档格式代码以及未使用的传递依赖（`commons-codec` 完全移除，`commons-lang3` 以模块内置的迷你替代类取代）。独立工作站自身的 JAR 也不再冗余打包模组 JAR 嵌套 `META-INF/jars` 中已存在的运行时依赖，体积从数 MB 缩减至几十 KB。此优化对 Fabric、Forge 与 NeoForge 一致生效，各模组 JAR 体积约减少一半（Forge/NeoForge 后端由约 10 MB 降至约 4 MB）。
+- The standalone workstation now auto-detects the game root from the world directory: it uses the parent of `saves/` when the world sits under `saves/`, otherwise the world's parent. Configuration is synced from the game's `config/barusikozako/` when present, falling back to a `<game root>/standalone/` directory otherwise; snapshots remain under `<game root>/barusikozako/<world>/<backend>/` to match the in-game layout.
+  <br> 独立工作站现在会从存档目录自动推导游戏根目录：存档位于 `saves/` 下时取其上级（`saves/` 的父目录），否则取存档上级。配置会优先同步游戏 `<游戏根>/config/barusikozako/`，不存在则改用 `<游戏根>/standalone/`；快照仍位于 `<游戏根>/barusikozako/<存档名>/<后端>/`，与游戏内布局一致。
+- Backup progress for tasks the viewer did not start (scheduled, console, other players and third-party API) is now shown to all administrators by default. `progress.yml` can still switch the audience to everyone, operators only, or nobody.
+  <br> 非查看者本人发起的备份（定时、控制台、其他玩家及第三方 API）进度现在默认向所有管理员展示；`progress.yml` 仍可将受众改为全部玩家、仅管理员或不展示。
 
 >**_This Changelog is AIGC and verified_**
 ><br>**_本次更新日志为AI生成内容，并且经过验证_**

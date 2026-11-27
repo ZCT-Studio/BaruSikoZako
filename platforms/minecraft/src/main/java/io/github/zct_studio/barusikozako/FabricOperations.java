@@ -36,6 +36,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.function.Supplier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 
 final class FabricOperations implements BackupApiHost.Operations {
     @Override public AutoCloseable registerWorldExclusion(String source, String pattern) {
@@ -45,21 +48,27 @@ final class FabricOperations implements BackupApiHost.Operations {
     static final String SOURCE_ID = "world";
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(FabricOperations.class);
     private final ServerConfig config;
+    private final ApiConfig api;
     private final Path world;
     private final BackendProvider.Settings backend;
     private final CaptureSource capture;
     private final Path repository;
     private final boolean restoreAvailable;
+    /** 当前会话的服务器；玩家列表只能在服务端主线程读取 */
+    private final Supplier<MinecraftServer> server;
     /** 最近一次宽松捕获中接受过时间点差异的快照 ID，供进度显示标记「有疑问」 */
     private volatile String relaxedCapture;
 
-    FabricOperations(ServerConfig config, Path world, CaptureSource capture, BackendProvider.Settings backend,
-                     boolean restoreAvailable) {
+    FabricOperations(ServerConfig config, ApiConfig api, Path world, CaptureSource capture,
+                     BackendProvider.Settings backend, boolean restoreAvailable,
+                     Supplier<MinecraftServer> server) {
         this.config = config;
+        this.api = api;
         this.world = world;
         this.capture = capture;
         this.backend = backend;
         this.restoreAvailable = restoreAvailable;
+        this.server = java.util.Objects.requireNonNull(server);
         this.repository = ServerRepository.forBackend(config.backendKeyword(), world);
     }
 
@@ -104,6 +113,98 @@ final class FabricOperations implements BackupApiHost.Operations {
     public BackupService.VersionInfo version() {
         return new BackupService.VersionInfo(LoaderBridge.productVersion(), Optional.ofNullable(LoaderBridge.apiVersion()),
             BackendRegistry.versions());
+    }
+
+    /**
+     * 宿主权威的运行时版本信息。命令与定时任务此前各自填写，现在由 BackupApiHost 在
+     * 每次备份提交时统一写入，因此网页/第三方拓展发起的备份也带相同的版本元数据。
+     */
+    @Override
+    public java.util.Map<String, String> runtimeMetadata() {
+        var metadata = new java.util.LinkedHashMap<String, String>();
+        var running = server.get();
+        metadata.put("gameVersion", running == null ? "unknown" : running.getServerVersion());
+        metadata.put("modVersion", LoaderBridge.productVersion());
+        var keyword = config.backendKeyword();
+        metadata.put("backendVersion", keyword == null || keyword.isBlank() ? "unknown"
+            : BackendRegistry.versions().getOrDefault(keyword, "unknown"));
+        return metadata;
+    }
+
+    @Override
+    public java.util.List<BackupService.ModInfo> mods() {
+        var mods = new java.util.ArrayList<BackupService.ModInfo>();
+        var seen = new java.util.HashSet<String>();
+        BackendRegistry.registered().keySet().forEach(id -> {
+            if (!seen.add(id)) return;
+            mods.add(new BackupService.ModInfo(id, LoaderBridge.modName(id),
+                BackendRegistry.versions().getOrDefault(id, "unknown")));
+        });
+        for (var entry : LoaderBridge.entries("barusikozako:backup_api",
+            io.github.zct_studio.barusikozako.api.BackupIntegration.class)) {
+            if (!seen.add(entry.owner())) continue;
+            mods.add(new BackupService.ModInfo(entry.owner(), LoaderBridge.modName(entry.owner()), entry.version()));
+        }
+        return java.util.List.copyOf(mods);
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<Integer> sendMessage(
+            String source, BackupService.MessageTarget target, String message,
+            Optional<BackupService.BackupOperator> executor) {
+        var running = server.get();
+        if (running == null || message == null) {
+            return java.util.concurrent.CompletableFuture.completedStage(0);
+        }
+        var text = sanitize(message);
+        if (text.isBlank()) return java.util.concurrent.CompletableFuture.completedStage(0);
+        var result = new java.util.concurrent.CompletableFuture<Integer>();
+        try {
+            // 玩家列表只能在服务端主线程读取；投递同样回到主线程执行
+            running.executeIfPossible(() -> {
+                try {
+                    result.complete(deliver(running, source, target, text, executor));
+                } catch (RuntimeException failure) {
+                    LOG.warn("Integration message delivery failed", failure);
+                    result.complete(0);
+                }
+            });
+        } catch (RuntimeException failure) {
+            LOG.warn("Integration message scheduling failed", failure);
+            result.complete(0);
+        }
+        return result;
+    }
+
+    /** 只在服务端主线程调用：按预设受众投递并返回投递人数 */
+    private int deliver(MinecraftServer running, String source, BackupService.MessageTarget target,
+                        String text, Optional<BackupService.BackupOperator> executor) {
+        int delivered = 0;
+        var prefix = "[" + sanitize(source) + "] ";
+        for (var player : List.copyOf(running.getPlayerList().getPlayers())) {
+            var stack = player.createCommandSourceStack();
+            boolean selected = switch (target) {
+                case ALL -> true;
+                case ADMINS -> GameCommandAccess.isAdministrator(stack);
+                case EXECUTOR -> executor.isPresent() && matches(executor.orElseThrow(), player);
+            };
+            if (!selected) continue;
+            Chat.line(stack, Chat.Tone.INFO, prefix + text);
+            delivered++;
+        }
+        return delivered;
+    }
+
+    /** 执行者优先按 UUID 匹配；没有 UUID 时退回玩家名 */
+    private static boolean matches(BackupService.BackupOperator operator, ServerPlayer player) {
+        return operator.id().map(id -> id.equals(player.getUUID()))
+            .orElseGet(() -> operator.name().equals(player.getScoreboardName()));
+    }
+
+    /** 单行化并限制长度，避免日志注入与聊天刷屏 */
+    private static String sanitize(String value) {
+        var cleaned = value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ').trim();
+        return cleaned.length() > 256 ? cleaned.substring(0, 256) : cleaned;
     }
 
     @Override
@@ -243,14 +344,14 @@ final class FabricOperations implements BackupApiHost.Operations {
     @Override
     public Runnable before(BackupRequest request, String principal) {
         var context = hookContext(request, principal);
-        return context == null ? null : () -> LifecycleHooks.before(config.lifecycleIntegrations(), context);
+        return context == null ? null : () -> LifecycleHooks.before(api.lifecycleAllowlist(), context);
     }
 
     @Override
     public void after(BackupRequest request, String principal, java.util.concurrent.CompletionStage<TaskResult> result) {
         var context = hookContext(request, principal);
         if (context == null) return;
-        result.thenAccept(outcome -> LifecycleHooks.after(config.lifecycleIntegrations(), context, outcome));
+        result.thenAccept(outcome -> LifecycleHooks.after(api.lifecycleAllowlist(), context, outcome));
     }
 
     @Override

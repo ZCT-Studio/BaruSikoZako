@@ -3,6 +3,7 @@ import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
 import io.github.zct_studio.barusikozako.buildlogic.MinecraftSourcesPlugin
 import io.github.zct_studio.barusikozako.buildlogic.PublishProductJar
 import net.fabricmc.loom.task.RemapJarTask
+import org.gradle.api.tasks.SourceSetContainer
 
 plugins {
     alias(libs.plugins.fabric.remapping)
@@ -16,6 +17,12 @@ val compatibility = Properties().apply {
 }
 val game = parent!!.name.removePrefix("mc").replace('_', '.')
 val packageTarget = "${extra["fabricPackageLoader"]}$game"
+val standaloneJar = project(":platforms:standalone").tasks.named("jar", org.gradle.jvm.tasks.Jar::class.java)
+    .flatMap { it.archiveFile }
+// 双击引导器 DoubleClickLauncher 已移到 :platforms:standalone 模块按 Java 17 编译，这里从它的编译
+// 产物取回该类打进最终产物顶层（Loom 重映射对纯 JDK 类是空操作，字节码仍为 Java 17）。
+val standaloneLauncher = project(":platforms:standalone").extensions.getByType<SourceSetContainer>()
+    .named("main").map { it.output }
 val mixinConfig = MinecraftSourcesPlugin.target(project, MinecraftSourcesPlugin.load(project)).mixinConfigName()
 val backendArchive = "barusikozako_backendzstd-fabric-$game-${extra["zstdVersion"]}.jar"
 val apiVersion = requireNotNull(compatibility.getProperty("fabric.legacy.api.$game")) {
@@ -85,11 +92,25 @@ val notices = tasks.register<CollectNotices>("collectNotices") {
 }
 
 tasks.jar {
-    manifest.attributes("Implementation-Version" to project.version.toString())
+    manifest.attributes(
+        "Implementation-Version" to project.version.toString(),
+        "Main-Class" to "io.github.zct_studio.barusikozako.fabric.DoubleClickLauncher",
+    )
     from(rootProject.file("LICENSE")) { into("META-INF") }
     from(notices.flatMap { it.collected }) { into("META-INF/third-party") }
 }
 
 val bundledJar = tasks.named<RemapJarTask>("remapJar")
+bundledJar.configure {
+    // Loom 重映射会重建清单与资源，这里显式保证双击引导类与嵌套包进入最终产物。
+    manifest.attributes("Main-Class" to "io.github.zct_studio.barusikozako.fabric.DoubleClickLauncher")
+    from(standaloneJar) {
+        into("META-INF/standalone")
+        rename { "standalone.jar" }
+    }
+    from(standaloneLauncher) {
+        include("io/github/zct_studio/barusikozako/fabric/DoubleClickLauncher*.class")
+    }
+}
 PublishProductJar.register(project, "publishBundledProduct", "mod", "barusikozako", packageTarget,
     bundledJar.flatMap { it.archiveFile })

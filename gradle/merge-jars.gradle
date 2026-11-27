@@ -15,7 +15,12 @@ def node = 'mc' + game.replace('.', '_')
 gradle.projectsEvaluated {
     def jars = [:]
     if (loaders.contains('fabric')) {
-        jars.fabric = project(":app:${node}:fabric").tasks.named('jar')
+        // 与发布产物一致：能重映射的版本（1.21.x）必须合并 remapJar，
+        // 否则 jar 保留 Mojang 名称且缺少 META-INF/jars，生产环境 Mixin 与嵌套依赖都会失效。
+        // 26.x 无需重映射，jar 即最终产物。
+        def fabricProject = project(":app:${node}:fabric")
+        jars.fabric = fabricProject.tasks.named(
+            fabricProject.tasks.names.contains('remapJar') ? 'remapJar' : 'jar')
     }
     if (loaders.contains('forge')) {
         jars.forge = project(":app:${node}:forge").tasks.named('forgeBundledJar')

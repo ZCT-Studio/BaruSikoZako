@@ -10,7 +10,13 @@ configurations.named(staticFixture.implementationConfigurationName) {
 dependencies {
     api(project(":backends:spi"))
     implementation(project(":backends:compression-zstd"))
-    implementation(libs.commons.compress)
+    implementation(libs.commons.lang3)
+    implementation(libs.commons.compress) {
+        // codec 在 zip/tar 链路中零引用，排除以缩减体积。
+        // lang3 是 commons-compress 的传递依赖，必须保留完整实现：不能再用同包名的迷你 shim
+        // 替代——那会在游戏类加载器中顶掉 Minecraft 本体依赖的 org.apache.commons.lang3.*。
+        exclude(group = "commons-codec", module = "commons-codec")
+    }
     implementation(libs.jackson.core)
     add(staticFixture.implementationConfigurationName, project(":engine:core"))
     add(staticFixture.implementationConfigurationName, sourceSets.main.get().output)

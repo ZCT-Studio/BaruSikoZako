@@ -70,6 +70,46 @@ public interface BackupService {
             new UnsupportedOperationException("Version information unavailable"));
     }
 
+    /**
+     * 已注册后端与已激活拓展的真实模组元数据。id 是加载器标识，name 是模组显示名，
+     * 便于界面展示；宿主不支持时返回空列表。
+     */
+    default CompletionStage<List<ModInfo>> mods() {
+        return java.util.concurrent.CompletableFuture.completedStage(List.of());
+    }
+
+    /** 一个已注册后端或已激活拓展的模组元数据 */
+    record ModInfo(String id, String name, String version) {
+        public ModInfo {
+            Objects.requireNonNull(id);
+            name = name == null || name.isBlank() ? id : name;
+            version = version == null || version.isBlank() ? "unknown" : version;
+        }
+    }
+
+    /**
+     * 记录一条日志。宿主自动附加集成来源标识（mod 容器 ID），调用方不能伪造来源；
+     * 句柄被撤销或宿主不支持时静默忽略。message 由宿主清洗为单行文本。
+     */
+    default void log(LogLevel level, String message) {}
+
+    /**
+     * 向预设受众发送一条聊天消息，返回的阶段给出成功排队投递的在线玩家数。
+     *
+     * <p>受众只能是 {@link MessageTarget} 的三类预设值，接口不接受玩家名或 UUID，
+     * 因此扩展无法自由选择接收人。{@code EXECUTOR} 指最近一次经同一句柄提交任务时
+     * 携带的 {@link BackupOperator} 所对应的在线玩家；找不到可解析的执行者时返回 0。
+     * 投递是异步的，数值只代表已排队的玩家数，不等待消息显示。
+     */
+    default CompletionStage<Integer> sendMessage(MessageTarget target, String message) {
+        return java.util.concurrent.CompletableFuture.completedStage(0);
+    }
+
+    /** 日志级别；与宿主日志体系对应 */
+    enum LogLevel { ERROR, WARN, INFO, DEBUG, TRACE }
+
+    /** 玩家消息受众；只允许预设三类，不接受任意玩家标识 */
+    enum MessageTarget { ALL, EXECUTOR, ADMINS }
 
     CompletionStage<List<CapabilityState>> capabilities();
 

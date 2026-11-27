@@ -27,12 +27,17 @@ public final class MainMod {
             () -> ModList.get().isLoaded("barusikozako_api"),
             () -> ModList.get().getModContainerById("barusikozako_api")
                 .map(container -> container.getModInfo().getVersion().toString()).orElse(null), () ->
-            ModList.get().applyForEachModContainer(container -> NativeEntrypoints.integration(
-                container.getModId(),
-                ServiceIntegrations.source(container.getModId(),
-                    () -> container.getModInfo().getOwningFile().getFile().getFilePath()),
-                () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
-                () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null)))
+            ModList.get().applyForEachModContainer(container -> {
+                var extension = container.getCustomExtension(ZakoBakIntegration.class);
+                var source = ServiceIntegrations.source(container.getModId(),
+                    () -> container.getModInfo().getOwningFile().getFile().getFilePath());
+                if (!NativeEntrypoints.declaresIntegration(source, extension.isPresent())) return null;
+                return NativeEntrypoints.integration(container.getModId(),
+                    container.getModInfo().getVersion().toString(), source,
+                    () -> extension.map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
+                    () -> extension.map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null));
+            })
+                .filter(java.util.Objects::nonNull)
                 .toList()));
         BaruSikoZakoServer.bootstrapConfig();
         var runtime = new BaruSikoZakoServer();

@@ -60,6 +60,11 @@ public final class BaruSikoZakoServer {
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC);
     private static final String REPOSITORY = FabricOperations.REPOSITORY_ID;
     private static final String SOURCE = FabricOperations.SOURCE_ID;
+
+    /** 一条集成的激活结果，供 version 与 list version 指令展示 */
+    record IntegrationNote(String id, String version, State state, String detail) {
+        enum State { ACTIVATED, REJECTED, FAILED, DUPLICATE }
+    }
     private static final class WorldWorkers {
         final WorldStartupGate.RestoreNotice restoreNotice;
         final Set<UUID> restoreNoticeRecipients;
@@ -102,6 +107,8 @@ public final class BaruSikoZakoServer {
     private volatile MinecraftServer server;
     private volatile Path repositoryPath;
     private volatile long backupIntervalSeconds;
+    private volatile List<IntegrationNote> integrationNotes = List.of();
+    private volatile boolean integrationAuthorization;
     private volatile Instant lastBackupTime;
     private volatile TaskResult lastBackupResult;
     private boolean startupNoticeSent;
@@ -131,12 +138,20 @@ public final class BaruSikoZakoServer {
                     !config.backendKeyword().equals(configuredBackend()))
                     throw new IllegalArgumentException("Backend is not installed: " + config.backendKeyword());
             }))
+            .then(configCommand("api", ApiConfig.defaults(), values -> ApiConfig.parse(values)))
             .then(Commands.literal("list")
                 .executes(context -> list(context.getSource(), 1))
                 .then(Commands.literal("page").then(Commands.argument("page",
                         com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                     .executes(context -> list(context.getSource(),
-                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "page"))))))
+                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "page")))))
+                .then(Commands.literal("version")
+                    .then(Commands.literal("backends")
+                        .executes(context -> listVersionBackends(context.getSource())))
+                    .then(Commands.literal("mod")
+                        .executes(context -> listVersionMod(context.getSource())))
+                    .then(Commands.literal("extensions")
+                        .executes(context -> listVersionExtensions(context.getSource())))))
             .then(snapshotSelection("detail", BaruSikoZakoServer::detail))
             .then(snapshotCommand("verify",
                 snapshot -> new BackupRequest.Verify(snapshot, BackupRequest.VerificationLevel.FULL)))
@@ -154,7 +169,13 @@ public final class BaruSikoZakoServer {
                     .executes(context -> listTasks(context.getSource(),
                         com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "page"))))));
         var backup = Commands.literal("backup")
-            .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED, Optional.empty()));
+            .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED,
+                Optional.empty(), Optional.empty()))
+            .then(Commands.literal("note")
+                .then(Commands.argument("note", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                    .executes(context -> submitBackup(context.getSource(), BackupRequest.BackupMode.CONFIGURED,
+                        Optional.empty(),
+                        Optional.of(com.mojang.brigadier.arguments.StringArgumentType.getString(context, "note"))))));
         for (var provider : BackendRegistry.registered().values()) {
             if (!provider.keyword().equals(selected)) continue;
             for (var command : provider.commands()) {
@@ -179,6 +200,7 @@ public final class BaruSikoZakoServer {
             Translations.text(source, "help.version"),
             Translations.text(source, "help.backup"),
             Translations.text(source, "help.list"),
+            Translations.text(source, "help.list_version"),
             Translations.text(source, "help.detail"),
             Translations.text(source, "help.verify"),
             Translations.text(source, "help.delete"),
@@ -298,6 +320,16 @@ public final class BaruSikoZakoServer {
             }
             return page.next().isEmpty() || operator != service ? CompletableFuture.completedFuture(null) :
                 scanSnapshots(service, page.next(), stop);
+        });
+    }
+
+    /** 全量收集快照，供列表按创建时间排序展示；沿用 scanSnapshots 的分页遍历。 */
+    private CompletionStage<List<BackupService.SnapshotInfo>> collectSnapshots(BackupService service,
+            Optional<String> after, List<BackupService.SnapshotInfo> accumulated) {
+        return service.snapshots(REPOSITORY, new PageRequest(SNAPSHOT_LOOKUP_PAGE_SIZE, after)).thenCompose(page -> {
+            accumulated.addAll(page.items());
+            return page.next().isEmpty() || operator != service ? CompletableFuture.completedFuture(accumulated) :
+                collectSnapshots(service, page.next(), accumulated);
         });
     }
 
@@ -438,6 +470,11 @@ public final class BaruSikoZakoServer {
             LOG.log(System.Logger.Level.WARNING, "Could not create server configuration", failure);
         }
         try {
+            ApiConfig.load(true);
+        } catch (IOException | RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not create API configuration", failure);
+        }
+        try {
             BackupExclusions.ensureConfig(LoaderBridge.configDirectory().resolve("barusikozako"));
         } catch (IOException | RuntimeException failure) {
             LOG.log(System.Logger.Level.WARNING, "Could not create backup ignore configuration", failure);
@@ -551,6 +588,8 @@ public final class BaruSikoZakoServer {
             for (var player : server.getPlayerList().getPlayers()) {
                 var source = player.createCommandSourceStack();
                 if (!GameCommandAccess.isAdministrator(source)) continue;
+                // 客户端语言要等首个客户端信息包才有值，否则首条提示会用默认英文发送
+                if (PlayerLanguage.get(player) == null) continue;
                 firstPlayerNoticeSent = true;
                 if (startupPromptDue()) {
                     sendStartupNotice(source);
@@ -664,18 +703,22 @@ public final class BaruSikoZakoServer {
             Chat.line(source, Chat.Tone.FAILURE, Translations.format(source, "command.backend_inactive", backend));
             return 0;
         }
-        return submitBackup(source, mode, baseline);
+        return submitBackup(source, mode, baseline, Optional.empty());
     }
 
-    private int submitBackup(CommandSourceStack source, BackupRequest.BackupMode mode, Optional<SnapshotRef> baseline) {
+    private int submitBackup(CommandSourceStack source, BackupRequest.BackupMode mode, Optional<SnapshotRef> baseline,
+                             Optional<String> note) {
         return submit(source, new BackupRequest.Backup(REPOSITORY, SOURCE,
-            new BackupRequest.Trigger("command", "manual", snapshotMetadata(source)), mode, baseline));
+            new BackupRequest.Trigger("command", "manual", snapshotMetadata(source, note)), mode, baseline));
     }
 
-    /** 快照附加元信息：操作人、游戏版本、模组版本与后端版本 */
-    private Map<String, String> snapshotMetadata(CommandSourceStack source) {
+    /** 快照附加元信息：操作人、游戏版本、模组版本、后端版本与可选备注 */
+    private Map<String, String> snapshotMetadata(CommandSourceStack source, Optional<String> note) {
         var metadata = new java.util.LinkedHashMap<>(runtimeMetadata());
         metadata.putAll(operatorMetadata(source));
+        note.map(text -> text.strip())
+            .filter(text -> !text.isEmpty())
+            .ifPresent(text -> metadata.put("note", text.length() > 256 ? text.substring(0, 256) : text));
         return metadata;
     }
 
@@ -708,6 +751,7 @@ public final class BaruSikoZakoServer {
     private void start(MinecraftServer server, WorldWorkers session) {
         try {
             var config = ServerConfig.load(true);
+            var api = loadApiConfig();
             if (!BackendRegistry.registered().containsKey(config.backendKeyword())) {
                 LOG.log(System.Logger.Level.INFO, "No selected backup backend installed: {0}", config.backendKeyword());
                 return;
@@ -722,8 +766,9 @@ public final class BaruSikoZakoServer {
                     Files.createDirectories(staging);
                     capture = new WorldCapture(world, ServerRepository.checkPath(staging, world), config);
                 }
-                var operations = new FabricOperations(config, world, capture, backend,
-                    server.isDedicatedServer() || WorldStartupGate.canRestoreClientWorld(world));
+                var operations = new FabricOperations(config, api, world, capture, backend,
+                    server.isDedicatedServer() || WorldStartupGate.canRestoreClientWorld(world),
+                    () -> server);
                 activeBackend = config.backendKeyword();
                 backupIntervalSeconds = config.backupIntervalSeconds();
                 repositoryPath = operations.repositoryPath();
@@ -750,7 +795,8 @@ public final class BaruSikoZakoServer {
             LOG.log(System.Logger.Level.INFO, "BaruSikoZako services ready");
             if (capture != null) LOG.log(System.Logger.Level.WARNING,
                 "Online backups capture files while the server runs; cross-file state is not atomic");
-            activateIntegrations(running, config);
+            integrationAuthorization = api.authorization();
+            integrationNotes = activateIntegrations(running, api);
         } catch (IOException | RuntimeException failure) {
             LOG.log(System.Logger.Level.ERROR, "BaruSikoZako unavailable: failed to load server configuration", failure);
         }
@@ -778,27 +824,68 @@ public final class BaruSikoZakoServer {
         }
     }
 
-    private static void activateIntegrations(BackupApiHost host, ServerConfig config) {
+    /** 授权配置不可用时回退到默认值（关闭授权），不影响备份本体 */
+    private static ApiConfig loadApiConfig() {
+        try {
+            return ApiConfig.load(true);
+        } catch (IOException | RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "Could not read api.yml; integration authorization stays disabled", failure);
+            try {
+                return ApiConfig.parse(ApiConfig.defaults());
+            } catch (IOException impossible) {
+                throw new IllegalStateException(impossible);
+            }
+        }
+    }
+
+    /**
+     * 激活所有被发现的集成。授权关闭时不做任何名单检查，并授予全部权限；
+     * 开启时按 api.yml 的三份名单判定，未列名的集成只记录不激活。
+     */
+    private List<IntegrationNote> activateIntegrations(BackupApiHost host, ApiConfig api) {
+        var notes = new ArrayList<IntegrationNote>();
         var accepted = new java.util.HashSet<String>();
+        boolean authorized = api.authorization();
         for (var entry : LoaderBridge.entries("barusikozako:backup_api", BackupIntegration.class)) {
-            if (Thread.currentThread().isInterrupted()) return;
+            if (Thread.currentThread().isInterrupted()) break;
             String id = entry.owner();
-            if (!config.integrations().contains(id) || !accepted.add(id)) continue;
+            String version = entry.version();
+            if (!accepted.add(id)) {
+                LOG.log(System.Logger.Level.INFO, "Integration {0} is declared more than once; keeping the first", id);
+                notes.add(new IntegrationNote(id, version, IntegrationNote.State.DUPLICATE, null));
+                continue;
+            }
+            if (authorized && !api.integrations().contains(id)) {
+                LOG.log(System.Logger.Level.WARNING,
+                    "Integration {0} skipped: not listed in api.yml authorization.integrations", id);
+                notes.add(new IntegrationNote(id, version, IntegrationNote.State.REJECTED, "authorization"));
+                continue;
+            }
+            boolean maintenance = !authorized || api.maintenanceIntegrations().contains(id);
             var rights = EnumSet.of(Right.BACKUP, Right.VERIFY, Right.VIEW, Right.SUBSCRIBE, Right.CANCEL);
-            boolean maintenance = config.maintenanceIntegrations().contains(id);
             if (maintenance) rights.addAll(EnumSet.of(Right.RESTORE, Right.DELETE));
             var grant = new Grant(Map.of(REPOSITORY, rights), Set.of(SOURCE), maintenance ? Set.of(SOURCE) : Set.of());
             var binding = host.bind(id, grant);
             try {
                 var integration = entry.value().get();
-                if (integration == null) binding.close();
-                else integration.onBackupService(binding.service());
+                if (integration == null) {
+                    binding.close();
+                    LOG.log(System.Logger.Level.WARNING, "Integration {0} did not provide an implementation", id);
+                    notes.add(new IntegrationNote(id, version, IntegrationNote.State.FAILED, "no implementation"));
+                    continue;
+                }
+                integration.onBackupService(binding.service());
+                LOG.log(System.Logger.Level.INFO, "Integration {0} activated (maintenance={1})", id, maintenance);
+                notes.add(new IntegrationNote(id, version, IntegrationNote.State.ACTIVATED, null));
             } catch (Throwable failure) {
                 binding.close();
                 LOG.log(System.Logger.Level.WARNING, "Integration {0} failed to accept its backup API ({1})",
                     id, failure.getClass().getName());
+                notes.add(new IntegrationNote(id, version, IntegrationNote.State.FAILED,
+                    failure.getClass().getSimpleName()));
             }
         }
+        return List.copyOf(notes);
     }
 
     private void stop() {
@@ -864,8 +951,8 @@ public final class BaruSikoZakoServer {
         return 1;
     }
 
-    /** 打印本体、API 与已注册后端的版本信息 */
-    private static int version(CommandSourceStack source) {
+    /** 打印本体、API、已注册后端与集成激活情况的版本信息 */
+    private int version(CommandSourceStack source) {
         var rows = new ArrayList<Chat.Row>();
         rows.add(Chat.row(Translations.text(source, "label.mod_version"), LoaderBridge.productVersion()));
         var api = LoaderBridge.apiVersion();
@@ -875,7 +962,63 @@ public final class BaruSikoZakoServer {
             .map(entry -> entry.getKey() + " " + entry.getValue()).toList();
         rows.add(Chat.row(Translations.text(source, "label.backends"),
             backends.isEmpty() ? Translations.text(source, "status.none") : String.join(" · ", backends)));
+        rows.add(Chat.row(Translations.text(source, "label.authorization"),
+            Translations.text(source, integrationAuthorization ? "state.enabled" : "state.disabled")));
+        var notes = integrationNotes;
+        var activated = notes.stream().filter(note -> note.state() == IntegrationNote.State.ACTIVATED)
+            .map(BaruSikoZakoServer::integrationLabel).toList();
+        rows.add(Chat.row(Translations.text(source, "label.integrations"),
+            activated.isEmpty() ? Translations.text(source, "status.none") : String.join(" · ", activated)));
+        var rejected = notes.stream().filter(note -> note.state() != IntegrationNote.State.ACTIVATED)
+            .map(note -> integrationLabel(note) + " (" + integrationState(source, note) + ")").toList();
+        rows.add(Chat.row(Translations.text(source, "label.integrations_rejected"),
+            rejected.isEmpty() ? Translations.text(source, "status.none") : String.join(" · ", rejected)));
         Chat.send(source, Chat.Tone.INFO, Translations.text(source, "chat.title.version"), rows);
+        return 1;
+    }
+
+    private static String integrationLabel(IntegrationNote note) {
+        return note.version() == null || note.version().isBlank() ? note.id() : note.id() + " " + note.version();
+    }
+
+    private static String integrationState(CommandSourceStack source, IntegrationNote note) {
+        return switch (note.state()) {
+            case ACTIVATED -> Translations.text(source, "state.activated");
+            case REJECTED -> Translations.text(source, "state.rejected");
+            case DUPLICATE -> Translations.text(source, "state.duplicate");
+            case FAILED -> Translations.format(source, "state.failed_detail",
+                note.detail() == null ? "?" : note.detail());
+        };
+    }
+
+    /** 已注册后端的标识与版本 */
+    private static int listVersionBackends(CommandSourceStack source) {
+        var lines = new ArrayList<String>();
+        BackendRegistry.versions().forEach((name, version) -> lines.add(name + " " +
+            (version == null || version.isBlank() ? Translations.text(source, "status.unknown") : version)));
+        if (lines.isEmpty()) lines.add(Translations.text(source, "status.none"));
+        Chat.lines(source, Chat.Tone.INFO, Translations.text(source, "chat.title.version_backends"), lines);
+        return 1;
+    }
+
+    /** 本体与公共 API 的版本 */
+    private static int listVersionMod(CommandSourceStack source) {
+        var lines = new ArrayList<String>();
+        lines.add(Translations.text(source, "label.mod_version") + ": " + LoaderBridge.productVersion());
+        var api = LoaderBridge.apiVersion();
+        if (api != null) lines.add(Translations.text(source, "label.api_version") + ": " + api);
+        Chat.lines(source, Chat.Tone.INFO, Translations.text(source, "chat.title.version_mod"), lines);
+        return 1;
+    }
+
+    /** 所有被发现的拓展及其激活状态 */
+    private int listVersionExtensions(CommandSourceStack source) {
+        var lines = new ArrayList<String>();
+        for (var note : integrationNotes) {
+            lines.add(integrationLabel(note) + " · " + integrationState(source, note));
+        }
+        if (lines.isEmpty()) lines.add(Translations.text(source, "status.none"));
+        Chat.lines(source, Chat.Tone.INFO, Translations.text(source, "chat.title.version_extensions"), lines);
         return 1;
     }
 
@@ -935,13 +1078,14 @@ public final class BaruSikoZakoServer {
         var service = service(source);
         if (service == null) return 0;
         int requested = Math.min(Math.max(1, page), 1024);
-        int limit = requested * PAGE_SIZE + 1;
-        service.snapshots(REPOSITORY, new PageRequest(limit, Optional.empty())).whenComplete((result, failure) -> {
+        collectSnapshots(service, Optional.empty(), new ArrayList<>()).whenComplete((snapshots, failure) -> {
             if (failure != null) {
                 Chat.line(source, Chat.Tone.FAILURE, Translations.text(source, "command.query_failed"));
                 return;
             }
-            var items = result.items();
+            var items = snapshots.stream()
+                .sorted(Comparator.comparing(BackupService.SnapshotInfo::createdAt).reversed())
+                .toList();
             int from = (requested - 1) * PAGE_SIZE;
             if (from >= items.size()) {
                 Chat.line(source, Chat.Tone.INFO, Translations.text(source, "command.snapshots_empty"));

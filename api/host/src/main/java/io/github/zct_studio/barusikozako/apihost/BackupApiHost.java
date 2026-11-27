@@ -7,6 +7,8 @@ import io.github.zct_studio.barusikozako.api.BackupRequest;
 import io.github.zct_studio.barusikozako.api.BackupService;
 import io.github.zct_studio.barusikozako.api.BackupService.Availability;
 import io.github.zct_studio.barusikozako.api.BackupService.CapabilityState;
+import io.github.zct_studio.barusikozako.api.BackupService.LogLevel;
+import io.github.zct_studio.barusikozako.api.BackupService.MessageTarget;
 import io.github.zct_studio.barusikozako.api.BackupService.Page;
 import io.github.zct_studio.barusikozako.api.BackupService.PageRequest;
 import io.github.zct_studio.barusikozako.api.BackupService.RepositoryInfo;
@@ -44,6 +46,8 @@ public final class BackupApiHost implements AutoCloseable {
     public record TimedTask(TaskState state, Instant submittedAt) {}
 
     private final Map<BoundAccess, java.util.Set<RuleRegistration>> worldRules = new java.util.HashMap<>();
+    /** 每个集成句柄最近一次提交任务时携带的操作人，用于 EXECUTOR 消息受众 */
+    private final Map<String, BackupService.BackupOperator> lastOperators = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final class RuleRegistration implements AutoCloseable {
         private final BoundAccess owner;
@@ -132,6 +136,7 @@ public final class BackupApiHost implements AutoCloseable {
         @Override
         public void close() {
             runtime.revoke(access);
+            lastOperators.remove(access.owner());
             synchronized (BackupApiHost.this) {
                 for (var rule : List.copyOf(worldRules.getOrDefault(access, java.util.Set.of()))) rule.close();
             }
@@ -141,6 +146,7 @@ public final class BackupApiHost implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        lastOperators.clear();
         synchronized (this) {
             var rules = worldRules.values().stream().flatMap(java.util.Set::stream).toList();
             for (var rule : rules) rule.close();
@@ -177,10 +183,12 @@ public final class BackupApiHost implements AutoCloseable {
             Objects.requireNonNull(request);
             if (closed) return new Submission.Rejected(Rejection.UNAVAILABLE);
             if (!access.maySubmit(request)) return new Submission.Rejected(Rejection.NOT_AUTHORIZED);
-            var evaluation = operations.evaluate(request);
+            // 版本与操作人是宿主事实：在准入、钩子与落盘之前统一写入，拓展无法伪造或遗漏。
+            var enriched = withRuntimeMetadata(request, operator);
+            var evaluation = operations.evaluate(enriched);
             if (evaluation.isPresent()) return new Submission.Rejected(evaluation.orElseThrow());
-            var before = operations.before(request, access.owner());
-            var admission = runtime.admit(access, request, control -> operations.run(request, new TaskControl() {
+            var before = operations.before(enriched, access.owner());
+            var admission = runtime.admit(access, enriched, control -> operations.run(enriched, new TaskControl() {
                 @Override public void progress(long bytes, OptionalLong total) { control.progress(bytes, total); }
                 @Override public boolean mayContinue() { return control.mayContinue(); }
                 @Override public boolean beginCommit() { return control.beginCommit(); }
@@ -197,8 +205,53 @@ public final class BackupApiHost implements AutoCloseable {
                 return new Submission.Rejected(rejected.reason());
             var accepted = (TaskRuntime.Admission.Accepted) admission;
             var result = accepted.receipt().stage();
-            operations.after(request, access.owner(), result);
+            operator.ifPresent(value -> lastOperators.put(access.owner(), value));
+            operations.after(enriched, access.owner(), result);
             return new Submission.Accepted(accepted.id(), result);
+        }
+
+        /**
+         * 宿主权威地为备份请求补齐运行时版本与操作人信息。
+         * 命令与定时任务此前已自行填写这些字段，宿主用等价的真实值覆盖，结果保持一致；
+         * 第三方拓展（例如 WebUI）只提供备注等自定义字段，版本信息由宿主补上。
+         * 拓展自定义字段保留，但不得覆盖宿主键，且总量遵守 Trigger 的元数据预算。
+         */
+        private BackupRequest withRuntimeMetadata(BackupRequest request,
+                                                  Optional<BackupService.BackupOperator> operator) {
+            if (!(request instanceof BackupRequest.Backup backup)) return request;
+            Map<String, String> runtime;
+            try {
+                runtime = operations.runtimeMetadata();
+            } catch (RuntimeException failure) {
+                // 元数据是诊断信息，取不到版本绝不能让备份本身失败。
+                System.getLogger(BackupApiHost.class.getName()).log(System.Logger.Level.WARNING,
+                    "Unable to collect runtime metadata", failure);
+                runtime = Map.of();
+            }
+            if (runtime.isEmpty() && operator.isEmpty()) return request;
+
+            var merged = new java.util.LinkedHashMap<String, String>();
+            // 宿主字段先写，保证一定存在且不会被拓展伪造。
+            runtime.forEach((key, value) -> putMetadata(merged, key, value));
+            operator.ifPresent(value -> {
+                putMetadata(merged, "operator", value.name());
+                value.id().ifPresent(id -> putMetadata(merged, "operatorUuid", id.toString()));
+            });
+            // 拓展自带的备注/来源标记等字段在剩余预算内保留，但不能覆盖宿主键。
+            backup.trigger().metadata().forEach((key, value) -> {
+                if (!merged.containsKey(key)) putMetadata(merged, key, value);
+            });
+            var trigger = new BackupRequest.Trigger(backup.trigger().source(), backup.trigger().reason(), merged);
+            return new BackupRequest.Backup(backup.repositoryId(), backup.sourceId(), trigger,
+                backup.mode(), backup.baseline());
+        }
+
+        /** 遵守 BackupRequest.Trigger 的约束：最多 16 项，键 ≤64、值 ≤256，且不允许 null 值。 */
+        private static void putMetadata(Map<String, String> target, String key, String value) {
+            if (key == null || key.isBlank() || key.length() > 64) return;
+            if (target.size() >= 16 && !target.containsKey(key)) return;
+            var text = value == null ? "unknown" : value;
+            target.put(key, text.length() > 256 ? text.substring(0, 256) : text);
         }
 
         @Override public Cancellation cancel(TaskId id) { return runtime.cancel(access, id); }
@@ -312,6 +365,39 @@ public final class BackupApiHost implements AutoCloseable {
                 requireViewAny();
                 return operations.version();
             });
+        }
+
+        @Override
+        public CompletionStage<java.util.List<ModInfo>> mods() {
+            return read(() -> {
+                requireActive();
+                requireViewAny();
+                return operations.mods();
+            });
+        }
+
+        @Override public void log(LogLevel level, String message) {
+            Objects.requireNonNull(level, "level");
+            Objects.requireNonNull(message, "message");
+            if (!access.isActive()) return;
+            try {
+                operations.log(access.owner(), level, message);
+            } catch (RuntimeException failure) {
+                System.getLogger(BackupApiHost.class.getName()).log(System.Logger.Level.WARNING,
+                    "Unable to record an integration log message", failure);
+            }
+        }
+
+        @Override public CompletionStage<Integer> sendMessage(MessageTarget target, String message) {
+            Objects.requireNonNull(target, "target");
+            Objects.requireNonNull(message, "message");
+            if (!access.isActive()) return java.util.concurrent.CompletableFuture.completedStage(0);
+            try {
+                return operations.sendMessage(access.owner(), target, message,
+                    Optional.ofNullable(lastOperators.get(access.owner())));
+            } catch (RuntimeException failure) {
+                return java.util.concurrent.CompletableFuture.failedStage(failure);
+            }
         }
 
         private void requireView(String repositoryId) {
@@ -442,6 +528,39 @@ public final class BackupApiHost implements AutoCloseable {
         }
         default ServiceStatus status() throws IOException { throw new UnsupportedOperationException("Service status unavailable"); }
         default VersionInfo version() throws IOException { throw new UnsupportedOperationException("Version information unavailable"); }
+        default java.util.List<BackupService.ModInfo> mods() throws IOException { return java.util.List.of(); }
+
+        /**
+         * 宿主权威的运行时版本信息（游戏版本、主模组版本、后端版本）。每次备份提交时由
+         * 宿主写入快照元数据，第三方集成无需、也无法自行伪造这些字段。默认返回空 Map，
+         * 例如独立运行的 javaagent 平台没有游戏版本概念。
+         */
+        default Map<String, String> runtimeMetadata() { return Map.of(); }
+
+        /** 记录一条带集成来源的日志；默认写入 BaruSikoZako 日志 */
+        default void log(String source, BackupService.LogLevel level, String message) {
+            var target = switch (level) {
+                case ERROR -> System.Logger.Level.ERROR;
+                case WARN -> System.Logger.Level.WARNING;
+                case INFO -> System.Logger.Level.INFO;
+                case DEBUG -> System.Logger.Level.DEBUG;
+                case TRACE -> System.Logger.Level.TRACE;
+            };
+            var text = "[" + source + "] " + String.valueOf(message)
+                .replace('\n', ' ').replace('\r', ' ').replace('\t', ' ');
+            System.getLogger("BaruSikoZako").log(target, text);
+        }
+
+        /**
+         * 向预设受众投递消息。source 为集成标识，executor 为最近一次经该句柄提交任务的操作人。
+         * 默认实现不支持玩家消息并返回 0；平台实现应在服务端主线程读取玩家列表。
+         */
+        default java.util.concurrent.CompletionStage<Integer> sendMessage(
+                String source, BackupService.MessageTarget target, String message,
+                java.util.Optional<BackupService.BackupOperator> executor) {
+            return java.util.concurrent.CompletableFuture.completedStage(0);
+        }
+
         Availability availability(BackupRequest.Kind kind);
         /** 仅非阻塞平台准入检查 */
         Optional<BackupService.Rejection> evaluate(BackupRequest request);

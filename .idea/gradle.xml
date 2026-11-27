@@ -47,6 +47,7 @@
             <option value="$PROJECT_DIR$/engine/mod-runtime" />
             <option value="$PROJECT_DIR$/platforms" />
             <option value="$PROJECT_DIR$/platforms/spi" />
+            <option value="$PROJECT_DIR$/platforms/standalone" />
           </set>
         </option>
         <option name="resolveExternalAnnotations" value="true" />

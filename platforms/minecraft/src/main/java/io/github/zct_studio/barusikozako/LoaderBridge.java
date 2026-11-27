@@ -23,6 +23,8 @@ public final class LoaderBridge {
         boolean apiAvailable();
         /** 已安装 API 的版本；未安装返回 null，已安装但无法取得版本时返回 unknown */
         default String apiVersion() { return apiAvailable() ? "unknown" : null; }
+        /** 模组的显示名；加载器取不到时返回标识本身 */
+        default String modName(String id) { return id; }
         <T> List<Entry<T>> entries(String channel, Class<T> contract);
     }
 
@@ -43,6 +45,8 @@ public final class LoaderBridge {
     static String productVersion() { return requireBinding().productVersion(); }
 
     static String apiVersion() { return requireBinding().apiVersion(); }
+
+    static String modName(String id) { return requireBinding().modName(id); }
 
     static <T> List<Entry<T>> entries(String channel, Class<T> contract) {
         var current = requireBinding();

@@ -1,4 +1,9 @@
 import java.util.Properties
+import java.io.File
+import java.util.Collections
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import io.github.zct_studio.barusikozako.buildlogic.CollectNotices
 
 plugins {
@@ -33,9 +38,9 @@ dependencies {
         implementation(project(module))
         include(project(module))
     }
-    for (dependency in listOf(libs.zstd.jni, libs.commons.compress, libs.jackson.core)) include(dependency)
-    for (dependency in listOf("commons-codec:commons-codec:1.19.0", "commons-io:commons-io:2.20.0",
-        "org.apache.commons:commons-lang3:3.18.0")) include(dependency)
+    for (dependency in listOf(libs.zstd.jni, libs.commons.compress, libs.commons.lang3, libs.jackson.core)) include(dependency)
+    // codec 不再 include：在 zip/tar 链路中零引用。
+    for (dependency in listOf("commons-io:commons-io:2.20.0")) include(dependency)
 }
 
 sourceSets.main { resources.srcDir(rootProject.file("platforms/fabric-zstd-package/src/main/resources")) }
@@ -73,4 +78,59 @@ tasks.jar {
     from(collectNotices.flatMap { it.collected }) { into("META-INF/third-party") }
     archiveBaseName.set("barusikozako_backendzstd-fabric$runtimeSuffix")
     from(rootProject.file("LICENSE")) { into("META-INF") }
+}
+
+// —— 体积精简：重写 included 依赖 jar，去掉冷门平台 native 库与非 tar 归档代码 ——
+// 规则与 :platforms:standalone 的 CopySpec exclude 保持一致。
+val nativeStripPrefixes = listOf(
+    "aix/", "freebsd/i386/",
+    "linux/arm/", "linux/i386/", "linux/loongarch64/", "linux/mips64/",
+    "linux/ppc64/", "linux/ppc64le/", "linux/riscv64/", "linux/s390x/",
+    "win/x86/",
+)
+val compressStripPrefixes = listOf(
+    "org/apache/commons/compress/harmony/",
+    "org/apache/commons/compress/archivers/sevenz/",
+    "org/apache/commons/compress/archivers/dump/",
+    "org/apache/commons/compress/archivers/cpio/",
+    "org/apache/commons/compress/archivers/arj/",
+    "org/apache/commons/compress/archivers/ar/",
+    "org/apache/commons/compress/archivers/jar/",
+    "org/apache/commons/compress/archivers/examples/",
+    "org/apache/commons/compress/compressors/",
+    "org/apache/commons/compress/changes/",
+)
+
+fun stripJar(jar: File, prefixes: List<String>) {
+    val tmp = File.createTempFile("barusikozako-strip", ".jar")
+    ZipFile(jar).use { zin ->
+        ZipOutputStream(tmp.outputStream()).use { zout ->
+            for (entry in Collections.list(zin.entries())) {
+                if (prefixes.any { entry.name.startsWith(it) }) continue
+                val copy = ZipEntry(entry.name)
+                copy.time = 0L
+                zout.putNextEntry(copy)
+                zin.getInputStream(entry).copyTo(zout)
+                zout.closeEntry()
+            }
+        }
+    }
+    tmp.copyTo(jar, overwrite = true)
+    tmp.delete()
+}
+
+fun stripIncludedJar(f: File) {
+    when {
+        f.name.startsWith("zstd-jni-") -> stripJar(f, nativeStripPrefixes)
+        f.name.startsWith("commons-compress-") -> stripJar(f, compressStripPrefixes)
+    }
+}
+
+tasks.named("processIncludeJars") {
+    doLast {
+        outputs.files.files.forEach { f ->
+            if (f.isDirectory) f.listFiles()?.forEach { stripIncludedJar(it) }
+            else stripIncludedJar(f)
+        }
+    }
 }

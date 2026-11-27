@@ -19,27 +19,19 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
-## [1.1.0] - 2026-11-26
+## [1.2.0] - 2026-11-28
 
 ### Added / 新增
 
-- Paged task listing through the API, matching the task list command and including submission time, operator and current state.
-<br> API 支持分页查询任务列表，与任务列表指令一致，并返回提交时间、操作人与当前状态。
-- Look up a single snapshot by its reference, matching the snapshot detail command.
-<br> API 支持按快照标识查询单条信息，与快照详细信息指令一致。
-- Query service status and component versions through the API.
-<br> API 支持查询服务状态与各组件版本。
-- Read and update the configuration of registered backends through the API.
-<br> API 支持读取与更新已注册后端的配置。
-- ZakoBak API now requires the matching or newer main mod version (`>=` on Fabric, `[version,)` on Forge and NeoForge).
-<br> ZakoBak API 现在要求主模组为相同或更高版本（Fabric 使用 `>=`，Forge 与 NeoForge 使用 `[版本,)`）。
+- Integrations can write log lines through `BackupService.log(level, message)`. The host prefixes every line with the integration's container ID, so an extension cannot forge its origin, and ignores lines silently after its binding is revoked.
+<br> 集成可以通过 `BackupService.log(level, message)` 写日志。宿主会为每行自动附加集成的容器 ID 前缀，扩展无法伪造来源；绑定被撤销后调用会静默忽略。
+- Integrations can notify players through `BackupService.sendMessage(target, message)`. The target is limited to the presets `ALL`, `EXECUTOR` and `ADMINS`; the API never accepts a player name or UUID. `EXECUTOR` resolves to the operator carried by the most recent task the same binding submitted, and the returned stage reports how many players were queued.
+<br> 集成可以通过 `BackupService.sendMessage(target, message)` 通知玩家。目标只允许 `ALL`、`EXECUTOR`、`ADMINS` 三类预设值，API 从不接受玩家名或 UUID。`EXECUTOR` 解析为同一绑定最近一次提交任务时携带的操作人，返回的阶段给出已排队投递的玩家数。
 
 ### Changed / 变更
 
-- The minimum main MOD version supported is 1.1.0.
-<br> 支持最低主模组版本为1.1.0
-- Lifecycle hooks now cover verification, deletion and online restore, in addition to backups and offline restore.
-<br> 生命周期钩子除备份与离线恢复外，现在也覆盖校验、删除和在线回滚。
+- Integration authorization is now opt-in: `api.yml` holds `authorization.enabled` and defaults to `false`. While disabled, integrations are activated without allowlist checks and receive full rights; when enabled, the previous allowlists and grants apply unchanged.
+<br> 集成授权改为可选：`api.yml` 的 `authorization.enabled` 默认为 `false`。关闭时集成不需要名单即可激活并获得全部权限；开启时沿用原有名单与授权范围。
 
->**_This Changelog is M(achine) T(ranslation) and verified_**
-><br>**_本次更新日志为机器翻译内容内容，并且经过验证_**
+>**_This Changelog is AIGC and verified_**
+><br>**_本次更新日志为AI生成内容，并且经过验证_**

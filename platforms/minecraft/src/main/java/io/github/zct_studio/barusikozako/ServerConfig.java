@@ -7,14 +7,13 @@ import io.github.zct_studio.barusikozako.backend.Consistency;
 import io.github.zct_studio.barusikozako.backend.ConfigUnits;
 import io.github.zct_studio.barusikozako.core.BackupEngine;
 import java.io.IOException;
-import java.util.HashSet;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-record ServerConfig(BackupEngine.Limits readLimits, long manifestBudget, Set<String> integrations, Set<String> maintenanceIntegrations, Set<String> lifecycleIntegrations,
+record ServerConfig(BackupEngine.Limits readLimits, long manifestBudget,
                     long backupIntervalSeconds, boolean captureEnabled, long preparationMillis, int mainThreadBudgetMillis,
                     int fileRetries, int fileRetryDelayMillis, int captureRetries, Consistency consistency,
                     boolean fileCloneAuto, long backupReadBytesPerSecond, String backendKeyword,
@@ -51,7 +50,7 @@ record ServerConfig(BackupEngine.Limits readLimits, long manifestBudget, Set<Str
         ignore.pteroignore=false
         """;
     private static final Set<String> FIELDS = Set.of("schema", "verify.contentBytes", "verify.archiveBytes",
-        "verify.entries", "query.manifestBytes", "api.integrations", "api.maintenanceIntegrations", "api.lifecycleIntegrations", "schedule.intervalSeconds",
+        "verify.entries", "query.manifestBytes", "schedule.intervalSeconds",
         "capture.enabled", "capture.preparationMillis", "capture.pauseMillis", "capture.readOnlyMods", "capture.fileClone",
         "capture.mainThreadBudgetMillis", "capture.fileRetries", "capture.fileRetryDelayMillis",
         "capture.retries", "capture.consistency",
@@ -66,8 +65,14 @@ record ServerConfig(BackupEngine.Limits readLimits, long manifestBudget, Set<Str
 
     static ServerConfig load(boolean createFile) throws IOException {
         var directory = LoaderBridge.configDirectory().resolve("barusikozako");
-        var defaults = defaults();
-        return parse(YamlSettings.load(directory.resolve("server.yml"), defaults, createFile, Map::of));
+        var values = YamlSettings.load(directory.resolve("server.yml"), defaults(), createFile, Map::of);
+        // 授权已迁移到 api.yml；旧键在此剥离，避免未知键校验失败，并尽量自动迁移一次。
+        var legacy = new LinkedHashMap<String, String>();
+        for (String key : new java.util.ArrayList<>(values.keySet())) {
+            if (key.startsWith("api.")) legacy.put(key, values.remove(key));
+        }
+        if (!legacy.isEmpty()) ApiConfig.migrateLegacy(legacy);
+        return parse(values);
     }
 
     static Map<String, String> defaults() {
@@ -119,33 +124,13 @@ record ServerConfig(BackupEngine.Limits readLimits, long manifestBudget, Set<Str
             int retryDelay = boundedMillis(settings, "capture.fileRetryDelayMillis", 50, 1000);
             int captureRetries = bounded(settings, "capture.retries", 1, 0, 5);
             var consistency = Consistency.parse(settings.getProperty("capture.consistency", "strict"));
-            var integrations = modIds(settings, "api.integrations");
-            var maintenance = modIds(settings, "api.maintenanceIntegrations");
-            return new ServerConfig(read, positiveBytes(settings, "query.manifestBytes"), integrations, maintenance,
-                ids(settings, "api.lifecycleIntegrations", "[a-z][a-z0-9_.-]{1,127}"),
+            return new ServerConfig(read, positiveBytes(settings, "query.manifestBytes"),
                 interval, Boolean.parseBoolean(enabled), preparation, mainThreadBudget, retries, retryDelay,
                 captureRetries, consistency, fileClone.equals("auto"), readRate, backend,
                 Boolean.parseBoolean(gitignore), Boolean.parseBoolean(pteroignore));
         } catch (IllegalArgumentException invalid) {
             throw new IOException("Invalid backup configuration", invalid);
         }
-    }
-
-    private static Set<String> modIds(Properties settings, String field) {
-        return ids(settings, field, "[a-z][a-z0-9_-]{1,63}");
-    }
-
-    private static Set<String> ids(Properties settings, String field, String pattern) {
-        var ids = new HashSet<String>();
-        var values = settings.getProperty(field, "").strip();
-        if (!values.isEmpty()) {
-            for (String id : values.split(",", -1)) {
-                var trimmed = id.strip();
-                if (!trimmed.matches(pattern) || !ids.add(trimmed) || ids.size() > 16)
-                    throw new IllegalArgumentException("invalid or repeated component ID in " + field);
-            }
-        }
-        return Set.copyOf(ids);
     }
 
     private static long positive(Properties settings, String key) {

@@ -67,6 +67,8 @@ public final class AccessChecks {
         require(!operator.mayViewTask("local", "operator", false), "revoked handle could still view a task");
         worldRuleLifecycle();
         readSurface();
+        messagingSurface();
+        metadataSurface();
         System.out.println("Public API access checks passed.");
         RuntimeChecks.exercise();
         DeliveryChecks.exercise();
@@ -195,6 +197,153 @@ public final class AccessChecks {
             host.bind("another", grant(Map.of())).service().registerWorldExclusion("cache/");
         }
         require(registered.isEmpty(), "closing the host leaked registered world rules");
+    }
+
+    /** 日志来源自动注入、消息受众限制、执行者解析与撤销后的行为 */
+    private static void messagingSurface() throws Exception {
+        var logged = new java.util.ArrayList<String>();
+        var messages = new java.util.ArrayList<String>();
+        var operations = new BackupApiHost.Operations() {
+            @Override public void log(String source, BackupService.LogLevel level, String message) {
+                logged.add(source + "|" + level + "|" + message);
+            }
+            @Override public java.util.concurrent.CompletionStage<Integer> sendMessage(
+                    String source, BackupService.MessageTarget target, String message,
+                    Optional<BackupService.BackupOperator> executor) {
+                messages.add(source + "|" + target + "|" + message + "|"
+                    + executor.map(BackupService.BackupOperator::name).orElse("-"));
+                return java.util.concurrent.CompletableFuture.completedStage(
+                    target == BackupService.MessageTarget.ALL ? 3 : 1);
+            }
+            @Override public BackupService.Availability availability(BackupRequest.Kind kind) {
+                return BackupService.Availability.AVAILABLE;
+            }
+            @Override public Optional<BackupService.Rejection> evaluate(BackupRequest request) {
+                return Optional.empty();
+            }
+            @Override public List<BackupService.RepositoryInfo> repositories() {
+                return List.of(new BackupService.RepositoryInfo("local", "fixture"));
+            }
+            @Override public BackupService.Page<BackupService.SnapshotInfo> snapshots(
+                    String repository, BackupService.PageRequest page) {
+                return new BackupService.Page<>(List.of(), Optional.empty());
+            }
+            @Override public TaskResult run(BackupRequest request, BackupApiHost.TaskControl control) {
+                require(control.beginCommit(), "fixture message task could not commit");
+                return new TaskResult.Deleted(((BackupRequest.Delete) request).snapshot());
+            }
+        };
+        var rights = EnumSet.of(Right.VIEW, Right.DELETE);
+        try (var host = new BackupApiHost(operations);
+             var binding = host.bind("messenger", new Grant(Map.of("local", rights),
+                 Set.of("world"), Set.of()))) {
+            var service = binding.service();
+            service.log(BackupService.LogLevel.WARN, "first line");
+            require(logged.size() == 1, "log did not reach the host");
+            require(logged.get(0).equals("messenger|WARN|first line"),
+                "log source was not injected: " + logged.get(0));
+
+            var all = service.sendMessage(BackupService.MessageTarget.ALL, "hello")
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            require(all == 3, "ALL target did not reach every player");
+            require(messages.get(0).equals("messenger|ALL|hello|-"),
+                "ALL message context was wrong: " + messages.get(0));
+
+            // EXECUTOR 解析同一句柄最近一次提交任务携带的操作人
+            var actor = new BackupService.BackupOperator("Steve", Optional.of(java.util.UUID.randomUUID()));
+            var accepted = (BackupService.Submission.Accepted) service.submit(
+                new BackupRequest.Delete(new SnapshotRef("local", "snap-1")), Optional.of(actor));
+            accepted.completion().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            service.sendMessage(BackupService.MessageTarget.EXECUTOR, "done")
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            require(messages.get(1).equals("messenger|EXECUTOR|done|Steve"),
+                "executor was not resolved from the last submission: " + messages.get(1));
+
+            binding.close();
+            service.log(BackupService.LogLevel.ERROR, "after revoke");
+            require(logged.size() == 1, "revoked handle still logged");
+            var after = service.sendMessage(BackupService.MessageTarget.ALL, "after revoke")
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            require(after == 0, "revoked handle still delivered messages");
+        }
+        require(messages.size() == 2, "revoked handle reached the host");
+    }
+
+    /** 宿主统一注入版本与操作人；拓展字段保留、伪造的宿主键被覆盖、非备份请求不受影响 */
+    private static void metadataSurface() throws Exception {
+        var captured = new java.util.concurrent.CopyOnWriteArrayList<BackupRequest>();
+        var operations = new BackupApiHost.Operations() {
+            @Override public java.util.Map<String, String> runtimeMetadata() {
+                return java.util.Map.of("gameVersion", "26.3", "modVersion", "1.2.0", "backendVersion", "3.0.1");
+            }
+            @Override public BackupService.Availability availability(BackupRequest.Kind kind) {
+                return BackupService.Availability.AVAILABLE;
+            }
+            @Override public Optional<BackupService.Rejection> evaluate(BackupRequest request) {
+                return Optional.empty();
+            }
+            @Override public List<BackupService.RepositoryInfo> repositories() {
+                return List.of(new BackupService.RepositoryInfo("local", "fixture"));
+            }
+            @Override public BackupService.Page<BackupService.SnapshotInfo> snapshots(
+                    String repository, BackupService.PageRequest page) {
+                return new BackupService.Page<>(List.of(), Optional.empty());
+            }
+            @Override public TaskResult run(BackupRequest request, BackupApiHost.TaskControl control) {
+                captured.add(request);
+                require(control.beginCommit(), "fixture commit rejected");
+                return request instanceof BackupRequest.Delete delete
+                    ? new TaskResult.Deleted(delete.snapshot())
+                    : new TaskResult.BackupCommitted(new SnapshotRef("local", "snapshot"));
+            }
+        };
+        var rights = EnumSet.of(Right.BACKUP, Right.VIEW, Right.DELETE);
+        try (var host = new BackupApiHost(operations);
+             var binding = host.bind("webui", grant(Map.of("local", rights)))) {
+            var service = binding.service();
+
+            // A web-style trigger: only an interface marker, a note and a forged version key.
+            var metadata = new java.util.LinkedHashMap<String, String>();
+            metadata.put("interface", "zakobakui");
+            metadata.put("note", "before edit");
+            metadata.put("gameVersion", "forged");
+            var actor = new BackupService.BackupOperator("web:admin", Optional.of(java.util.UUID.randomUUID()));
+            var accepted = (BackupService.Submission.Accepted) service.submit(
+                new BackupRequest.Backup("local", "world",
+                    new BackupRequest.Trigger("zakobakui", "Web interface backup", metadata)),
+                Optional.of(actor));
+            accepted.completion().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            require(captured.size() == 1, "backup did not reach the host");
+            var stored = ((BackupRequest.Backup) captured.get(0)).trigger().metadata();
+            require("26.3".equals(stored.get("gameVersion")), "forged gameVersion was not overridden");
+            require("1.2.0".equals(stored.get("modVersion")), "modVersion was not injected");
+            require("3.0.1".equals(stored.get("backendVersion")), "backendVersion was not injected");
+            require("web:admin".equals(stored.get("operator")), "operator was not injected");
+            require(actor.id().orElseThrow().toString().equals(stored.get("operatorUuid")),
+                "operatorUuid was not injected");
+            require("zakobakui".equals(stored.get("interface")), "extension marker was dropped");
+            require("before edit".equals(stored.get("note")), "extension note was dropped");
+
+            // The metadata budget is still honoured when an extension fills the trigger.
+            var full = new java.util.LinkedHashMap<String, String>();
+            for (int i = 0; i < 15; i++) full.put("custom" + i, "value" + i);
+            full.put("gameVersion", "forged-again");
+            var crowded = (BackupService.Submission.Accepted) service.submit(
+                new BackupRequest.Backup("local", "world",
+                    new BackupRequest.Trigger("zakobakui", "Web interface backup", full)));
+            crowded.completion().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            var bounded = ((BackupRequest.Backup) captured.get(1)).trigger().metadata();
+            require(bounded.size() <= 16, "metadata budget was exceeded");
+            require("26.3".equals(bounded.get("gameVersion")), "host keys lost under a full trigger");
+            require("1.2.0".equals(bounded.get("modVersion")), "modVersion lost under a full trigger");
+            require("3.0.1".equals(bounded.get("backendVersion")), "backendVersion lost under a full trigger");
+
+            // Non-backup requests are passed through untouched.
+            var delete = new BackupRequest.Delete(new SnapshotRef("local", "snap-1"));
+            var removed = (BackupService.Submission.Accepted) service.submit(delete);
+            removed.completion().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            require(captured.get(2) == delete, "non-backup request was rewritten");
+        }
     }
 
     private static Grant grant(Map<String, ? extends Set<Right>> repositories) {

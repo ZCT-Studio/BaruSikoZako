@@ -29,7 +29,7 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
     static final String DEFAULT_CANCELLED = "{result}";
     private static final System.Logger LOG = System.getLogger(ProgressConfig.class.getName());
     static final String FILE = "progress.yml";
-    static final int SCHEMA = 2;
+    static final int SCHEMA = 3;
 
     /** 旧版模板结构，直接重写为新默认 */
     private static final class SchemaMismatch extends IOException {
@@ -170,12 +170,13 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
             new Size(
                 !"decimal".equals(choice(size.get("unit"), Set.of("binary", "decimal"), "binary")),
                 clamp(intValue(size.get("precision"), 2), 0, 3)),
-            operation(root, template, "backup", "green"),
-            operation(root, template, "verify", "purple"));
+            operation(root, template, "backup", "green", Channel.BOSS_BAR, Audience.OPERATORS),
+            operation(root, template, "verify", "purple", Channel.NONE, Audience.ALL));
     }
 
     private static Operation operation(Map<?, ?> root, Map<?, ?> templateRoot, String key,
-                                       String defaultRunningColor) {
+                                       String defaultRunningColor, Channel nonInitiatedDisplay,
+                                       Audience nonInitiatedAudience) {
         var operation = section(root, key);
         var templates = section(templateRoot, key);
         var initiated = section(operation, "initiated");
@@ -186,8 +187,8 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
         var colors = section(operation, "colors");
         return new Operation(
             new Mode(Channel.parse(initiated.get("display"), Channel.BOSS_BAR), Audience.ALL),
-            new Mode(Channel.parse(nonInitiated.get("display"), Channel.NONE),
-                Audience.parse(nonInitiated.get("audience"), Audience.ALL)),
+            new Mode(Channel.parse(nonInitiated.get("display"), nonInitiatedDisplay),
+                Audience.parse(nonInitiated.get("audience"), nonInitiatedAudience)),
             new BossBar(
                 choice(bossbar.get("style"), BOSS_BAR_STYLES, "progress"),
                 color(bossbar.get("text-color"), "#FFFFFF")),
@@ -300,7 +301,7 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
 
         # 配置格式版本
         # Configuration schema version
-        schema: 2
+        schema: 3
 
         # 是否启用进度显示
         # Whether progress display is enabled
@@ -357,13 +358,15 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
             display: bossbar
 
           # 非主动发起的备份：定时备份、其他玩家、控制台及第三方 API
+          # 默认向所有管理员展示进度
           # Backups not started by the viewing player: scheduled, other players, console, third-party API
+          # Progress is shown to all administrators by default
           non-initiated:
             # bossbar / none
-            display: none
+            display: bossbar
 
             # all / operators / none
-            audience: all
+            audience: operators
 
           # 原版 BossBar 样式
           # Vanilla BossBar style

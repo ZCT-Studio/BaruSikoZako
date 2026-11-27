@@ -7,6 +7,7 @@ import io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook;
 import io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context;
 import io.github.zct_studio.barusikozako.runtime.TaskResult;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -26,14 +27,14 @@ final class LifecycleHooks {
 
     private LifecycleHooks() {}
 
-    static void before(Set<String> allowed, Context context) {
+    static void before(Optional<Set<String>> allowed, Context context) {
         for (var entry : entries(allowed)) {
             var hook = entry.value().get();
             if (hook != null) hook.before(context);
         }
     }
 
-    static void beforeStartupRestore(Set<String> allowed, Context context) throws IOException {
+    static void beforeStartupRestore(Optional<Set<String>> allowed, Context context) throws IOException {
         var callback = new java.util.concurrent.FutureTask<Void>(() -> {
             before(allowed, context);
             return null;
@@ -53,7 +54,7 @@ final class LifecycleHooks {
         }
     }
 
-    static void after(Set<String> allowed, Context context, TaskResult result) {
+    static void after(Optional<Set<String>> allowed, Context context, TaskResult result) {
         try {
             NOTIFICATIONS.execute(() -> {
                 for (var entry : entries(allowed)) {
@@ -71,9 +72,12 @@ final class LifecycleHooks {
     }
 
     private static java.util.List<LoaderBridge.Entry<BackupLifecycleHook>>
-    entries(Set<String> allowed) {
-        if (allowed.isEmpty()) return java.util.List.of();
-        return LoaderBridge.entries("barusikozako:lifecycle", BackupLifecycleHook.class).stream()
-            .filter(entry -> allowed.contains(entry.owner())).toList();
+    entries(Optional<Set<String>> allowed) {
+        var hooks = LoaderBridge.entries("barusikozako:lifecycle", BackupLifecycleHook.class);
+        // 授权关闭时不做筛选，所有被发现的回调都会收到通知。
+        if (allowed.isEmpty()) return hooks;
+        var ids = allowed.get();
+        if (ids.isEmpty()) return java.util.List.of();
+        return hooks.stream().filter(entry -> ids.contains(entry.owner())).toList();
     }
 }

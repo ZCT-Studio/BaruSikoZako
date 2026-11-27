@@ -119,6 +119,7 @@ public final class WorldStartupGate implements RestoreWindow {
                 }
                 if (request != null) {
                     var config = ServerConfig.load(false);
+                    var api = ApiConfig.load(false);
                     var keyword = request.backend == null ? config.backendKeyword() : request.backend;
                     var location = ServerRepository.checkPath(ServerRepository.forBackend(keyword, target), target);
                     var backend = BackendRegistry.configure(keyword, false);
@@ -126,7 +127,7 @@ public final class WorldStartupGate implements RestoreWindow {
                     var hookContext = new io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Context(
                         io.github.zct_studio.barusikozako.runtime.BackupLifecycleHook.Operation.OFFLINE_RESTORE,
                         FabricOperations.REPOSITORY_ID, java.util.Optional.of(snapshotRef));
-                    LifecycleHooks.beforeStartupRestore(config.lifecycleIntegrations(), hookContext);
+                    LifecycleHooks.beforeStartupRestore(api.lifecycleAllowlist(), hookContext);
                     try (var repository = backend.open(location, ServerRepository::forceDirectory, "FULL", null)) {
                         long restoreStarted = System.nanoTime();
                         var prepared = new java.util.concurrent.atomic.AtomicBoolean();
@@ -151,7 +152,7 @@ public final class WorldStartupGate implements RestoreWindow {
                             Files.delete(queuedRequest(target));
                             ServerRepository.forceDirectory(target.getParent());
                         }
-                        LifecycleHooks.after(config.lifecycleIntegrations(), hookContext,
+                        LifecycleHooks.after(api.lifecycleAllowlist(), hookContext,
                             new io.github.zct_studio.barusikozako.runtime.TaskResult.Restored(snapshotRef, FabricOperations.SOURCE_ID));
                         LOG.log(System.Logger.Level.INFO, "Offline restore committed for {0}; original world: {1}",
                             request.snapshot, result.previousWorld().orElseThrow());

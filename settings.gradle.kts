@@ -249,6 +249,7 @@ include(":engine:core")
 include(":engine:gitignore")
 include(":engine:mod-runtime")
 include(":platforms:spi")
+include(":platforms:standalone")
 
 if ((property("javaAgent") ?: local("javaAgent"))?.toBoolean() == true) {
     include(":platforms:javaagent")

@@ -30,8 +30,24 @@ final class YamlSettings {
 
     private YamlSettings() {}
 
+    /** 单位说明头，适用于带时间与容量单位的配置文件 */
+    static final String UNITS_HEADER = """
+        # Time: ms, s, m, h, d, w, M/month (30 days), y (365 days)
+        # 时间：ms、s、m、h、d、w、M/month（30 天）、y（365 天）
+        # Size: B/Byte, KB, MB, GB, TB (decimal); KiB, MiB, GiB, TiB (binary)
+        # 容量：B/Byte、KB、MB、GB、TB 为十进制，KiB、MiB、GiB、TiB 为二进制
+        # Bare numbers use the unit named by each key
+        # 纯数字使用配置项名称中的单位
+
+        """;
+
     static Map<String, String> load(Path file, Map<String, String> defaults, boolean create, Migration migration)
             throws IOException {
+        return load(file, defaults, create, migration, UNITS_HEADER);
+    }
+
+    static Map<String, String> load(Path file, Map<String, String> defaults, boolean create, Migration migration,
+                                    String header) throws IOException {
         try {
             return parse(readText(file));
         } catch (NoSuchFileException absent) {
@@ -40,7 +56,7 @@ final class YamlSettings {
             if (!create) return settings;
             Files.createDirectories(file.getParent());
             try {
-                Files.write(file, encode(settings), StandardOpenOption.CREATE_NEW);
+                Files.write(file, encode(settings, header), StandardOpenOption.CREATE_NEW);
                 return settings;
             } catch (FileAlreadyExistsException concurrent) {
                 return parse(readText(file));
@@ -48,15 +64,20 @@ final class YamlSettings {
         }
     }
 
+    static void change(Path file, Map<String, String> defaults, String key, String value,
+                        Validator validator) throws IOException {
+        change(file, defaults, key, value, validator, UNITS_HEADER);
+    }
+
     static synchronized void change(Path file, Map<String, String> defaults, String key, String value,
-                                    Validator validator) throws IOException {
+                                    Validator validator, String header) throws IOException {
         if (SCHEMA.equals(key)) throw new IOException("The configuration schema is read-only");
         if (!defaults.containsKey(key)) throw new IOException("Unknown configuration key " + key);
         var settings = new LinkedHashMap<>(defaults);
         settings.putAll(parse(readText(file)));
         settings.put(key, value);
         validator.validate(settings);
-        var encoded = encode(settings);
+        var encoded = encode(settings, header);
         var staged = Files.createTempFile(file.getParent(), ".config-", ".yml");
         try {
             Files.write(staged, encoded);
@@ -66,8 +87,8 @@ final class YamlSettings {
         }
     }
 
-    private static byte[] encode(Map<String, String> settings) throws IOException {
-        var encoded = render(settings).getBytes(StandardCharsets.UTF_8);
+    private static byte[] encode(Map<String, String> settings, String header) throws IOException {
+        var encoded = render(settings, header).getBytes(StandardCharsets.UTF_8);
         if (encoded.length > MAX_BYTES) throw new IOException("Configuration exceeds 16 KiB");
         return encoded;
     }
@@ -83,9 +104,10 @@ final class YamlSettings {
             Map.entry("capture.fileRetryDelayMillis", "Linear file retry delay in milliseconds\n文件重试的线性延迟"),
             Map.entry("capture.retries", "Whole-capture retry count\n整次捕获重试次数"),
             Map.entry("capture.consistency", "Capture consistency: strict or relaxed\n捕获一致性，可选 strict 或 relaxed"),
-            Map.entry("api.integrations", "Allowed integration IDs\n允许的集成标识"),
-            Map.entry("api.maintenanceIntegrations", "Maintenance integration IDs\n允许维护操作的集成标识"),
-            Map.entry("api.lifecycleIntegrations", "Lifecycle integration IDs\n生命周期集成标识"),
+            Map.entry("authorization.enabled", "Enable allowlist checks for integrations; when off, every discovered integration is activated with full rights\n是否启用集成授权名单；关闭时所有被发现的集成都会获得全部权限"),
+            Map.entry("authorization.integrations", "Allowed integration IDs, comma separated (only used when enabled)\n允许的集成标识，逗号分隔（仅在启用时生效）"),
+            Map.entry("authorization.maintenanceIntegrations", "Integration IDs additionally allowed to restore and delete\n额外允许恢复与删除的集成标识"),
+            Map.entry("authorization.lifecycleIntegrations", "Lifecycle integration IDs\n生命周期集成标识"),
             Map.entry("capture.fileClone", "File clone strategy, auto or off\n文件克隆策略，可选 auto 或 off"),
             Map.entry("backup.readBytesPerSecond", "Read rate in bytes per second, 0 disables the limit\n每秒读取速率上限，0 表示不限制"),
             Map.entry("ignore.gitignore", "Parse .gitignore files as local rules, like local.gitignore\n解析各目录的 .gitignore，与 local.gitignore 一样作为局部规则"),
@@ -128,16 +150,8 @@ final class YamlSettings {
         return root;
     }
 
-    private static String render(Map<String, String> settings) throws IOException {
-        var output = new StringBuilder("""
-            # Time: ms, s, m, h, d, w, M/month (30 days), y (365 days)
-            # 时间：ms、s、m、h、d、w、M/month（30 天）、y（365 天）
-            # Size: B/Byte, KB, MB, GB, TB (decimal); KiB, MiB, GiB, TiB (binary)
-            # 容量：B/Byte、KB、MB、GB、TB 为十进制，KiB、MiB、GiB、TiB 为二进制
-            # Bare numbers use the unit named by each key
-            # 纯数字使用配置项名称中的单位
-
-            """);
+    private static String render(Map<String, String> settings, String header) throws IOException {
+        var output = new StringBuilder(header);
         var options = new org.yaml.snakeyaml.DumperOptions();
         options.setDefaultScalarStyle(org.yaml.snakeyaml.DumperOptions.ScalarStyle.DOUBLE_QUOTED);
         options.setSplitLines(false);
