@@ -52,6 +52,37 @@ public final class NativeEntrypoints implements LoaderBridge.Binding {
         return io.github.zct_studio.barusikozako.core.BackupExclusions.register(scope, source, pattern);
     }
 
+    /**
+     * 合并扩展点与 {@code META-INF/services} 两条通道；扩展点优先，二者都在首次使用时才解析。
+     * 集成标识保持为 mod 容器 ID，授权规则不变。
+     */
+    public static Integration integration(String owner, ServiceIntegrations.Source source,
+                                          Supplier<BackupIntegration> extensionService,
+                                          Supplier<BackupLifecycleHook> extensionLifecycle) {
+        Supplier<BackupIntegration> serviceFromExtension = extensionService == null ? () -> null : extensionService;
+        Supplier<BackupLifecycleHook> lifecycleFromExtension =
+            extensionLifecycle == null ? () -> null : extensionLifecycle;
+        Supplier<BackupIntegration> service = ServiceIntegrations.firstAvailable(owner, List.of(
+            serviceFromExtension,
+            () -> adaptService(ServiceIntegrations.service(owner, source,
+                io.github.zct_studio.barusikozako.api.BackupIntegration.class).get())));
+        Supplier<BackupLifecycleHook> lifecycle = ServiceIntegrations.firstAvailable(owner, List.of(
+            lifecycleFromExtension,
+            () -> adaptLifecycle(ServiceIntegrations.service(owner, source,
+                io.github.zct_studio.barusikozako.api.BackupLifecycleHook.class).get())));
+        return new Integration(owner, service, lifecycle);
+    }
+
+    private static BackupIntegration adaptService(
+            io.github.zct_studio.barusikozako.api.BackupIntegration value) {
+        return value == null ? null : PublicApi.integration(value);
+    }
+
+    private static BackupLifecycleHook adaptLifecycle(
+            io.github.zct_studio.barusikozako.api.BackupLifecycleHook value) {
+        return value == null ? null : PublicApi.lifecycle(value);
+    }
+
     @Override public Path configDirectory() { return configDirectory; }
 
     @Override public String productVersion() { return productVersion; }

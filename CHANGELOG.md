@@ -22,6 +22,13 @@ Sections appear in this order when applicable: **Added / 新增**, **Changed / �
 
 ## [Unreleased / 未发布]
 
+## [1.1.0-patch.1] - 2026-11-27
+
+### Added / 新增
+
+- Third-party mods can register a backup integration through `META-INF/services/io.github.zct_studio.barusikozako.api.BackupIntegration` (and `...BackupLifecycleHook`) without referencing any loader class; the implementation only needs a public no-argument constructor. Fabric entrypoints and the Forge/NeoForge extension points keep working, take priority when both are present, and every mod still yields exactly one integration identified by its container ID.
+<br> 第三方模组现在可以通过 `META-INF/services/io.github.zct_studio.barusikozako.api.BackupIntegration`（以及 `...BackupLifecycleHook`）注册备份集成，无需引用任何加载器类；实现类只需具备 public 无参构造。Fabric entrypoint 与 Forge/NeoForge 扩展点继续可用，两者同时存在时优先，每个模组仍只产生一个以容器 ID 标识的集成。
+
 ## [1.1.0] - 2026-11-26
 
 ### Added / 新增

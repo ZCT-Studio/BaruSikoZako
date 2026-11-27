@@ -8,6 +8,7 @@ import io.github.zct_studio.barusikozako.BaruSikoZakoServer;
 import io.github.zct_studio.barusikozako.LoaderBridge;
 import io.github.zct_studio.barusikozako.NativeEntrypoints;
 import io.github.zct_studio.barusikozako.PublicApi;
+import io.github.zct_studio.barusikozako.ServiceIntegrations;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -26,8 +27,10 @@ public final class MainMod {
             () -> ModList.get().isLoaded("barusikozako_api"),
             () -> ModList.get().getModContainerById("barusikozako_api")
                 .map(container -> container.getModInfo().getVersion().toString()).orElse(null), () ->
-            ModList.get().applyForEachModContainer(container -> new NativeEntrypoints.Integration(
+            ModList.get().applyForEachModContainer(container -> NativeEntrypoints.integration(
                 container.getModId(),
+                ServiceIntegrations.source(container.getModId(),
+                    () -> container.getModInfo().getOwningFile().getFile().getFilePath()),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::service).map(PublicApi::integration).orElse(null),
                 () -> container.getCustomExtension(ZakoBakIntegration.class).map(ZakoBakIntegration::lifecycle).map(PublicApi::lifecycle).orElse(null)))
                 .toList()));
