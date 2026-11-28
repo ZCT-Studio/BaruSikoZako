@@ -67,6 +67,12 @@ public abstract class PublishProductJar extends DefaultTask {
         }
     }
 
+    /** 由 {@code -PnoApi}/{@code -PnoMod} 控制是否跳过对应组件的构建与发布 */
+    private static boolean excluded(Project project, String directory) {
+        return ("api".equals(directory) && project.hasProperty("noApi"))
+            || ("mod".equals(directory) && project.hasProperty("noMod"));
+    }
+
     public static TaskProvider<PublishProductJar> register(Project project, String task, String directory,
             String id, String target, Provider<RegularFile> source) {
         return register(project, task, directory, id, target, project.getVersion().toString(), source);
@@ -82,6 +88,15 @@ public abstract class PublishProductJar extends DefaultTask {
         String file = id + "-v" + version + "+" + target + ".jar";
         var destination = project.getRootProject().getLayout().getProjectDirectory()
                 .file("build_product/" + directory + "/" + file);
+        if (excluded(project, directory)) {
+            // [no-api]/[no-mod]：返回占位任务且不挂到 buildProducts/assemble，避免连带构建该组件
+            return project.getTasks().register(task, PublishProductJar.class, export -> {
+                export.setGroup("build");
+                export.setDescription("Skipped: the " + directory + " component is excluded by a build property.");
+                export.getProductJar().set(destination);
+                export.onlyIf("the component is excluded", ignored -> false);
+            });
+        }
         var publish = project.getTasks().register(task, PublishProductJar.class, export -> {
             export.setGroup("build");
             export.setDescription("Publishes the installable JAR to build_product/" + directory + "/" + file);

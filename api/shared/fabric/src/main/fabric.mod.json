@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "barusikozako_api",
   "version": "${productVersion}",
-  "name": "ZakoBak API",
+  "name": "BaruSikoZako API",
   "authors": ["${authorsJson}"],
   "contact": {"homepage": "${homepageJson}", "sources": "${sourcesJson}", "issues": "${issuesJson}"},
   "icon": "icon.png",

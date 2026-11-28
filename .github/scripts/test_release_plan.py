@@ -259,6 +259,34 @@ class TestReleasePlan(unittest.TestCase):
             self.assertEqual(len(result.get("build_jobs", [])), 0)
             self.assertEqual(len(result.get("jobs", [])), 0)
 
+    def test_plan_no_api_flag_skips_the_api_component(self):
+        """[no-api] should build and release only the mod."""
+        current_versions = {
+            "mod": {"version": "1.0.1", "overrides": {}},
+            "api": {"version": "1.0.1", "overrides": {}},
+            "backend": {"zstd": {"version": "1.0.0", "overrides": {}}}
+        }
+        result = plan(current_versions, self.sample_releases, self.sample_versions,
+                      "feat: bump [no-api]", [";lists/version.json5"],
+                      "## [1.0.1]\n\nPatch release.\n")
+        self.assertTrue(result["should_build"])
+        for job in result["build_jobs"] + result["jobs"]:
+            self.assertEqual([asset["component"] for asset in job["assets"]], ["mod"])
+
+    def test_plan_no_mod_flag_skips_the_mod_component(self):
+        """[no-mod] should build and release only the API."""
+        current_versions = {
+            "mod": {"version": "1.0.1", "overrides": {}},
+            "api": {"version": "1.0.1", "overrides": {}},
+            "backend": {"zstd": {"version": "1.0.0", "overrides": {}}}
+        }
+        result = plan(current_versions, self.sample_releases, self.sample_versions,
+                      "feat: bump [no-mod]", [";lists/version.json5"],
+                      "## [1.0.1]\n\nPatch release.\n")
+        self.assertTrue(result["should_build"])
+        for job in result["build_jobs"] + result["jobs"]:
+            self.assertEqual([asset["component"] for asset in job["assets"]], ["api"])
+
     def test_plan_no_release_flag_allows_build(self):
         """[no-release] should disable release but allow build."""
         with tempfile.TemporaryDirectory() as tmpdir:

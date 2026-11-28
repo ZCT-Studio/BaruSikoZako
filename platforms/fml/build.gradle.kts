@@ -410,7 +410,7 @@ for ((loader, version) in versions) {
             options.compilerArgs.add("-proc:none")
         }
         evaluationDependsOn(":api:common")
-        val apiMeta = metadataFile("${loader}ApiMetadata", toml, metadata(loader, "barusikozako_api", "ZakoBak API"))
+        val apiMeta = metadataFile("${loader}ApiMetadata", toml, metadata(loader, "barusikozako_api", "BaruSikoZako API"))
         tasks.jar {
             if (forgePack != null) from(forgePack)
             from(rootProject.file("resource/barusikozako_api/icon.png"))

@@ -136,7 +136,7 @@ def asset_names(component, version, target):
 
 def commit_flags(message):
     return {flag.lower() for flag in re.findall(
-        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|merge-jars|merge-fml-jars|no-changelog|no-release|no-build|no-modrinth|no-curseforge)\]",
+        r"\[(force-release|force-relaese|release-all|release-temp|release-latest|build-all|build-lts|merge-jars|merge-fml-jars|no-changelog|no-release|no-build|no-modrinth|no-curseforge|no-api|no-mod)\]",
         message, re.IGNORECASE)}
 
 
@@ -148,6 +148,8 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
          force_build=False, merge_games=frozenset()):
     selected = targets(release_table)
     flags = commit_flags(message)
+    # [no-api]/[no-mod] 让本次构建与发布只包含其中一个组件
+    components = tuple(name for name in IDS if f"no-{name}" not in flags)
     force_release = requests_forced_release(flags)
     build_all = "build-all" in flags
     build_lts = "build-lts" in flags
@@ -179,7 +181,7 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
         loader = loader or platforms[0]
         target = loader + game
         assets = []
-        for component in components:
+        for component in [name for name in components if name in versions]:
             version = versions[component]
             changelog_file = "CHANGELOG.API.md" if component == "api" else "CHANGELOG.md"
             source_notes = api_notes if component == "api" else notes
@@ -236,13 +238,15 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
             automatic = not build_all and not build_lts and tier == "latest"
             if requested or (automatic and
                              (validate_code or (catalog_changed and (versions != before or zstd != previous_zstd)))):
-                build = job(game, platforms, versions, versions, True, loader=loader)
-                build_jobs[build["target"]] = build
+                build = job(game, platforms, versions, components, True, loader=loader)
+                if build["assets"]:
+                    build_jobs[build["target"]] = build
             bypass_tier = "release-all" in flags
             if not allow_release or (not bypass_tier and narrowed and tier not in narrowed):
                 continue
             emitted = tuple(component for component, value in versions.items()
-                            if (force_release or before.get(component) != value) and
+                            if component in components and
+                            (force_release or before.get(component) != value) and
                             (bypass_tier or channel(value) in TIERS[tier]))
             if emitted:
                 loader_group = (loader if merged else
@@ -260,8 +264,9 @@ def plan(current, release_table, previous, message, changed, markdown="", *, api
         if not is_agent:
             release_jobs.append(job(game, platforms, versions, emitted, False, require_notes=True, loader=loader))
         # 即使仅发布一个组件，验收也需要当前的配套 JAR
-        build = job(game, platforms, versions, versions, is_agent, loader=loader)
-        build_jobs[build["target"]] = build
+        build = job(game, platforms, versions, components, is_agent, loader=loader)
+        if build["assets"]:
+            build_jobs[build["target"]] = build
 
     return {
         "jobs": release_jobs,

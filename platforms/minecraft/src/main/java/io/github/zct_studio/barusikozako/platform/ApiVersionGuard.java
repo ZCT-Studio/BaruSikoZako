@@ -6,7 +6,7 @@ package io.github.zct_studio.barusikozako.platform;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 校验已安装的 ZakoBak API 是否满足主模组声明的最低版本。 */
+/** 校验已安装的 BaruSikoZako API 是否满足主模组声明的最低版本。 */
 public final class ApiVersionGuard {
     private ApiVersionGuard() {}
 
@@ -15,8 +15,8 @@ public final class ApiVersionGuard {
         if (minimum == null || minimum.isBlank() || installed == null || installed.isBlank()
             || "unknown".equalsIgnoreCase(installed)) return null;
         if (compare(installed, minimum) >= 0) return null;
-        return "BaruSikoZako requires ZakoBak API " + minimum + " or newer, but " + installed + " is installed.\n"
-            + "BaruSikoZako 需要 ZakoBak API " + minimum + " 或更高版本，当前安装的是 " + installed + "。";
+        return "BaruSikoZako requires BaruSikoZako API " + minimum + " or newer, but " + installed + " is installed.\n"
+            + "BaruSikoZako 需要 BaruSikoZako API " + minimum + " 或更高版本，当前安装的是 " + installed + "。";
     }
 
     static int compare(String left, String right) {

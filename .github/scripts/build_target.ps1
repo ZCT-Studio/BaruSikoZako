@@ -75,9 +75,15 @@ switch ($loader) {
 }
 $wrapper = if ($IsWindows) { './gradlew.bat' } else { './gradlew' }
 if (!$IsWindows) { chmod +x $wrapper }
+$components = @($job.assets | ForEach-Object { $_.component })
+if ($components -notcontains 'api') { $flags += '-PnoApi' }
+if ($components -notcontains 'mod') { $flags += '-PnoMod' }
 $tasks = @('buildProducts', ':engine:core:check', ':engine:gitignore:check', ':backends:zstd:check', ':api:host:check')
 if ($loader -eq 'agent') { $tasks += ':platforms:javaagent:check' }
-if ($loader -in @('universal','fml')) { $tasks += @('mergeJars', 'mergeApiJars') }
+if ($loader -in @('universal','fml')) {
+    if ($components -contains 'mod') { $tasks += 'mergeJars' }
+    if ($components -contains 'api') { $tasks += 'mergeApiJars' }
+}
 # 仅对仓库限流重试，普通编译和测试失败直接返回
 $PSNativeCommandUseErrorActionPreference = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {

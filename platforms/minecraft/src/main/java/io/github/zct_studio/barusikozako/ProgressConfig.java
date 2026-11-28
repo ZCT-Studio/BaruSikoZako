@@ -379,7 +379,7 @@ record ProgressConfig(int schema, boolean enabled, long updateIntervalMillis, Si
             text-color: "#FFFFFF"
 
           # 备份过程信息
-          # Progress text
+          # Backup Progress text
           progress:
             show-stage: true
             show-percentage: true
