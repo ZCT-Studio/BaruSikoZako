@@ -1,4 +1,4 @@
-# BaruSikoZako (ZakoBak)
+<p align="center"><img src="resource/.public/banner.jpg" alt="BaruSikoZako 项目横幅 / Project banner" width="100%"></p>
 
 **A simple backup MOD.**
 
