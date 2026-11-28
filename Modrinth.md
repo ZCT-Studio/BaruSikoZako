@@ -1,7 +1,5 @@
 <p align="center"><img src="https://raw.githubusercontent.com/ZCT-Studio/BaruSikoZako/refs/heads/main/resource/.public/banner.jpg" alt="BaruSikoZako 项目横幅 / Project banner" width="100%"></p>
 
-**A simple backup MOD.**
-
 <details>
 <summary>简体中文</summary>
 

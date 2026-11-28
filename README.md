@@ -1,7 +1,5 @@
 <p align="center"><img src="resource/.public/banner.jpg" alt="BaruSikoZako 项目横幅 / Project banner" width="100%"></p>
 
-**A simple backup MOD.**
-
 An extensible backup framework for Minecraft: Java Edition, both inside and outside the game.
 
 <details>
